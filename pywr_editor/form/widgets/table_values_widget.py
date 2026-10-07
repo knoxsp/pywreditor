@@ -598,7 +598,7 @@ class TableValuesWidget(FormWidget):
         except Exception:
             self.logger.debug(
                 "An error occurred while exporting data to Excel: "
-                + f"{traceback.print_exc()}"
+                + f"{traceback.format_exc()}"
             )
             QMessageBox.critical(
                 self,

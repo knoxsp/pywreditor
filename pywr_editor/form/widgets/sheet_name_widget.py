@@ -159,7 +159,7 @@ class SheetNameWidget(FormWidget):
                 xl.close()
                 self.logger.debug(f"Found {', '.join(self.excel_sheets)}")
             except Exception:
-                self.logger.debug(f"Exception thrown: {traceback.print_exc()}")
+                self.logger.debug(f"Exception thrown: {traceback.format_exc()}")
                 pass
         else:
             self.logger.debug("Skipped, not an Excel file")

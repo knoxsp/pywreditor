@@ -149,7 +149,7 @@ class IndexWidget(FormWidget):
                     except Exception:
                         # preserve wrong column
                         self.logger.debug(
-                            f"Column index {index} not found: {traceback.print_exc()}"
+                            f"Column index {index} not found: {traceback.format_exc()}"
                         )
                         new_index_names.append(str(index))
                         pass

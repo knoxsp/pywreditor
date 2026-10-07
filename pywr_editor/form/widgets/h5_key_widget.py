@@ -166,7 +166,7 @@ class H5KeyWidget(FormWidget):
                 store.close()
                 self.logger.debug(f"Found {', '.join(self.keys)}")
             except Exception:
-                self.logger.debug(f"Exception thrown: {traceback.print_exc()}")
+                self.logger.debug(f"Exception thrown: {traceback.format_exc()}")
                 pass
         else:
             self.logger.debug("Skipped, not a H5 file")

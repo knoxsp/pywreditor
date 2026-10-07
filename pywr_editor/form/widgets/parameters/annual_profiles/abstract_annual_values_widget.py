@@ -265,7 +265,7 @@ class AbstractAnnualValuesWidget(FormWidget):
         except Exception:
             self.logger.debug(
                 "An error occurred while exporting data to Excel: "
-                + traceback.print_exc()
+                + traceback.format_exc()
             )
             QMessageBox.critical(
                 self,
