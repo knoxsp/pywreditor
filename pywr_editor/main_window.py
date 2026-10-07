@@ -6,7 +6,7 @@ from typing import Literal
 
 import PySide6
 from PySide6.QtCore import QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QKeySequence, Qt, QUndoStack
+from PySide6.QtGui import QAction, QColor, QKeySequence, QUndoStack
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
 
 from pywr_editor.dialogs import (
@@ -24,7 +24,7 @@ from pywr_editor.dialogs import (
 )
 from pywr_editor.model import ModelConfig
 from pywr_editor.schematic import Schematic, get_scaling_factor
-from pywr_editor.style import AppStylesheet
+from pywr_editor.style import AppStylesheet, Theme
 from pywr_editor.toolbar import RunWidget, SchematicItemsLibrary, ToolbarWidget
 from pywr_editor.toolbar.run_controls.timestepper import TimeStepperWidget
 from pywr_editor.tree import ComponentsTree
@@ -126,7 +126,7 @@ class MainWindow(QMainWindow):
         self.set_window_title()
         self.resize(1000, 900)
         self.setAutoFillBackground(True)
-        self.setPalette(Qt.GlobalColor.white)
+        self.setPalette(QColor(Theme.color("window")))
         self.setDockNestingEnabled(False)
         self.setCentralWidget(self.splitter)
 
@@ -498,6 +498,16 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="toggle-dark-mode",
+                name="Dark mode",
+                icon="",  # TODO: needs a theme-aware icon
+                tooltip="Switch between the light and dark theme",
+                is_checked=Theme.is_dark(),
+                connection=self.toggle_dark_mode,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="toggle-arrows",
                 name="Hide arrows",
                 icon=":toolbar/toggle-schematic-arrows",
@@ -616,6 +626,11 @@ class MainWindow(QMainWindow):
         )
         validation_panel.add_button(
             self.app_actions.get("find-orphaned-parameters"), is_large=False
+        )
+
+        appearance_panel = model_tab.add_panel("Appearance", layout="vertical")
+        appearance_panel.add_button(
+            self.app_actions.get("toggle-dark-mode"), is_large=False
         )
 
         # Operation tab
@@ -909,6 +924,23 @@ class MainWindow(QMainWindow):
         :return: None
         """
         self.statusBar().showMessage(message)
+
+    @Slot(bool)
+    def toggle_dark_mode(self, checked: bool) -> None:
+        """
+        Saves the theme. The stylesheets are built when the widgets are created, so
+        the new theme is applied the next time the editor is started.
+        :param checked: Whether the dark mode is enabled.
+        :return: None
+        """
+        self.editor_settings.save_theme("dark" if checked else "light")
+        QMessageBox().information(
+            self,
+            "Theme changed",
+            "The "
+            + ("dark" if checked else "light")
+            + " theme will be applied the next time the editor is started.",
+        )
 
     @Slot(str, str, str)
     def on_alert_info_message(

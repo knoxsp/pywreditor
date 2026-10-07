@@ -5,6 +5,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QColorDialog, QHBoxLayout, QWidget
 
 from pywr_editor.form import FormField, FormWidget
+from pywr_editor.style import Theme
 from pywr_editor.widgets import PushIconButton
 
 """
@@ -88,7 +89,8 @@ class ColorPickerWidget(FormWidget):
         else:
             rgb = f"rgb({color[0]}, {color[1]}, {color[2]})"
         self.preview_color_box.setStyleSheet(
-            f"background: {rgb}; border: 1px solid #CCC; border-radius: 5px;"
+            f"background: {rgb}; border: 1px solid {Theme.color('border')}; "
+            + "border-radius: 5px;"
         )
 
     @Slot()

@@ -4,7 +4,7 @@ import PySide6
 from PySide6.QtCore import QAbstractTableModel, Qt, Slot
 from PySide6.QtWidgets import QListView, QWidget
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 from .push_button import PushButton
 from .push_icon_button import PushIconButton
@@ -102,7 +102,7 @@ class ListView(QListView):
         """
         style = {
             "ListView": {
-                "background": "#FFF",
+                "background": Theme.color("base"),
                 "border": f"1px solid {Color('gray', 300).hex}",
                 "border-radius": "6px",
                 "outline": 0,

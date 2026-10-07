@@ -4,7 +4,7 @@ import PySide6
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import QDateEdit, QWidget
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.widgets import CalendarWidget
 
 
@@ -50,7 +50,7 @@ class DateEdit(QDateEdit):
         return stylesheet_dict_to_str(
             {
                 "DateEdit": {
-                    "background": "#FFF",
+                    "background": Theme.color("base"),
                     "border": f"1px solid {Color('gray', 400).hex}",
                     "padding": "2px",
                     "border-radius": "4px",

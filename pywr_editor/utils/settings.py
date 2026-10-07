@@ -21,6 +21,7 @@ class Settings:
     schematic_center_key = "schematic/schematic_center"
     recent_projects_key = "recent_projects"
     run_to_date_key = "run_to_date"
+    theme_key = "appearance/theme"
 
     def __init__(self, json_file: str | None = None):
         """
@@ -59,6 +60,25 @@ class Settings:
         :returns The QSettings object.
         """
         return QSettings(self.org_name)
+
+    @property
+    def theme(self) -> str:
+        """
+        Returns the saved theme. This is not connected to the model file.
+        :return: "dark" or "light". Light is the default.
+        """
+        value = self.global_instance.value(self.theme_key, defaultValue="light")
+        return "dark" if value == "dark" else "light"
+
+    def save_theme(self, theme: str) -> None:
+        """
+        Saves the theme. This is not connected to the model file.
+        :param theme: "dark" or "light".
+        :return: None
+        """
+        self.global_instance.setValue(
+            self.theme_key, "dark" if theme == "dark" else "light"
+        )
 
     def save_window_attributes(self, window: "MainWindow") -> None:
         """

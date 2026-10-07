@@ -2,7 +2,7 @@ import PySide6
 from PySide6.QtGui import QBrush, QColor, QPen, Qt, QTextCharFormat
 from PySide6.QtWidgets import QCalendarWidget, QMenu, QWidget
 
-from pywr_editor.style import AppStylesheet, Color, stylesheet_dict_to_str
+from pywr_editor.style import AppStylesheet, Color, Theme, stylesheet_dict_to_str
 
 """
  Provide a widget with a calendar to
@@ -56,7 +56,7 @@ class CalendarWidget(QCalendarWidget):
             painter.save()
             painter.fillRect(
                 rect,
-                QColor("white"),
+                QColor(Theme.color("base")),
             )
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(Color("blue", 400).qcolor)

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 import pywr_editor
 import pywr_editor.node_shapes
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.widgets import PushIconButton
 
 from .library_item import LibraryItem
@@ -112,9 +112,9 @@ class SchematicItemsLibrary(QWidget):
                 "padding": "0px 1px",
                 "margin-top": "6px",
                 ":disabled": {
-                    "background": "rgba(0, 0, 0, 5)",
-                    "border": "1px solid rgba(0, 0, 0, 5)",
-                    "color": "rgba(0, 0, 0, 80)",
+                    "background": Theme.overlay(5),
+                    "border": f"1px solid {Theme.overlay(5)}",
+                    "color": Theme.overlay(80),
                 },
             },
         }
