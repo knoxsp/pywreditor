@@ -1,3 +1,6 @@
+import os
+
+import pytest
 from PySide6.QtCore import QPointF
 
 from pywr_editor import MainWindow
@@ -20,6 +23,11 @@ class TestSettings:
 
         return window
 
+    @pytest.mark.skipif(
+        os.environ.get("QT_QPA_PLATFORM") == "offscreen",
+        reason="the offscreen platform does not place windows at the requested "
+        "position",
+    )
     def test_save_widget_geometry(self, qtbot):
         """
         Tests that the window geometry is saved and restored.
