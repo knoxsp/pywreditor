@@ -1,4 +1,3 @@
-import gc
 import sys
 import traceback
 from enum import Enum
@@ -243,8 +242,9 @@ class PywrWorker(QObject):
                 if self.mode == RunMode.RUN_TO and current_timestep.index <= last_index:
                     self.pause()
 
+        # do not force a garbage collection from this thread: it can destroy Qt
+        # objects outside the GUI thread and crash the application
         del self.pywr_model
-        gc.collect()
         self.finished.emit()
         self.pywr_model = None
 
