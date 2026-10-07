@@ -42,7 +42,7 @@ from pywr_editor.schematic import (
     get_scaling_factor,
     units_to_factor,
 )
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.toolbar import LibraryPanel
 
 from .canvas import SchematicCanvas
@@ -153,11 +153,28 @@ class Schematic(QGraphicsView):
         :return: None
         """
         self.scene.setBackgroundBrush(Color("gray", 300).qcolor)
+        # follow the theme
+        Theme.on_change(self, lambda view: view.on_theme_change())
         # add the canvas
         self.canvas = SchematicCanvas(
             width=self.schematic_width, height=self.schematic_height
         )
         self.scene.addItem(self.canvas)
+
+    def on_theme_change(self) -> None:
+        """
+        Updates the scene when the theme changes. The background is set again and the
+        items are repainted (and their cached rendering discarded). Colours set by the
+        user in the model are not changed.
+        :return: None
+        """
+        self.scene.setBackgroundBrush(Color("gray", 300).qcolor)
+        for item in self.scene.items():
+            if hasattr(item, "apply_theme"):
+                item.apply_theme()
+            item.update()
+        self.scene.update()
+        self.viewport().update()
 
     def draw(self) -> None:
         """
@@ -320,8 +337,9 @@ class Schematic(QGraphicsView):
             "Select the node to connect. Press ESC or click here to abort"
         )
         button.setObjectName("abort-button")
-        button.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            button,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "#abort-button": {
                         "background": Color("blue", 100).hex,
@@ -334,7 +352,7 @@ class Schematic(QGraphicsView):
                         },
                     }
                 }
-            )
+            ),
         )
         # noinspection PyUnresolvedReferences
         button.clicked.connect(self.on_connect_node_end)

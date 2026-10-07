@@ -2,7 +2,6 @@ import traceback
 from typing import TYPE_CHECKING
 
 import PySide6
-import qtawesome as qta
 from PySide6.QtCore import QCoreApplication, Qt, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QStyledItemDelegate, QVBoxLayout
@@ -68,7 +67,7 @@ class AbstractAnnualValuesWidget(FormWidget):
         button_layout = QHBoxLayout()
 
         self.plot_button = PushIconButton(
-            icon=qta.icon("msc.graph-line"), label="Plot profile", small=True
+            icon="msc.graph-line", label="Plot profile", small=True
         )
         self.plot_button.setToolTip("Display a chart with the profile")
         # noinspection PyUnresolvedReferences
@@ -77,7 +76,7 @@ class AbstractAnnualValuesWidget(FormWidget):
         button_layout.addStretch()
 
         self.paste_button = PushIconButton(
-            icon=qta.icon("msc.reply"), label="Paste from Excel", small=True
+            icon="msc.reply", label="Paste from Excel", small=True
         )
         self.paste_button.setToolTip(
             "Paste data copied from a column from an Excel spreadsheet"
@@ -86,7 +85,7 @@ class AbstractAnnualValuesWidget(FormWidget):
         self.paste_button.clicked.connect(self.paste_from_excel)
 
         self.export_button = PushIconButton(
-            icon=qta.icon("msc.export"), label="Export to Excel", small=True
+            icon="msc.export", label="Export to Excel", small=True
         )
         self.export_button.setToolTip(
             "Create an Excel spreadsheet containing the data from the table above"

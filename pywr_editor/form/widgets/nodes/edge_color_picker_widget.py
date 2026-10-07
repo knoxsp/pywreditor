@@ -62,7 +62,8 @@ class EdgeColorPickerWidget(FormWidget):
         painter.begin(pixmap)
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(Color(color_name, 400).qcolor)
+        # edge colours are not mirrored in the dark theme
+        painter.setBrush(Color(color_name, 400, themed=False).qcolor)
         painter.drawEllipse(QPointF(size / 2, size / 2), 7, 7)
         painter.end()
 

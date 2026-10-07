@@ -38,7 +38,7 @@ class DateEdit(QDateEdit):
         self.setDisplayFormat("dd/MM/yyyy")
         self.setCalendarPopup(True)
         self.setCalendarWidget(CalendarWidget())
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.PreventContextMenu)
 
     @property

@@ -1,9 +1,9 @@
 import PySide6
 from PySide6.QtCore import QRectF
-from PySide6.QtGui import QPen, Qt
+from PySide6.QtGui import QColor, QPen
 from PySide6.QtWidgets import QGraphicsDropShadowEffect, QGraphicsItem
 
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 
 
 class SchematicCanvas(QGraphicsItem):
@@ -48,7 +48,7 @@ class SchematicCanvas(QGraphicsItem):
         :return: None
         """
         painter.setPen(QPen(Color("gray", 400).hex))
-        painter.setBrush(Qt.GlobalColor.white)
+        painter.setBrush(QColor(Theme.color("base")))
         painter.drawRoundedRect(self.boundingRect(), 8, 8)
 
     @property

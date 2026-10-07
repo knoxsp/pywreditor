@@ -43,7 +43,7 @@ class SchematicItemsLibrary(QWidget):
             icon=":toolbar/scroll-up", icon_size=QSize(10, 10)
         )
         self.scroll_up.setMinimumHeight(25)
-        self.scroll_up.setStyleSheet(self.button_stylesheet)
+        Theme.bind(self.scroll_up, lambda w: SchematicItemsLibrary.button_stylesheet())
         self.scroll_up.setEnabled(False)
         self.scroll_up.clicked.connect(partial(self.on_scroll, "up"))
 
@@ -51,7 +51,9 @@ class SchematicItemsLibrary(QWidget):
             icon=":toolbar/scroll-down", icon_size=QSize(10, 10)
         )
         self.scroll_down.setMinimumHeight(25)
-        self.scroll_down.setStyleSheet(self.button_stylesheet)
+        Theme.bind(
+            self.scroll_down, lambda w: SchematicItemsLibrary.button_stylesheet()
+        )
         self.scroll_down.clicked.connect(partial(self.on_scroll, "down"))
 
         buttons_layout = QVBoxLayout()
@@ -99,8 +101,8 @@ class SchematicItemsLibrary(QWidget):
             self.scroll_down.setEnabled(True)
             self.scroll_up.setEnabled(True)
 
-    @property
-    def button_stylesheet(self) -> str:
+    @staticmethod
+    def button_stylesheet() -> str:
         """
         Returns the button stylesheet as string.
         :return: The style sheet.
@@ -166,7 +168,9 @@ class LibraryPanel(QGraphicsView):
         )
         self.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
+        # the items are drawn once, so they are created again on theme change
+        Theme.on_change(self, lambda w: w.reload())
 
         # draw the scene
         self.scene = QGraphicsScene(parent=self)

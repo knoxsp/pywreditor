@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pywr_editor.style import Theme
+
 from .about_dialog_style_sheet import about_dialog_stylesheet
 
 
@@ -23,7 +25,7 @@ class LegalDialog(QDialog):
         self.setWindowTitle("Legal notices")
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
-        self.setStyleSheet(about_dialog_stylesheet())
+        Theme.bind(self, lambda w: about_dialog_stylesheet())
 
         width, height = (600, 450)
         self.setMaximumSize(width, height)

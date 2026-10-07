@@ -1,6 +1,10 @@
-from typing import Literal
+import weakref
+from typing import Callable, Literal
 
+import shiboken6
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QApplication, QWidget
 
 ThemeMode = Literal["light", "dark"]
 
@@ -22,12 +26,32 @@ SHADE_MIRROR = {
 }
 
 
+class ThemeSignals(QObject):
+    changed = Signal()
+    """ Emitted after the theme changed and the registered widgets were refreshed """
+
+
 class Theme:
     """
     Holds the active theme (light or dark) and the colours that do not belong to the
-    Tailwind palette in Color. Set the mode with Theme.set_mode() before any widget is
-    created: stylesheets are generated when widgets are initialised.
+    Tailwind palette in Color.
+
+    The theme can change while the editor is running. Stylesheets are strings built
+    from Color and Theme values, so widgets that use colours must register their
+    stylesheet builder with Theme.bind(), which applies it now and again on every theme
+    change. Colours read while painting need no registration as widgets are repainted
+    on change. Code that renders colours once (pixmaps, icons) can use
+    Theme.on_change().
     """
+
+    signals = ThemeSignals()
+    """ Use signals.changed to listen to theme changes """
+
+    _stylesheets: dict[int, tuple[weakref.ref, Callable[[QWidget], str]]] = {}
+    _registrations: int = 0
+    _callbacks: dict[tuple[int, int], tuple[weakref.ref, Callable[[QWidget], None]]] = (
+        {}
+    )
 
     mode: ThemeMode = "light"
     """ The active theme """
@@ -51,6 +75,93 @@ class Theme:
         :return: None
         """
         cls.mode = "dark" if mode == "dark" else "light"
+
+    @classmethod
+    def apply_mode(cls, mode: ThemeMode | str) -> None:
+        """
+        Changes the theme of the running application: sets the palette, rebuilds the
+        registered stylesheets, runs the registered callbacks and repaints all the
+        widgets.
+        :param mode: "light" or "dark".
+        :return: None
+        """
+        cls.set_mode(mode)
+        app = QApplication.instance()
+        if app is None:
+            return
+        app.setPalette(cls.palette())
+
+        for registry in (cls._stylesheets, cls._callbacks):
+            for key, (widget_ref, function) in list(registry.items()):
+                widget = widget_ref()
+                if widget is None or not shiboken6.isValid(widget):
+                    registry.pop(key, None)
+                    continue
+                if registry is cls._stylesheets:
+                    widget.setStyleSheet(function(widget))
+                else:
+                    function(widget)
+
+        for widget in app.allWidgets():
+            widget.update()
+        cls.signals.changed.emit()
+
+    @classmethod
+    def prune(cls) -> None:
+        """
+        Drops the registrations of the widgets that were deleted.
+        :return: None
+        """
+        for registry in (cls._stylesheets, cls._callbacks):
+            for key, (widget_ref, _) in list(registry.items()):
+                widget = widget_ref()
+                if widget is None or not shiboken6.isValid(widget):
+                    registry.pop(key, None)
+
+    @classmethod
+    def _register(
+        cls, registry: dict, widget: QWidget, function: Callable, key: object
+    ) -> None:
+        """
+        Registers a function for a widget without keeping the widget alive.
+        :param registry: The registry to add the function to.
+        :param widget: The widget.
+        :param function: A function receiving the widget. It must not capture the
+        widget (e.g. use "lambda w: w.stylesheet" instead of "lambda: self.stylesheet")
+        :return: None
+        """
+        registry[key] = (weakref.ref(widget), function)
+        # widgets are not tracked with signals or finalizers because connecting to
+        # destroyed() crashes the interpreter at exit; dead widgets are dropped here
+        cls._registrations += 1
+        if cls._registrations % 200 == 0:
+            cls.prune()
+
+    @classmethod
+    def bind(cls, widget: QWidget, builder: Callable[[QWidget], str]) -> None:
+        """
+        Sets the widget stylesheet and rebuilds it every time the theme changes.
+        A widget has one builder: binding it again replaces the previous one.
+        :param widget: The widget to style.
+        :param builder: A function that receives the widget and returns the
+        stylesheet for the active theme. It must not capture the widget.
+        :return: None
+        """
+        widget.setStyleSheet(builder(widget))
+        cls._register(cls._stylesheets, widget, builder, id(widget))
+
+    @classmethod
+    def on_change(cls, widget: QWidget, callback: Callable[[QWidget], None]) -> None:
+        """
+        Runs a callback every time the theme changes, for example to render again
+        a pixmap or an icon. The callback is not run on registration.
+        :param widget: The widget owning the callback. The callback is dropped when
+        the widget is destroyed.
+        :param callback: A function that receives the widget. It must not capture
+        the widget.
+        :return: None
+        """
+        cls._register(cls._callbacks, widget, callback, (id(widget), id(callback)))
 
     @classmethod
     def is_dark(cls) -> bool:

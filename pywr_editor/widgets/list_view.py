@@ -46,7 +46,7 @@ class ListView(QListView):
             self.model.layoutChanged.connect(self.on_layout_changed)
 
         self.setAlternatingRowColors(False)
-        self.setStyleSheet(self.stylesheet())
+        Theme.bind(self, lambda w: w.stylesheet())
         self.verticalScrollBar().setContextMenuPolicy(Qt.NoContextMenu)
         self.setModel(model)
 

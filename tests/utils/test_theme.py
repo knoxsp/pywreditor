@@ -1,4 +1,5 @@
 import pytest
+import shiboken6
 
 from pywr_editor.style import Color, Theme
 from pywr_editor.style.theme import SHADE_MIRROR
@@ -10,9 +11,9 @@ def reset_theme():
     """
     Restores the light theme after each test.
     """
-    Theme.set_mode("light")
+    Theme.apply_mode("light")
     yield
-    Theme.set_mode("light")
+    Theme.apply_mode("light")
 
 
 class TestTheme:
@@ -63,3 +64,80 @@ class TestTheme:
             assert settings.theme == "light"
         finally:
             settings.save_theme(previous)
+
+
+class TestLiveTheme:
+    def test_bound_stylesheet_is_rebuilt(self, qtbot):
+        from PySide6.QtWidgets import QWidget
+
+        widget = QWidget()
+        qtbot.addWidget(widget)
+        Theme.bind(widget, lambda w: f"background: {Color('gray', 100).hex};")
+        assert Color.colors["gray"][100] in widget.styleSheet()
+
+        Theme.apply_mode("dark")
+        assert Color.colors["gray"][800] in widget.styleSheet()
+        Theme.apply_mode("light")
+        assert Color.colors["gray"][100] in widget.styleSheet()
+
+    def test_on_change_callback_and_signal(self, qtbot):
+        from PySide6.QtWidgets import QWidget
+
+        widget = QWidget()
+        qtbot.addWidget(widget)
+        calls = []
+        Theme.on_change(widget, lambda w: calls.append(Theme.mode))
+
+        with qtbot.waitSignal(Theme.signals.changed):
+            Theme.apply_mode("dark")
+        assert calls == ["dark"]
+
+    def test_destroyed_widget_is_dropped(self, qtbot):
+        from PySide6.QtWidgets import QWidget
+
+        widget = QWidget()
+        key = id(widget)
+        Theme.bind(widget, lambda w: "")
+        assert key in Theme._stylesheets
+        widget.deleteLater()
+        qtbot.waitUntil(lambda: not shiboken6.isValid(widget))
+        Theme.prune()
+        assert key not in Theme._stylesheets
+
+    def test_icon_is_recoloured_in_dark_theme(self, qtbot, monkeypatch):
+        from pywr_editor.style import icons
+
+        # the caret icon is filled with #6b7280
+        monkeypatch.setitem(icons.DARK_SVG_COLORS, "*", {"#6b7280": "#ff0000"})
+
+        def dominant_color(icon) -> str:
+            image = icon.pixmap(16, 16).toImage()
+            return image.pixelColor(8, 8).name()
+
+        light = dominant_color(icons.themed_icon(":form/caret-down"))
+        Theme.apply_mode("dark")
+        dark = dominant_color(icons.themed_icon(":form/caret-down"))
+        assert light != dark
+        assert dark == "#ff0000"
+
+    def test_dark_icon_file_is_used(self, monkeypatch):
+        from pywr_editor.style import icons
+
+        monkeypatch.setitem(icons.DARK_ICONS, ":toolbar/open", ":toolbar/save")
+        light = icons.themed_icon(":toolbar/open").pixmap(16, 16).toImage()
+        Theme.apply_mode("dark")
+        dark = icons.themed_icon(":toolbar/open").pixmap(16, 16).toImage()
+        expected = icons.themed_icon(":toolbar/save").pixmap(16, 16).toImage()
+        assert dark == expected
+        assert light != dark
+
+    def test_many_callbacks_per_widget(self, qtbot):
+        from PySide6.QtWidgets import QWidget
+
+        widget = QWidget()
+        qtbot.addWidget(widget)
+        calls = []
+        Theme.on_change(widget, lambda w: calls.append("a"))
+        Theme.on_change(widget, lambda w: calls.append("b"))
+        Theme.apply_mode("dark")
+        assert calls == ["a", "b"]

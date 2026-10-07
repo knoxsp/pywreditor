@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QGraphicsItem, QGraphicsTextItem
 
 from pywr_editor.form import ColorPickerWidget, FieldConfig, IntegerWidget, Validation
 from pywr_editor.model import TextShape
+from pywr_editor.style import Color
 from pywr_editor.widgets import ContextualMenu
 
 from .abstract_schematic_shape import AbstractSchematicShape
@@ -38,7 +39,7 @@ class SchematicText(AbstractSchematicShape, QGraphicsTextItem):
         font.setPointSize(shape.font_size)
         self.setFont(font)
         self.adjustSize()
-        self.setDefaultTextColor(shape.color)
+        self.apply_theme()
 
         # allow interaction
         self.setFlag(
@@ -145,6 +146,19 @@ class SchematicText(AbstractSchematicShape, QGraphicsTextItem):
         color_widget: ColorPickerWidget = dialog.form.find_field("color").widget
         color_widget.changed_color.connect(dialog.form.on_field_changed)
         dialog.show()
+
+    def apply_theme(self) -> None:
+        """
+        Sets the text colour. The default colour follows the active theme, while a
+        colour set by the user is always applied as stored.
+        :return: None
+        """
+        if "color" in self.shape_obj.shape_dict:
+            color = self.shape_obj.color
+        else:
+            color = Color("gray", 800).qcolor
+        self.setDefaultTextColor(color)
+        self.update()
 
     def check_form_text(self, name: str, label: str, value: str) -> Validation:
         """

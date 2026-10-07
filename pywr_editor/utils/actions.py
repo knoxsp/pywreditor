@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Union
 
-from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence
+
+from pywr_editor.style import themed_icon
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -37,6 +39,8 @@ class Actions:
     def __init__(self, window: "MainWindow"):
         self.window = window
         self.registry: dict[str, QAction] = {}
+        self.icons: dict[str, str] = {}
+        """ The resource path of each action icon, to refresh them on theme change """
 
     def add(self, action: Action) -> None:
         """
@@ -44,7 +48,8 @@ class Actions:
         :param action: The Action object.
         :return: None.
         """
-        action_obj = QAction(QIcon(action.icon), action.name, self.window)
+        action_obj = QAction(themed_icon(action.icon), action.name, self.window)
+        self.icons[action.key] = action.icon
         # newer PySide6 versions reject None as slot
         if action.connection is not None:
             # noinspection PyUnresolvedReferences
@@ -91,7 +96,8 @@ class Actions:
         action_obj.setText("Undo")
         action_obj.setData("UndoStack")
         action_obj.setShortcut(QKeySequence.StandardKey.Undo)
-        action_obj.setIcon(QIcon(icon))
+        action_obj.setIcon(themed_icon(icon))
+        self.icons["undo"] = icon
         action_obj.setToolTip(
             "Undo the last operation "
             + f"[{action_obj.shortcut().toString(QKeySequence.NativeText)}]"
@@ -109,7 +115,8 @@ class Actions:
         action_obj = self.window.undo_stack.createRedoAction(self.window)
         action_obj.setData("UndoStack")
         action_obj.setShortcut(QKeySequence.StandardKey.Redo)
-        action_obj.setIcon(QIcon(icon))
+        action_obj.setIcon(themed_icon(icon))
+        self.icons["redo"] = icon
         action_obj.setToolTip(
             "Redo the last operation "
             + f"[{action_obj.shortcut().toString(QKeySequence.NativeText)}]"
@@ -128,3 +135,12 @@ class Actions:
             raise KeyError(f'Invalid action with key "{key}"')
 
         return self.registry[key]
+
+    def refresh_icons(self) -> None:
+        """
+        Loads the action icons again for the active theme.
+        :return: None
+        """
+        for key, resource in self.icons.items():
+            if key in self.registry and resource:
+                self.registry[key].setIcon(themed_icon(resource))

@@ -88,9 +88,12 @@ class ColorPickerWidget(FormWidget):
             rgb = f"rgba({color[0]}, {color[1]}, {color[2]}, {color[3]})"
         else:
             rgb = f"rgb({color[0]}, {color[1]}, {color[2]})"
-        self.preview_color_box.setStyleSheet(
-            f"background: {rgb}; border: 1px solid {Theme.color('border')}; "
-            + "border-radius: 5px;"
+        # the box colour is chosen by the user and does not change with the theme
+        self.preview_color_box.rgb = rgb
+        Theme.bind(
+            self.preview_color_box,
+            lambda w: f"background: {w.rgb}; "
+            + f"border: 1px solid {Theme.color('border')}; border-radius: 5px;",
         )
 
     @Slot()

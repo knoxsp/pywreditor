@@ -18,7 +18,7 @@ class ComboBox(QComboBox):
         self.view().window().setWindowFlags(
             Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint
         )
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
         # self.view().window().setAttribute(Qt.WA_TranslucentBackground)
         # prevent mouse wheel from changing value on scroll
         self.setFocusPolicy(Qt.StrongFocus)

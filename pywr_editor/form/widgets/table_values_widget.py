@@ -2,7 +2,6 @@ import traceback
 from itertools import groupby
 
 import PySide6
-import qtawesome as qta
 from PySide6.QtCore import QCoreApplication, Qt, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
@@ -116,15 +115,13 @@ class TableValuesWidget(FormWidget):
 
         # Buttons
         self.button_layout = QHBoxLayout()
-        self.add_button = PushIconButton(
-            icon=qta.icon("msc.add"), label="Add", small=True
-        )
+        self.add_button = PushIconButton(icon="msc.add", label="Add", small=True)
         self.add_button.setToolTip("Add a new row to the table")
         # noinspection PyUnresolvedReferences
         self.add_button.clicked.connect(self.on_add_new_row)
 
         self.delete_button = PushIconButton(
-            icon=qta.icon("msc.remove"), label="Delete", small=True
+            icon="msc.remove", label="Delete", small=True
         )
         self.delete_button.setToolTip("Delete the selected row in the table")
         self.delete_button.setDisabled(True)
@@ -132,7 +129,7 @@ class TableValuesWidget(FormWidget):
         self.delete_button.clicked.connect(self.on_delete_row)
 
         self.move_up = PushIconButton(
-            icon=qta.icon("msc.chevron-up"), label="Move up", small=True
+            icon="msc.chevron-up", label="Move up", small=True
         )
         self.move_up.setDisabled(True)
         self.move_up.setToolTip("Move the selected row up in the table")
@@ -140,7 +137,7 @@ class TableValuesWidget(FormWidget):
         self.move_up.clicked.connect(self.on_move_up)
 
         self.move_down = PushIconButton(
-            icon=qta.icon("msc.chevron-down"), label="Move down", small=True
+            icon="msc.chevron-down", label="Move down", small=True
         )
         self.move_down.setDisabled(True)
         self.move_down.setToolTip("Move the selected row down in the table")
@@ -154,7 +151,7 @@ class TableValuesWidget(FormWidget):
         self.button_layout.addStretch()
 
         self.paste_button = PushIconButton(
-            icon=qta.icon("msc.reply"), label="Paste from Excel", small=True
+            icon="msc.reply", label="Paste from Excel", small=True
         )
         self.paste_button.setToolTip(
             "Paste data copied from a column from an Excel spreadsheet"
@@ -163,7 +160,7 @@ class TableValuesWidget(FormWidget):
         self.paste_button.clicked.connect(self.paste_from_excel)
 
         self.export_button = PushIconButton(
-            icon=qta.icon("msc.export"),
+            icon="msc.export",
             label="Export to Excel",
             small=True,
         )

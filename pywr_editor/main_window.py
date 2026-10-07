@@ -66,7 +66,7 @@ class MainWindow(QMainWindow):
         self.logger = Logging().logger(self.__class__.__name__)
         self.warning_info_message.connect(self.on_alert_info_message)
         self.error_message.connect(self.on_error_message)
-        self.setStyleSheet(AppStylesheet().get())
+        Theme.bind(self, lambda w: AppStylesheet().get())
 
         # check the model file
         if model_file is not None and not os.path.exists(model_file):
@@ -127,12 +127,14 @@ class MainWindow(QMainWindow):
         self.resize(1000, 900)
         self.setAutoFillBackground(True)
         self.setPalette(QColor(Theme.color("window")))
+        Theme.on_change(self, lambda w: w.setPalette(QColor(Theme.color("window"))))
         self.setDockNestingEnabled(False)
         self.setCentralWidget(self.splitter)
 
         # Actions
         self.undo_stack = QUndoStack(self)
         self.app_actions = Actions(window=self)
+        Theme.on_change(self, lambda w: w.app_actions.refresh_icons())
         self.register_model_actions()
         self.register_nodes_actions()
         self.register_schematic_actions()
@@ -928,19 +930,13 @@ class MainWindow(QMainWindow):
     @Slot(bool)
     def toggle_dark_mode(self, checked: bool) -> None:
         """
-        Saves the theme. The stylesheets are built when the widgets are created, so
-        the new theme is applied the next time the editor is started.
+        Switches between the light and dark theme and saves the choice.
         :param checked: Whether the dark mode is enabled.
         :return: None
         """
-        self.editor_settings.save_theme("dark" if checked else "light")
-        QMessageBox().information(
-            self,
-            "Theme changed",
-            "The "
-            + ("dark" if checked else "light")
-            + " theme will be applied the next time the editor is started.",
-        )
+        theme = "dark" if checked else "light"
+        self.editor_settings.save_theme(theme)
+        Theme.apply_mode(theme)
 
     @Slot(str, str, str)
     def on_alert_info_message(

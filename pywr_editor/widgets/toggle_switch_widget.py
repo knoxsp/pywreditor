@@ -16,7 +16,7 @@ class ToggleSwitchWidget(QCheckBox):
         :param parent: The parent. Default to None.
         """
         super().__init__(parent)
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
 
         # Set label at init and when state changes
         self._set_label(

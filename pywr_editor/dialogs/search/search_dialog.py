@@ -17,7 +17,7 @@ from pywr_editor.dialogs import (
     TablesDialog,
 )
 from pywr_editor.model import ModelConfig
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 from .search_model import ItemType, SearchModel
 
@@ -87,8 +87,9 @@ class SearchDialog(QDialog):
 
         # add container with background
         frame = QFrame()
-        frame.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            frame,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "QFrame": {
                         "background": Color("gray", 100).hex,
@@ -96,7 +97,7 @@ class SearchDialog(QDialog):
                         "border-radius": "5px",
                     }
                 }
-            )
+            ),
         )
         frame.setLayout(layout)
 

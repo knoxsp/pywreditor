@@ -11,7 +11,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QPushButton, QTableView, QWidget
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 from .list_view import ListView
 
@@ -55,7 +55,7 @@ class TableView(QTableView):
         self.verticalHeader().setDefaultSectionSize(26)
         self.verticalHeader().hide()
         self.setAlternatingRowColors(False)
-        self.setStyleSheet(self.stylesheet())
+        Theme.bind(self, lambda w: w.stylesheet())
         self.verticalScrollBar().setContextMenuPolicy(
             Qt.ContextMenuPolicy.NoContextMenu
         )

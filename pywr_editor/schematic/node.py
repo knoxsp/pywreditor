@@ -496,12 +496,7 @@ class SchematicLabel(QGraphicsTextItem):
         self.node_bottom_edge = self.symbol.boundingRect().height()
 
         self.setFont(self.font)
-        background = Color("gray", 50)
-        background = f"rgba{str(background.rgba(.4))}"
-        self.setHtml(
-            f"<div style='color: {self.color.hex};background-color: {background}; "
-            + f"border-radius:4px'>{name}</div>"
-        )
+        self.render_html()
 
         self.setAcceptHoverEvents(False)
         self.setCacheMode(QGraphicsItem.DeviceCoordinateCache)
@@ -512,6 +507,28 @@ class SchematicLabel(QGraphicsTextItem):
 
         if self.hide_label:
             self.hide()
+
+    def render_html(self) -> None:
+        """
+        Sets the label HTML using the colours of the active theme.
+        :return: None
+        """
+        # the colour is resolved again to follow the theme
+        color = Color(self.color.name, self.color.shade, self.color.themed)
+        background = Color("gray", 50)
+        background = f"rgba{str(background.rgba(.4))}"
+        self.setHtml(
+            f"<div style='color: {color.hex};background-color: {background}; "
+            + f"border-radius:4px'>{self.label}</div>"
+        )
+
+    def apply_theme(self) -> None:
+        """
+        Renders the label again after the theme changed.
+        :return: None
+        """
+        self.render_html()
+        self.update()
 
     @property
     def font(self) -> PySide6.QtGui.QFont:
