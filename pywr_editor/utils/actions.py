@@ -45,8 +45,10 @@ class Actions:
         :return: None.
         """
         action_obj = QAction(QIcon(action.icon), action.name, self.window)
-        # noinspection PyUnresolvedReferences
-        action_obj.triggered.connect(action.connection)
+        # newer PySide6 versions reject None as slot
+        if action.connection is not None:
+            # noinspection PyUnresolvedReferences
+            action_obj.triggered.connect(action.connection)
         action_obj.setIconVisibleInMenu(action.show_icon)
         action_obj.setDisabled(action.is_disabled)
 

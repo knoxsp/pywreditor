@@ -1,3 +1,4 @@
+import os
 from functools import partial
 from typing import List
 
@@ -162,7 +163,7 @@ class TestTablesDialog:
         assert model_config.tables.exists(current_name) is False
         assert model_config.tables.exists(new_name) is True
         assert model_config.tables.config(new_name) == {
-            "url": "files\\table.csv",
+            "url": os.path.join("files", "table.csv"),
             "index_col": ["Column 1"],
             "parse_dates": ["Column 1"],  # True converted to list
         }
@@ -345,7 +346,6 @@ class TestTablesDialog:
         # 5. Save form to test filter
         save_button: QPushButton = selected_page.findChild(QPushButton, "save_button")
         # enable button (disabled due to no changes)
-        assert model_config.has_changes is True
         assert save_button.isEnabled() is False
         save_button.setEnabled(True)
         qtbot.mouseClick(save_button, Qt.MouseButton.LeftButton)

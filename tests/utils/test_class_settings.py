@@ -81,7 +81,7 @@ class TestSettings:
         assert config.get_recent_files() == []
 
         # store first three test files
-        all_test_models = list(model_path().glob("*.json"))
+        all_test_models = sorted(model_path().glob("*.json"))
         files_to_check = []
         for mi in range(1, 4):
             model_file = str(all_test_models[mi])
