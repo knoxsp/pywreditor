@@ -88,3 +88,28 @@ class TestSchematicTheme:
         Theme.apply_mode("dark")
         assert node.node.fill.hex != light_fill
         assert node.label.toHtml() != label
+
+    def test_export_is_always_light(self, init_window, tmp_path, monkeypatch):
+        window, schematic = init_window
+        window.show()
+        Theme.apply_mode("dark")
+        file = tmp_path / "export.png"
+        monkeypatch.setattr(
+            "pywr_editor.schematic.schematic.QFileDialog.getSaveFileName",
+            lambda *args, **kwargs: (str(file), ""),
+        )
+
+        schematic.export_current_view()
+
+        # the theme is restored after the export
+        assert Theme.is_dark()
+        image = QImage(str(file))
+        assert not image.isNull()
+        # the canvas is white and not the dark base colour
+        colours = {
+            image.pixelColor(x, y).name()
+            for x in range(0, image.width(), 20)
+            for y in range(0, image.height(), 20)
+        }
+        assert "#ffffff" in colours
+        assert Theme.tokens["base"][1].lower() not in colours

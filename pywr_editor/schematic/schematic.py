@@ -712,7 +712,9 @@ class Schematic(QGraphicsView):
 
         if len(file_name) > 0:
             self.scene.clearSelection()
-            pixmap = self.grab()
+            # images are always exported in the light theme
+            with Theme.temporary_mode("light"):
+                pixmap = self.grab()
             pixmap.save(file_name)
             self.app.statusBar().showMessage(f"Exported current view as {file_name}")
         else:

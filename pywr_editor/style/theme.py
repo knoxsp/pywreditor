@@ -1,5 +1,6 @@
 import weakref
-from typing import Callable, Literal
+from contextlib import contextmanager
+from typing import Callable, Iterator, Literal
 
 import shiboken6
 from PySide6.QtCore import QObject, Signal
@@ -162,6 +163,28 @@ class Theme:
         :return: None
         """
         cls._register(cls._callbacks, widget, callback, (id(widget), id(callback)))
+
+    @classmethod
+    @contextmanager
+    def temporary_mode(cls, mode: ThemeMode) -> Iterator[None]:
+        """
+        Switches to a theme for the duration of the with block and restores the
+        previous one afterwards, even on errors. Nothing happens if the theme is
+        already active. The switch is synchronous, so the application is not painted
+        with the temporary theme unless the event loop runs inside the block.
+        :param mode: The theme to use inside the block.
+        :return: None
+        """
+        previous = cls.mode
+        if previous == mode:
+            yield
+            return
+
+        cls.apply_mode(mode)
+        try:
+            yield
+        finally:
+            cls.apply_mode(previous)
 
     @classmethod
     def is_dark(cls) -> bool:
