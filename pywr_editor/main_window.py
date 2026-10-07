@@ -698,18 +698,15 @@ class MainWindow(QMainWindow):
                 )
 
             # add tasks
-            system_icons = Path(os.environ["SystemRoot"]) / "System32" / "shell32.dll"
             jump_list.add_task(
                 title="Create new model",
                 app_argument=["--create_new"],
-                icon=system_icons,
-                icon_index=0,
+                icon="new",
             )
             jump_list.add_task(
                 title="Open model file",
                 app_argument=["--browse"],
-                icon=system_icons,
-                icon_index=3,
+                icon="open",
             )
             jump_list.update()
         except Exception:
