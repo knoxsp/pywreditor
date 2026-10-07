@@ -3,6 +3,7 @@ from .exception_handler import ExceptionHandler
 
 from .actions import Actions, Action
 from .dataframe_utils import *
+from .excel import export_to_excel
 from .helpers import *
 from .widget_tooltip import ModelComponentTooltip
 from .jump_list import JumpList

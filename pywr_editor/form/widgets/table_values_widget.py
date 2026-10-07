@@ -3,7 +3,6 @@ from itertools import groupby
 
 import PySide6
 import qtawesome as qta
-from PySide6.QtAxContainer import QAxObject
 from PySide6.QtCore import QCoreApplication, Qt, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
@@ -16,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from pywr_editor.form import FormWidget, TableValuesModel, Validation
-from pywr_editor.utils import Logging, get_signal_sender, is_windows, move_row
+from pywr_editor.utils import Logging, export_to_excel, get_signal_sender, move_row
 from pywr_editor.widgets import DoubleSpinBox, PushIconButton, TableView
 
 """
@@ -154,29 +153,28 @@ class TableValuesWidget(FormWidget):
         self.button_layout.addWidget(self.move_down)
         self.button_layout.addStretch()
 
-        if is_windows():
-            self.paste_button = PushIconButton(
-                icon=qta.icon("msc.reply"), label="Paste from Excel", small=True
-            )
-            self.paste_button.setToolTip(
-                "Paste data copied from a column from an Excel spreadsheet"
-            )
-            # noinspection PyUnresolvedReferences
-            self.paste_button.clicked.connect(self.paste_from_excel)
+        self.paste_button = PushIconButton(
+            icon=qta.icon("msc.reply"), label="Paste from Excel", small=True
+        )
+        self.paste_button.setToolTip(
+            "Paste data copied from a column from an Excel spreadsheet"
+        )
+        # noinspection PyUnresolvedReferences
+        self.paste_button.clicked.connect(self.paste_from_excel)
 
-            self.export_button = PushIconButton(
-                icon=qta.icon("msc.export"),
-                label="Export to Excel",
-                small=True,
-            )
-            self.export_button.setToolTip(
-                "Create an Excel spreadsheet containing the data from the table above"
-            )
-            # noinspection PyUnresolvedReferences
-            self.export_button.clicked.connect(self.export_to_excel)
+        self.export_button = PushIconButton(
+            icon=qta.icon("msc.export"),
+            label="Export to Excel",
+            small=True,
+        )
+        self.export_button.setToolTip(
+            "Create an Excel spreadsheet containing the data from the table above"
+        )
+        # noinspection PyUnresolvedReferences
+        self.export_button.clicked.connect(self.export_to_excel)
 
-            self.button_layout.addWidget(self.paste_button)
-            self.button_layout.addWidget(self.export_button)
+        self.button_layout.addWidget(self.paste_button)
+        self.button_layout.addWidget(self.export_button)
 
         # Table
         self.table = TableView(
@@ -572,20 +570,9 @@ class TableValuesWidget(FormWidget):
         self.table.setFocus()
         QCoreApplication.processEvents()
 
-        # add the workbook
         # noinspection PyBroadException
         try:
-            excel = QAxObject("Excel.Application", self)
-            work_books = excel.querySubObject("WorkBooks")
-            work_books.dynamicCall("Add")
-            work_book = excel.querySubObject("ActiveWorkBook")
-
-            # rename the sheet
-            work_sheets = work_book.querySubObject("Sheets")
-            first_sheet = work_sheets.querySubObject("Item(int)", 1)
             param_name = self.form.find_field("name").value()
-            if param_name is not None and param_name != "":
-                first_sheet.setProperty("Name", param_name)
 
             # ignore column with row number
             if self.show_row_numbers:
@@ -595,28 +582,19 @@ class TableValuesWidget(FormWidget):
                 col_indexes = range(0, self.model.columnCount())
                 header_col_indexes = col_indexes
 
-            # header
-            for col_idx in header_col_indexes:
-                cell = first_sheet.querySubObject("Cells(int, int)", 1, col_idx + 1)
-                cell.setProperty("Value", self.model.labels[col_idx].capitalize())
-
-            # values
-            for row in range(0, self.model.rowCount()):
-                for col in col_indexes:
-                    index = self.model.index(row, col)
-                    # ignore row number
-                    if self.show_row_numbers:
-                        col -= 1
-                    cell = first_sheet.querySubObject(
-                        "Cells(int, int)", row + 2, col + 1
-                    )
-                    cell.setProperty(
-                        "Value",
-                        self.model.data(index, Qt.ItemDataRole.DisplayRole),
-                    )
-
-            # show Excel
-            excel.dynamicCall("SetVisible(bool)", True)
+            export_to_excel(
+                header=[self.model.labels[i].capitalize() for i in header_col_indexes],
+                rows=[
+                    [
+                        self.model.data(
+                            self.model.index(row, col), Qt.ItemDataRole.DisplayRole
+                        )
+                        for col in col_indexes
+                    ]
+                    for row in range(0, self.model.rowCount())
+                ],
+                sheet_name=param_name,
+            )
         except Exception:
             self.logger.debug(
                 "An error occurred while exporting data to Excel: "
