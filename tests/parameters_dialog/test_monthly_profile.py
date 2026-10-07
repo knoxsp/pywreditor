@@ -3,7 +3,6 @@ from functools import partial
 import numpy as np
 import pandas as pd
 import pytest
-import win32com.client
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtWidgets import QPushButton
 
@@ -128,6 +127,8 @@ class TestDialogParameterMonthlyValuesWidget:
         # copy spreadsheet data using VBA
         excel_file = str(model_path() / "files" / "monthly_profile_vba.xlsm")
         vba_module = "monthly_profile_vba.xlsm!MainModule"
+        import win32com.client  # Windows only
+
         xl = win32com.client.Dispatch("Excel.Application")
         xl.Workbooks.Open(
             excel_file,
