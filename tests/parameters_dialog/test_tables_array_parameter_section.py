@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -331,7 +332,9 @@ class TestDialogParameterTablesArrayParameterSection:
                 assert where_widget.combo_box.currentText() == "None"
             else:
                 # file
-                assert file_widget.get_value() == "..\\file_outside_path.h5"
+                assert file_widget.get_value() == os.path.join(
+                    "..", "file_outside_path.h5"
+                )
                 # where
                 assert where_field.message.text() == ""
                 assert where_widget.combo_box.isEnabled() is True

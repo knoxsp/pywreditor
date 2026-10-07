@@ -1,13 +1,31 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal, Union
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QLayout, QWidget
 
 from pywr_editor.utils import Logging
 
 if TYPE_CHECKING:
     from pywr_editor.widgets import ListView, TableView
+
+
+def open_external(target: str | Path) -> None:
+    """
+    Opens a file or a URL with the default application of the operating system.
+    :param target: The path to a local file or a URL (e.g. https://...).
+    :return: None
+    :raises OSError: When the target cannot be opened.
+    """
+    target = str(target)
+    url = QUrl(target)
+    # local paths (including Windows drive letters) do not have a real URL scheme
+    if not url.scheme() or len(url.scheme()) == 1:
+        url = QUrl.fromLocalFile(target)
+
+    if not QDesktopServices.openUrl(url):
+        raise OSError(f"Cannot open {target}")
 
 
 def clear_layout(layout: QLayout) -> None:

@@ -2,13 +2,53 @@ import logging
 import sys
 from argparse import ArgumentParser, BooleanOptionalAction
 
-from PySide6.QtGui import QIcon, Qt
+from PySide6.QtGui import QColor, QIcon, QPalette, Qt
 from PySide6.QtWidgets import QApplication
 
 from pywr_editor.dialogs import StartScreen
 from pywr_editor.utils import ExceptionHandler, Logging, browse_files
 
 from .main_window import MainWindow
+
+
+def light_palette() -> QPalette:
+    """
+    Returns a light palette independent of the desktop theme. The application
+    stylesheets hardcode light backgrounds, so a dark system palette (e.g. from a
+    dark GTK theme on Linux) would render light text on light widgets.
+    :return: The palette.
+    """
+    role = QPalette.ColorRole
+    colors = {
+        role.Window: "#f0f0f0",
+        role.WindowText: "#000000",
+        role.Base: "#ffffff",
+        role.AlternateBase: "#f5f5f5",
+        role.ToolTipBase: "#ffffdc",
+        role.ToolTipText: "#000000",
+        role.PlaceholderText: "#808080",
+        role.Text: "#000000",
+        role.Button: "#f0f0f0",
+        role.ButtonText: "#000000",
+        role.BrightText: "#ffffff",
+        role.Light: "#ffffff",
+        role.Midlight: "#e3e3e3",
+        role.Mid: "#a0a0a0",
+        role.Dark: "#a0a0a0",
+        role.Shadow: "#696969",
+        role.Highlight: "#0078d7",
+        role.HighlightedText: "#ffffff",
+        role.Link: "#0000ff",
+        role.LinkVisited: "#ff00ff",
+    }
+    palette = QPalette()
+    for color_role, color in colors.items():
+        palette.setColor(color_role, QColor(color))
+
+    disabled = QPalette.ColorGroup.Disabled
+    for color_role in (role.WindowText, role.Text, role.ButtonText):
+        palette.setColor(disabled, color_role, QColor("#a0a0a0"))
+    return palette
 
 
 # noinspection PyTypeChecker
@@ -45,6 +85,9 @@ def app() -> None:
     ExceptionHandler()
     editor = QApplication(sys.argv)
     editor.setWindowIcon(QIcon(":logos/small"))
+    # the stylesheets assume a light theme; do not inherit a dark desktop palette
+    editor.setStyle("Fusion")
+    editor.setPalette(light_palette())
 
     # handle the logger
     Logging().configure(file_logging=options.log)

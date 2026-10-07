@@ -11,7 +11,7 @@ from win32com.propsys import propsys, pscon
 # noinspection PyUnresolvedReferences
 from win32com.shell import shell
 
-from pywr_editor.utils import Logging
+from pywr_editor.utils.log import Logging
 
 """
  Add items to the Windows jump list. Items can be:
@@ -26,6 +26,10 @@ from pywr_editor.utils import Logging
 
  WIN32 API: http://timgolden.me.uk/pywin32-docs/PyICustomDestinationList.html
 """
+
+
+# semantic task icons mapped to their index in shell32.dll
+SHELL32_ICON_INDEXES = {"new": 0, "open": 3}
 
 
 @dataclass
@@ -152,30 +156,31 @@ class JumpList:
         self,
         title: str,
         app_argument: list[str] | None = None,
-        icon: Path | None = None,
-        icon_index: int = 0,
+        icon: str | None = None,
     ) -> None:
         """
         Opens the application to run a task.
         :param title: The task title.
         :param app_argument: The application argument needed to run the task.
         Default to None.
-        :param icon: The link icon file. Default ot None.
-        :param icon_index: The link icon index. Default to 0.
+        :param icon: The link icon name ("new" or "open"). Default to None.
         :return: None
         """
         if not app_argument:
             app_argument = []
 
         self.logger.debug(f"Adding task '{title}'")
+        icon_file = None
+        if icon in SHELL32_ICON_INDEXES:
+            icon_file = Path(os.environ["SystemRoot"]) / "System32" / "shell32.dll"
         self.tasks.add(
             JumpListItemLink(
                 title=title,
                 command=self.app_path,
                 command_args=self.app_args + app_argument,
                 working_directory=os.getcwd(),
-                icon=icon,
-                icon_index=icon_index,
+                icon=icon_file,
+                icon_index=SHELL32_ICON_INDEXES.get(icon, 0),
             )
         )
 
