@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 from pywr_editor.widgets import PushIconButton
 
 from .about_dialog_style_sheet import about_dialog_stylesheet
@@ -35,7 +35,7 @@ class AboutDialog(QDialog):
         self.setWindowTitle("About Pywr editor")
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
-        self.setStyleSheet(about_dialog_stylesheet())
+        Theme.bind(self, lambda w: about_dialog_stylesheet())
 
         width, height = (470, 220)
         self.setMaximumSize(width, height)
@@ -68,13 +68,15 @@ class AboutDialog(QDialog):
         content.setWordWrap(True)
 
         # Legal notices
-        button_style = (
-            f"background: none; border: 0; padding: 0; margin-right: 10px; "
-            + f"color: {Color('blue', 600).hex}; text-decoration: underline;"
-            + "text-align: left;"
-        )
+        def button_style() -> str:
+            return (
+                f"background: none; border: 0; padding: 0; margin-right: 10px; "
+                + f"color: {Color('blue', 600).hex}; text-decoration: underline;"
+                + "text-align: left;"
+            )
+
         legal_dialog_link = QPushButton("Legal notices")
-        legal_dialog_link.setStyleSheet(button_style)
+        Theme.bind(legal_dialog_link, lambda w: button_style())
         # noinspection PyUnresolvedReferences
         legal_dialog_link.clicked.connect(self.show_legal_dialog)
 

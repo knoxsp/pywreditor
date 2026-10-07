@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from pywr_editor.form.widgets.text_widget import TextWidget
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 from pywr_editor.utils import Logging
 
 from .form_widget import FormWidget
@@ -65,7 +65,8 @@ class FormField(QWidget):
         self.message = QLabel()
         self.message.setWordWrap(True)
         self.message.base_style = "font-size:12px;"
-        self.message.setStyleSheet(self.message.base_style)
+        self.message.message_color = None
+        Theme.bind(self.message, self.get_message_style)
         self.message.hide()
 
         # field
@@ -88,8 +89,9 @@ class FormField(QWidget):
         if help_text is not None:
             self.help_text = QLabel(help_text)
             self.help_text.setWordWrap(True)
-            self.help_text.setStyleSheet(
-                f"font-size:12px;color: {Color('gray', 500).hex}"
+            Theme.bind(
+                self.help_text,
+                lambda w: f"font-size:12px;color: {Color('gray', 500).hex}",
             )
 
         # populate the layout
@@ -99,6 +101,21 @@ class FormField(QWidget):
 
         if self.help_text is not None:
             layout.addWidget(self.help_text)
+
+    @staticmethod
+    def get_message_style(message: QLabel) -> str:
+        """
+        Returns the stylesheet of the message label. The colour depends on the type of
+        message currently displayed.
+        :param message: The message label.
+        :return: The stylesheet.
+        """
+        style = message.base_style
+        if message.message_color is not None:
+            # Color is resolved at creation, so create it again for the active theme
+            color = Color(message.message_color.name, message.message_color.shade)
+            style += f"; color: {color.hex};"
+        return style
 
     def clear_message(self, message_type: str | None = None) -> None:
         """
@@ -132,7 +149,8 @@ class FormField(QWidget):
         self.message.setText(message)
         # noinspection PyTypeChecker
         self.message.setProperty("message_type", message_type)
-        self.message.setStyleSheet(f"{self.message.styleSheet()}; color: {color.hex};")
+        self.message.message_color = color
+        Theme.bind(self.message, self.get_message_style)
         # if a message is set before the field is assigned to a parent,
         # do not show the message otherwise a floating window will apper
         # temporarily

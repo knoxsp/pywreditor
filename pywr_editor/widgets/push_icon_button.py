@@ -5,7 +5,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon, Qt
 from PySide6.QtWidgets import QPushButton, QSizePolicy
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 
 class PushIconButton(QPushButton):
@@ -30,20 +30,11 @@ class PushIconButton(QPushButton):
         """
         super().__init__(parent=parent)
 
+        self.accent = accent
+        self.small = small
+        self.icon_path = icon if isinstance(icon, str) else None
         if isinstance(icon, str):
-            if "msc." in icon:
-                props = (
-                    dict(
-                        color="white",
-                        color_active="white",
-                        color_disabled=Color("gray", 300).hex,
-                    )
-                    if accent
-                    else {}
-                )
-                icon = qta.icon(icon, **props)
-            else:
-                icon = QIcon(icon)
+            icon = self.get_icon(icon, accent)
 
         self.setText(label)
         self.setIcon(icon)
@@ -56,8 +47,41 @@ class PushIconButton(QPushButton):
         if position == "right":
             self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
-        stylesheet = {"padding": "3px 4px" if small else "5px 5px"}
-        if accent:
+        Theme.bind(self, lambda w: w.stylesheet)
+        if self.icon_path is not None and "msc." in self.icon_path:
+            Theme.on_change(
+                self, lambda w: w.setIcon(w.get_icon(w.icon_path, w.accent))
+            )
+
+    @staticmethod
+    def get_icon(icon: str, accent: bool) -> QIcon:
+        """
+        Loads the icon from a path or a qtawesome name.
+        :param icon: The icon path or name.
+        :param accent: Whether the button is an accent button.
+        :return: The icon.
+        """
+        if "msc." in icon:
+            props = (
+                dict(
+                    color="white",
+                    color_active="white",
+                    color_disabled=Color("gray", 300).hex,
+                )
+                if accent
+                else {}
+            )
+            return qta.icon(icon, **props)
+        return QIcon(icon)
+
+    @property
+    def stylesheet(self) -> str:
+        """
+        Returns the stylesheet.
+        :return: The stylesheet as string.
+        """
+        stylesheet = {"padding": "3px 4px" if self.small else "5px 5px"}
+        if self.accent:
             stylesheet["color"] = "white"
             stylesheet["background"] = Color("blue", 500).hex
             stylesheet["border-color"] = Color("blue", 600).hex
@@ -70,4 +94,4 @@ class PushIconButton(QPushButton):
                 "border": f"1px solid {Color('gray', 300).hex}",
                 "color": Color("gray", 300).hex,
             }
-        self.setStyleSheet(stylesheet_dict_to_str({"PushIconButton": stylesheet}))
+        return stylesheet_dict_to_str({"PushIconButton": stylesheet})

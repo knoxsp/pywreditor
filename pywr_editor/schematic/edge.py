@@ -34,12 +34,15 @@ class Edge(QGraphicsItem):
         self.arrow_size: int = 7
         self.hide_arrow = hide_arrow
 
-        # edge color if available
-        self.edge_color = Color("gray", 400).qcolor
+        # edge color chosen by the user, if available and valid
+        self.custom_edge_color: QColor | None = None
         if edge_color_name is not None:
             # noinspection PyBroadException
             try:
-                self.edge_color = Color(edge_color_name, 500).qcolor
+                # user colours are not mirrored in the dark theme
+                self.custom_edge_color = Color(
+                    edge_color_name, 500, themed=False
+                ).qcolor
             except Exception:
                 pass
 
@@ -51,6 +54,17 @@ class Edge(QGraphicsItem):
         self.source.draw_edge(self)
         self.target.draw_edge(self)
         self.adjust()
+
+    @property
+    def edge_color(self) -> QColor:
+        """
+        Returns the edge color. The default color follows the active theme, while
+        the color set by the user is always returned as defined.
+        :return: The color.
+        """
+        if self.custom_edge_color is not None:
+            return self.custom_edge_color
+        return Color("gray", 400).qcolor
 
     def toggle_arrow(self) -> None:
         """

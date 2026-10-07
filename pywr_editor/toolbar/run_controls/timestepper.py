@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Literal
 from PySide6.QtCore import QDate, Qt, Slot
 from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QWidget
 
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 from pywr_editor.widgets import DateEdit, SpinBox
 
 if TYPE_CHECKING:
@@ -47,10 +47,11 @@ class TimeStepperWidget(QWidget):
         time_step.setRange(1, 365)
         time_step.setSuffix(" days")
         time_step.setObjectName("time_step")
-        time_step.setStyleSheet(
-            "#time_step { padding: 2px; border: 1px solid "
+        Theme.bind(
+            time_step,
+            lambda w: "#time_step { padding: 2px; border: 1px solid "
             + Color("gray", 400).hex
-            + "}"
+            + "}",
         )
         # noinspection PyUnresolvedReferences
         time_step.valueChanged.connect(self.time_step_changed)
@@ -76,7 +77,10 @@ class TimeStepperWidget(QWidget):
         separator.setFixedHeight(60)
         separator.setFixedWidth(1)
         separator.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        separator.setStyleSheet(f"background-color: {Color('gray', 300).hex}")
+        Theme.bind(
+            separator,
+            lambda w: f"background-color: {Color('gray', 300).hex}",
+        )
         main_layout.addWidget(separator, 0, 2, 0, 1, Qt.AlignmentFlag.AlignHCenter)
         main_layout.setColumnMinimumWidth(2, 15)
 

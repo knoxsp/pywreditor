@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QSplitter
 
 from pywr_editor.dialogs.base.component_list import ComponentList
 from pywr_editor.dialogs.base.component_pages import ComponentPages
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -48,15 +48,16 @@ class ComponentDialogSplitter(QSplitter):
 
         # style
         self.setOpaqueResize(True)
-        self.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            self,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "ComponentDialogSplitter::handle": {
                         "width": "13px",
                         "background": Color("gray", 200).hex,
                     }
                 }
-            )
+            ),
         )
 
     def eventFilter(

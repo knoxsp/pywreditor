@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
 )
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.utils import JumpList, Settings, browse_files
 
 if TYPE_CHECKING:
@@ -173,7 +173,7 @@ class RecentFileListWidget(QListWidget):
 
         self.setMinimumWidth(400)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
         self.setItemDelegate(ListViewDelegate())
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)

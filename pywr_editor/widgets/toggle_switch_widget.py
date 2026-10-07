@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import QCheckBox, QWidget
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 """
  This is a QCheckBox but acts as a
@@ -16,7 +16,7 @@ class ToggleSwitchWidget(QCheckBox):
         :param parent: The parent. Default to None.
         """
         super().__init__(parent)
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
 
         # Set label at init and when state changes
         self._set_label(
@@ -49,11 +49,11 @@ class ToggleSwitchWidget(QCheckBox):
         return stylesheet_dict_to_str(
             {
                 "ToggleSwitchWidget": {
-                    ":disabled": {"color": "rgba(0, 0, 0, 110)"},
+                    ":disabled": {"color": Theme.overlay(110)},
                     "::indicator": {
-                        "background-color": "rgba(0, 0, 0, 15)",
+                        "background-color": Theme.overlay(15),
                         "border-radius": "9px",
-                        "border": "1px solid #CCC",
+                        "border": f"1px solid {Theme.color('border')}",
                         "height": size,
                         "image": "url(':/form/toggle-switch-off')",
                         "margin-right": "5px",
@@ -61,11 +61,11 @@ class ToggleSwitchWidget(QCheckBox):
                         "padding-left": 0,
                         "width": size,
                         ":hover": {
-                            "background-color": "rgba(0, 0, 0, 25)",
+                            "background-color": Theme.overlay(25),
                             "image": "url(:/form/toggle-switch-off-hover)",
                         },
                         ":pressed": {
-                            "background-color": " rgba(0, 0, 0, 24)",
+                            "background-color": Theme.overlay(24),
                             "image": "url(':/form/toggle-switch-off-pressed')",
                             "padding-right": "16px",
                             "width": pressed_size,
@@ -89,7 +89,7 @@ class ToggleSwitchWidget(QCheckBox):
                             "width": pressed_size,
                         },
                         ":disabled": {
-                            "border": "1px solid #bbbbbb",
+                            "border": f"1px solid {Theme.color('border-strong')}",
                             "image": "url(':/form/toggle-switch-disabled')",
                         },
                     },

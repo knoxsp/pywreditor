@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from pywr_editor.dialogs import InspectorDialog
 from pywr_editor.model import PywrProgress, PywrWorker
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.toolbar.small_button import ToolbarSmallButton
 from pywr_editor.utils import Logging
 from pywr_editor.widgets import DateEdit
@@ -99,7 +99,7 @@ class RunWidget(QWidget):
         self.progress_bar.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
-        self.progress_bar.setStyleSheet(self.progress_bar_style)
+        Theme.bind(self.progress_bar, lambda w: RunWidget.progress_bar_style())
         self.progress_status = QLabel("Ready to run")
         self.progress_status.setMinimumWidth(70)
 
@@ -115,8 +115,8 @@ class RunWidget(QWidget):
 
         self.setLayout(main_layout)
 
-    @property
-    def progress_bar_style(self) -> str:
+    @staticmethod
+    def progress_bar_style() -> str:
         """
         Returns the progress bar style.
         :return: The style as string.
@@ -124,7 +124,7 @@ class RunWidget(QWidget):
         return stylesheet_dict_to_str(
             {
                 "QProgressBar": {
-                    "background": "white",
+                    "background": Theme.color("base"),
                     "border": f"1px solid {Color('gray', 400).hex}",
                     "border-radius": "5px",
                     "height": "10px",

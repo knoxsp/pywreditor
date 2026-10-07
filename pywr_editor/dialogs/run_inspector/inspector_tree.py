@@ -11,7 +11,7 @@ from pywr.recorders import Recorder
 
 from pywr_editor.model import ModelConfig, ParameterConfig
 from pywr_editor.node_shapes import get_node_icon, get_pixmap_from_type
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.utils import humanise_label
 from pywr_editor.widgets import ParameterIcon, RecorderIcon
 
@@ -47,14 +47,14 @@ class InspectorTree(QTreeWidget):
         # noinspection PyUnresolvedReferences
         self.scenario_combinations = list(pywr_model.scenarios.combination_names)
 
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
 
         # header
         self.setHeaderLabels(("Attribute", "Value"))
         self.setColumnCount(2)
         self.header().resizeSection(0, 300)
         self.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.header().setStyleSheet(self.header_stylesheet)
+        Theme.bind(self.header(), lambda w: InspectorTree.get_header_stylesheet())
         self.add_nodes()
         self.add_parameters()
         self.add_recorders()
@@ -412,6 +412,14 @@ class InspectorTree(QTreeWidget):
 
     @property
     def header_stylesheet(self) -> str:
+        """
+        Returns the stylesheet for the header.
+        :return: The stylesheet as string.
+        """
+        return self.get_header_stylesheet()
+
+    @staticmethod
+    def get_header_stylesheet() -> str:
         """
         Returns the stylesheet for the header.
         :return: The stylesheet as string.

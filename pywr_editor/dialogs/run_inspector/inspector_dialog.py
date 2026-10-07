@@ -9,7 +9,7 @@ from pywr.model import Model
 from pywr_editor.dialogs import InspectorTree
 from pywr_editor.form import FormTitle
 from pywr_editor.model import ModelConfig
-from pywr_editor.style import AppStylesheet
+from pywr_editor.style import AppStylesheet, Theme
 from pywr_editor.widgets import PushIconButton
 
 if TYPE_CHECKING:
@@ -83,7 +83,7 @@ class InspectorDialog(QDialog):
         self.setLayout(layout)
         self.setWindowTitle("Model inspector")
         self.setMinimumSize(750, 650)
-        self.setStyleSheet(AppStylesheet().get())
+        Theme.bind(self, lambda w: AppStylesheet().get())
         self.setWindowModality(Qt.WindowModality.WindowModal)
         # always delete the dialog to release the model instance
         self.setAttribute(Qt.WA_DeleteOnClose)

@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Union
 
 import PySide6
 from PySide6.QtCore import QLineF, QPointF, QRectF, Slot
-from PySide6.QtGui import QPainter, QPainterPath, QPen, QPolygonF, Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF, Qt
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsLineItem
 
 from pywr_editor.form import ColorPickerWidget, FieldConfig, IntegerWidget
 from pywr_editor.model import LineArrowShape
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 from pywr_editor.widgets import ContextualMenu
 
 from ..commands.resize_shape_command import ResizeShapeCommand
@@ -330,11 +330,15 @@ class SchematicArrow(AbstractSchematicShape, QGraphicsLineItem):
         :return: None
         """
         arrow_size = 7
+        # only the default colour follows the theme. A colour set by the user is kept
+        color = self.pen.color()
+        if "border_color" not in self.shape_obj.shape_dict:
+            color = Color("gray", 800).qcolor
 
         # draw the edge and line
         painter.setPen(
             QPen(
-                self.pen.color(),
+                color,
                 self.pen.width(),
                 Qt.PenStyle.SolidLine,
                 Qt.PenCapStyle.RoundCap,
@@ -354,7 +358,7 @@ class SchematicArrow(AbstractSchematicShape, QGraphicsLineItem):
             cos(angle - pi + pi / 3) * arrow_size,
         )
 
-        painter.setBrush(self.pen.color())
+        painter.setBrush(color)
         pol = QPolygonF()
         pol.append(target_point)
         pol.append(target_arrow_p1)
@@ -364,7 +368,7 @@ class SchematicArrow(AbstractSchematicShape, QGraphicsLineItem):
         # handles
         handle_color = Color("gray", 700).qcolor
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(Qt.GlobalColor.white)
+        painter.setBrush(QColor(Theme.color("base")))
         painter.setPen(
             QPen(
                 handle_color,

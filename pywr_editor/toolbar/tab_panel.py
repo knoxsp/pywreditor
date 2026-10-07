@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 from .large_button import ToolbarLargeButton
 from .small_button import ToolbarSmallButton
@@ -44,7 +44,7 @@ class TabPanel(QWidget):
         self.widgets: list[QWidget] = []
 
         # load the panel style
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
 
         # create the layout containing the buttons/widgets
         main_layout = QHBoxLayout()
@@ -66,7 +66,10 @@ class TabPanel(QWidget):
         # set the panel name
         label = QLabel(name)
         label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet(f'color: {Color("gray", 500).hex}; font-size: 11px')
+        Theme.bind(
+            label,
+            lambda w: f'color: {Color("gray", 500).hex}; font-size: 11px',
+        )
 
         # add to vertical layout the panel name and the button container
         actions_container_widget = QWidget(self)

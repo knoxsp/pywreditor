@@ -1,12 +1,11 @@
 from typing import TYPE_CHECKING, Any
 
-import qtawesome as qta
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
 
 from pywr_editor.form import FormField, FormWidget, SlotsTableModel, Validation
 from pywr_editor.model import NodeConfig
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 from pywr_editor.utils import Logging, get_signal_sender, move_row
 from pywr_editor.widgets import PushIconButton, TableView
 
@@ -126,7 +125,10 @@ class SlotsTableWidget(FormWidget):
         message = QLabel()
         message.setObjectName("edge_warning_message")
         message.setWordWrap(True)
-        message.setStyleSheet(f"font-size:12px;color:{Color('amber', 600).hex};")
+        Theme.bind(
+            message,
+            lambda w: f"font-size:12px;color:{Color('amber', 600).hex};",
+        )
         if edge_counter_message:
             self.logger.debug(edge_counter_message)
             message.setText(edge_counter_message)
@@ -173,7 +175,7 @@ class SlotsTableWidget(FormWidget):
         # Buttons
         button_layout = QHBoxLayout()
         self.move_up = PushIconButton(
-            icon=qta.icon("msc.chevron-up"), label="Move up", small=True
+            icon="msc.chevron-up", label="Move up", small=True
         )
         self.move_up.setDisabled(True)
         self.move_up.setToolTip("Move the selected slot up in the table")
@@ -181,7 +183,7 @@ class SlotsTableWidget(FormWidget):
         self.move_up.clicked.connect(self.on_move_up)
 
         self.move_down = PushIconButton(
-            icon=qta.icon("msc.chevron-down"), label="Move down", small=True
+            icon="msc.chevron-down", label="Move down", small=True
         )
         self.move_down.setDisabled(True)
         self.move_down.setToolTip("Move the selected slot down in the table")

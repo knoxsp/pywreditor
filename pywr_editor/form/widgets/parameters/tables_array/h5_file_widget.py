@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import qtawesome as qta
 from pandas import HDFStore
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit
@@ -53,14 +52,14 @@ class H5FileWidget(FormWidget):
 
         # browse button
         self.browse_button = PushIconButton(
-            icon=qta.icon("msc.folder-opened"), label="Browse...", small=True
+            icon="msc.folder-opened", label="Browse...", small=True
         )
         # noinspection PyUnresolvedReferences
         self.browse_button.clicked.connect(self.on_browse_table_file)
 
         # reload button
         self.reload_button = PushIconButton(
-            icon=qta.icon("msc.refresh"), label="Reload", small=True
+            icon="msc.refresh", label="Reload", small=True
         )
         self.reload_button.setToolTip(
             "Reload the table file in case its content changed"
