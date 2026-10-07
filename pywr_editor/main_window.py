@@ -89,7 +89,13 @@ class MainWindow(QMainWindow):
         self.model_config = ModelConfig(model_file)
         # Show error if the JSON file does not load
         if not self.model_config.is_valid():
-            self.error_message.emit(self.model_config.load_error, True)
+            self.error_message.emit(self.model_config.load_error, False)
+            # reopen the start screen. The reference is kept on the class as this
+            # window is garbage collected and no window would otherwise be visible
+            from pywr_editor.dialogs import StartScreen
+
+            MainWindow.start_screen = StartScreen()
+            MainWindow.start_screen.show()
             return
         self.model_config.model_changed.connect(self.on_model_change)
 
