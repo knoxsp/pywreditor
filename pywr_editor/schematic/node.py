@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict, Union
 
 import PySide6
 import qtawesome as qta
-from PySide6.QtCore import QSize, QUuid, Slot
+from PySide6.QtCore import QPointF, QSize, QUuid, Slot
 from PySide6.QtGui import QAction, QFont, QPainterPath
 from PySide6.QtWidgets import (
     QGraphicsItem,
@@ -193,7 +193,14 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :param value: The value.
         :return: The itemChange event.
         """
-        if change == QGraphicsItemGroup.ItemPositionHasChanged:
+        if change == QGraphicsItemGroup.ItemPositionChange:
+            if self.view.editor_settings.is_snap_to_grid_enabled:
+                grid_size = max(self.view.editor_settings.grid_size, 1)
+                value = QPointF(
+                    round(value.x() / grid_size) * grid_size,
+                    round(value.y() / grid_size) * grid_size,
+                )
+        elif change == QGraphicsItemGroup.ItemPositionHasChanged:
             for edge in self.edges:
                 edge.adjust()
         elif change == QGraphicsItemGroup.ItemSelectedHasChanged:

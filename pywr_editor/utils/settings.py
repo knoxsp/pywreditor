@@ -23,6 +23,9 @@ class Settings:
     schematic_center_key = "schematic/schematic_center"
     reverse_zoom_key = "schematic/reverse_zoom"
     legend_position_key = "schematic/legend_position"
+    grid_size_key = "schematic/grid_size"
+    snap_to_grid_key = "schematic/snap_to_grid"
+    show_grid_key = "schematic/show_grid"
     recent_projects_key = "recent_projects"
     run_to_date_key = "run_to_date"
 
@@ -296,6 +299,66 @@ class Settings:
         if self.app_name is None:
             return
         self.instance.setValue(self.legend_position_key, position)
+
+    @property
+    def grid_size(self) -> int:
+        """
+        Returns the schematic grid size.
+        :return: The grid size, in pixels. Defaults to 25.
+        """
+        return int(self.instance.value(self.grid_size_key, defaultValue=25))
+
+    def save_grid_size(self, size: int) -> None:
+        """
+        Stores the schematic grid size.
+        :param size: The grid size, in pixels.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.grid_size_key, size)
+
+    @property
+    def is_snap_to_grid_enabled(self) -> bool:
+        """
+        Whether nodes are snapped to the nearest grid point when moved on the
+        schematic.
+        :return: True if snap-to-grid is enabled, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.snap_to_grid_key, defaultValue=False)
+        )
+
+    def save_snap_to_grid(self, enable: bool) -> None:
+        """
+        Sets whether nodes are snapped to the nearest grid point when moved on the
+        schematic.
+        :param enable: True to enable snap-to-grid, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.snap_to_grid_key, enable)
+
+    @property
+    def is_grid_shown(self) -> bool:
+        """
+        Whether the grid is drawn on the schematic background.
+        :return: True if the grid is shown, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.show_grid_key, defaultValue=False)
+        )
+
+    def save_show_grid(self, show: bool) -> None:
+        """
+        Sets whether the grid is drawn on the schematic background.
+        :param show: True to show the grid, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.show_grid_key, show)
 
     def _get_recent_files_list(self) -> list[str]:
         """

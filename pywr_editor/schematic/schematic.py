@@ -3,8 +3,18 @@ from typing import TYPE_CHECKING, Literal, Sequence, Union
 
 import PySide6
 from PySide6 import QtGui
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QUuid, Signal, Slot
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import (
+    QLineF,
+    QPoint,
+    QPointF,
+    QRect,
+    QRectF,
+    Qt,
+    QUuid,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -187,6 +197,37 @@ class Schematic(QGraphicsView):
             width=self.schematic_width, height=self.schematic_height
         )
         self.scene.addItem(self.canvas)
+
+    def drawBackground(self, painter: QPainter, rect: QRectF | QRect) -> None:
+        """
+        Paints the schematic background and, when enabled, a grid on top of it.
+        :param painter: The painter instance.
+        :param rect: The exposed area, in scene coordinates.
+        :return: None
+        """
+        super().drawBackground(painter, rect)
+
+        if not self.editor_settings.is_grid_shown:
+            return
+
+        grid_size = max(self.editor_settings.grid_size, 1)
+        left = int(rect.left()) - (int(rect.left()) % grid_size)
+        top = int(rect.top()) - (int(rect.top()) % grid_size)
+
+        lines = []
+        x = left
+        while x < rect.right():
+            lines.append(QLineF(x, rect.top(), x, rect.bottom()))
+            x += grid_size
+        y = top
+        while y < rect.bottom():
+            lines.append(QLineF(rect.left(), y, rect.right(), y))
+            y += grid_size
+
+        pen = QPen(Color("gray", 200).qcolor)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
+        painter.drawLines(lines)
 
     def draw(self) -> None:
         """
@@ -686,6 +727,25 @@ class Schematic(QGraphicsView):
         """
         self.editor_settings.save_legend_position(position)
         self.overlay_layout.setAlignment(self.legend, self.legend_alignment)
+
+    def set_grid_visible(self, visible: bool) -> None:
+        """
+        Shows or hides the schematic grid and persists the choice.
+        :param visible: True to show the grid, False to hide it.
+        :return: None
+        """
+        self.editor_settings.save_show_grid(visible)
+        self.viewport().update()
+
+    def set_grid_size(self, size: int) -> None:
+        """
+        Sets the schematic grid size and persists the choice.
+        :param size: The grid size, in pixels.
+        :return: None
+        """
+        self.editor_settings.save_grid_size(size)
+        if self.editor_settings.is_grid_shown:
+            self.viewport().update()
 
     def node_type_groups(self) -> list[NodeTypeGroup]:
         """

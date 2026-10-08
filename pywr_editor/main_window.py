@@ -26,6 +26,7 @@ from pywr_editor.model import ModelConfig
 from pywr_editor.schematic import Schematic, get_scaling_factor
 from pywr_editor.style import AppStylesheet
 from pywr_editor.toolbar import (
+    GridSettings,
     ModelNavigationSettings,
     RunWidget,
     SchematicItemsLibrary,
@@ -693,6 +694,8 @@ class MainWindow(QMainWindow):
         settings_tab = self.toolbar.add_tab("Settings")
         navigation_panel = settings_tab.add_panel("Model -> Navigation")
         navigation_panel.add_widget(ModelNavigationSettings(self))
+        grid_panel = settings_tab.add_panel("Schematic -> Grid")
+        grid_panel.add_widget(GridSettings(self))
 
     def add_status_bar(self) -> None:
         """
