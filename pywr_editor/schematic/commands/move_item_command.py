@@ -66,8 +66,6 @@ class MoveItemCommand(QUndoCommand):
 
                 self.prev_positions.append(item.prev_position)
 
-                # prevent the items from being moved outside the schematic edges.
-                item.adjust_position()
                 # store the new positions of any selected nodes as long as the
                 # items were moved
                 item.save_position_if_moved()
