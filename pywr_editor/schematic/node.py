@@ -107,10 +107,14 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
 
     def boundingRect(self) -> PySide6.QtCore.QRectF:
         """
-        Defined the node bounding rectangle.
+        Defined the node bounding rectangle. The label is only included when it is
+        visible, otherwise a hidden label would still enlarge the clickable/selection
+        area around the node symbol.
         :return: The rectangle.
         """
-        rect = super().boundingRect()
+        rect = self.node.mapRectToParent(self.node.boundingRect())
+        if self.label.isVisible():
+            rect = rect.united(self.label.mapRectToParent(self.label.boundingRect()))
 
         # add x padding
         rect.setX(rect.x() - self.padding_x)
@@ -123,24 +127,15 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
 
     def shape(self) -> PySide6.QtGui.QPainterPath:
         """
-        Draws the shape which is the envelope of the bounding boxes of the symbol and
-        text.
+        Draws the shape used for hit-testing (clicks, selection, dragging). This is
+        always just the node symbol: the label never contributes to it, regardless
+        of whether it is shown, so that it is never clickable/draggable itself and
+        clicks or drags over it fall through to the schematic underneath instead
+        (see Schematic.mousePressEvent).
         :return: The path.
         """
-        # label is translated and doesn't have the same coordinate system as the parent
-        symbol_bbox = self.node.mapRectToParent(self.node.boundingRect())
-        label_bbox = self.label.mapRectToParent(self.label.boundingRect())
-
-        path = QPainterPath(symbol_bbox.topLeft())
-        path.lineTo(symbol_bbox.topRight())
-        path.lineTo(symbol_bbox.bottomRight())
-        path.lineTo(label_bbox.topRight())
-        path.lineTo(label_bbox.bottomRight())
-        path.lineTo(label_bbox.bottomLeft())
-        path.lineTo(label_bbox.bottomLeft())
-        path.lineTo(label_bbox.topLeft())
-        path.lineTo(symbol_bbox.bottomLeft())
-        path.lineTo(symbol_bbox.topLeft())
+        path = QPainterPath()
+        path.addRect(self.node.mapRectToParent(self.node.boundingRect()))
         return path
 
     def paint(
@@ -201,6 +196,11 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         if change == QGraphicsItemGroup.ItemPositionHasChanged:
             for edge in self.edges:
                 edge.adjust()
+        elif change == QGraphicsItemGroup.ItemSelectedHasChanged:
+            # bring the node (and its label) above any overlapping node/edge, and
+            # highlight the label, so that it is not obscured when selected
+            self.setZValue(1 if value else 0)
+            self.label.set_highlighted(bool(value))
 
         return super().itemChange(change, value)
 
@@ -513,6 +513,19 @@ class SchematicLabel(QGraphicsTextItem):
         if self.hide_label:
             self.hide()
 
+    def shape(self) -> PySide6.QtGui.QPainterPath:
+        """
+        Returns an empty shape so that the label is never hit-tested on its own.
+        The label is still fully painted (shape() does not affect rendering), but
+        a QGraphicsItemGroup forwards any event received by a child to the whole
+        group regardless of the group's own shape(), so the label itself must be
+        made click-through for it to behave as non-interactive (see
+        SchematicNode.shape, which already excludes the label from the node's
+        own hit area).
+        :return: An empty path.
+        """
+        return QPainterPath()
+
     @property
     def font(self) -> PySide6.QtGui.QFont:
         """
@@ -534,3 +547,15 @@ class SchematicLabel(QGraphicsTextItem):
         else:
             self.hide()
             self.hide_label = True
+
+    def set_highlighted(self, highlighted: bool) -> None:
+        """
+        Highlights the label with a bold font when its node is selected. The node
+        itself is also brought to the front (see SchematicNode.itemChange) so that
+        the label is not left obscured behind overlapping nodes/edges.
+        :param highlighted: Whether the node is selected.
+        :return: None
+        """
+        font = self.font
+        font.setBold(highlighted)
+        self.setFont(font)
