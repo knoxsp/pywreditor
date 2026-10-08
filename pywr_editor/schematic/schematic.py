@@ -1,5 +1,5 @@
 import inspect
-from typing import TYPE_CHECKING, Sequence, Union
+from typing import TYPE_CHECKING, Literal, Sequence, Union
 
 import PySide6
 from PySide6 import QtGui
@@ -170,12 +170,7 @@ class Schematic(QGraphicsView):
         self.add_abort_node_connection_button()
 
         self.legend = SchematicLegend(self)
-        self.overlay_layout.addWidget(
-            self.legend,
-            0,
-            0,
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
-        )
+        self.overlay_layout.addWidget(self.legend, 0, 0, self.legend_alignment)
 
     def add_scene_decorations(self) -> None:
         """
@@ -508,8 +503,12 @@ class Schematic(QGraphicsView):
         :param event: The event being triggered.
         :return: None
         """
+        units = event.angleDelta().y()
+        if self.editor_settings.is_zoom_reversed:
+            units = -units
+
         self.scale_view(
-            units_to_factor(event.angleDelta().y()),
+            units_to_factor(units),
             anchor=event.position().toPoint(),
         )
         event.accept()
@@ -663,6 +662,30 @@ class Schematic(QGraphicsView):
         :return: None
         """
         self.legend.toggle()
+
+    @property
+    def legend_alignment(self) -> Qt.AlignmentFlag:
+        """
+        Returns the overlay alignment to use for the legend widget, based on the
+        configured horizontal position.
+        :return: The alignment flags.
+        """
+        horizontal = (
+            Qt.AlignmentFlag.AlignRight
+            if self.editor_settings.legend_position == "right"
+            else Qt.AlignmentFlag.AlignLeft
+        )
+        return horizontal | Qt.AlignmentFlag.AlignBottom
+
+    def set_legend_position(self, position: Literal["left", "right"]) -> None:
+        """
+        Moves the legend to the left or right side of the schematic and persists
+        the choice.
+        :param position: "left" or "right".
+        :return: None
+        """
+        self.editor_settings.save_legend_position(position)
+        self.overlay_layout.setAlignment(self.legend, self.legend_alignment)
 
     def node_type_groups(self) -> list[NodeTypeGroup]:
         """

@@ -25,7 +25,12 @@ from pywr_editor.dialogs import (
 from pywr_editor.model import ModelConfig
 from pywr_editor.schematic import Schematic, get_scaling_factor
 from pywr_editor.style import AppStylesheet
-from pywr_editor.toolbar import RunWidget, SchematicItemsLibrary, ToolbarWidget
+from pywr_editor.toolbar import (
+    ModelNavigationSettings,
+    RunWidget,
+    SchematicItemsLibrary,
+    ToolbarWidget,
+)
 from pywr_editor.toolbar.run_controls.timestepper import TimeStepperWidget
 from pywr_editor.tree import ComponentsTree
 from pywr_editor.utils import (
@@ -683,6 +688,11 @@ class MainWindow(QMainWindow):
         misc_panel.add_button(
             self.app_actions.get("export-current-view"), is_large=False
         )
+
+        # Settings tab
+        settings_tab = self.toolbar.add_tab("Settings")
+        navigation_panel = settings_tab.add_panel("Model -> Navigation")
+        navigation_panel.add_widget(ModelNavigationSettings(self))
 
     def add_status_bar(self) -> None:
         """
