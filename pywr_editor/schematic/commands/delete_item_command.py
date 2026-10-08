@@ -111,6 +111,12 @@ class DeleteItemCommand(QUndoCommand):
         self.schematic.app.components_tree.reload()
         self.schematic.reload()
 
+        # hide the node data panel if it is showing one of the deleted nodes, so
+        # the user cannot save stale data for a node that no longer exists
+        if hasattr(self.schematic.app, "node_data_panel"):
+            for node_name in self.deleted_node_names:
+                self.schematic.app.node_data_panel.on_node_deleted(node_name)
+
     def undo(self) -> None:
         """
         Restores the deleted nodes, edges and shapes into the schematic.
