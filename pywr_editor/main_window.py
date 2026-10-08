@@ -6,7 +6,7 @@ from typing import Literal
 
 import PySide6
 from PySide6.QtCore import QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QKeySequence, Qt, QUndoStack
+from PySide6.QtGui import QAction, QIcon, QKeySequence, Qt, QUndoStack
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
 
 from pywr_editor.dialogs import (
@@ -15,6 +15,7 @@ from pywr_editor.dialogs import (
     IncludesDialog,
     JsonCodeViewer,
     MetadataDialog,
+    NodeDataPanel,
     ParametersDialog,
     RecordersDialog,
     ScenariosDialog,
@@ -135,6 +136,10 @@ class MainWindow(QMainWindow):
         self.setPalette(Qt.GlobalColor.white)
         self.setDockNestingEnabled(False)
         self.setCentralWidget(self.splitter)
+
+        # Node data panel (dockable/undockable, shown on node double-click)
+        self.node_data_panel = NodeDataPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.node_data_panel)
 
         # Actions
         self.undo_stack = QUndoStack(self)
@@ -676,6 +681,15 @@ class MainWindow(QMainWindow):
         display_panel.add_button(self.app_actions.get("toggle-arrows"), is_large=False)
         display_panel.add_button(self.app_actions.get("toggle-legend"), is_large=False)
         display_panel.add_button(self.app_actions.get("center"), is_large=False)
+
+        toggle_node_data_action = self.node_data_panel.toggleViewAction()
+        toggle_node_data_action.setText("Hide node data")
+        toggle_node_data_action.setIcon(QIcon(":/toolbar/edit-node"))
+        toggle_node_data_action.setToolTip(
+            "Show or hide the dockable panel with the data of the node currently "
+            "selected on the schematic"
+        )
+        display_panel.add_button(toggle_node_data_action, is_large=False)
 
         size_panel = schematic_tab.add_panel("Size")
         size_panel.add_button(self.app_actions.get("increase-width"))

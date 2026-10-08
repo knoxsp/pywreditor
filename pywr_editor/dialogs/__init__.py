@@ -5,6 +5,7 @@ from .tables.tables_dialog import TablesDialog
 from .slots.edge_slots_dialog import EdgeSlotsDialog
 from .node.node_dialog_form import NodeDialogForm
 from .node.node_dialog import NodeDialog
+from .node.node_data_panel import NodeDataPanel
 from .parameters.parameters_dialog import ParametersDialog
 from .parameters.parameter_dialog_form import ParameterDialogForm
 from .recorders.recorders_dialog import RecordersDialog
