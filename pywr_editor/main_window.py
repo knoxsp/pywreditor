@@ -508,6 +508,16 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="toggle-legend",
+                name="Hide legend",
+                icon=":toolbar/toggle-schematic-legend",
+                tooltip="Hide or show the node type legend on the schematic",
+                is_checked=self.editor_settings.are_legend_hidden,
+                connection=self.schematic.toggle_legend,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="center",
                 name="Centre",
                 icon=":toolbar/centre-schematic",
@@ -658,6 +668,7 @@ class MainWindow(QMainWindow):
         display_panel = schematic_tab.add_panel("Display", layout="vertical")
         display_panel.add_button(self.app_actions.get("toggle-labels"), is_large=False)
         display_panel.add_button(self.app_actions.get("toggle-arrows"), is_large=False)
+        display_panel.add_button(self.app_actions.get("toggle-legend"), is_large=False)
         display_panel.add_button(self.app_actions.get("center"), is_large=False)
 
         size_panel = schematic_tab.add_panel("Size")

@@ -17,6 +17,8 @@ class Settings:
     lock_key = "schematic/lock"
     hide_labels_key = "schematic/hide_labels"
     hide_arrows_key = "schematic/hide_arrows"
+    hide_legend_key = "schematic/hide_legend"
+    hidden_node_types_key = "schematic/hidden_node_types"
     zoom_level_key = "schematic/zoom_level"
     schematic_center_key = "schematic/schematic_center"
     recent_projects_key = "recent_projects"
@@ -172,6 +174,51 @@ class Settings:
         if self.app_name is None:
             return
         self.instance.setValue(self.hide_arrows_key, hide)
+
+    @property
+    def are_legend_hidden(self) -> bool:
+        """
+        Whether the schematic legend should be hidden.
+        :return: True if the schematic legend is hidden, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.hide_legend_key, defaultValue=False)
+        )
+
+    def save_hide_legend(self, hide: bool) -> None:
+        """
+        Sets the display status of the schematic legend.
+        :param hide: True to hide the legend, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.hide_legend_key, hide)
+
+    @property
+    def hidden_node_types(self) -> list[str]:
+        """
+        Returns the list of node types currently hidden on the schematic.
+        :return: The list of node type keys. Empty if none are hidden.
+        """
+        raw_value = self.instance.value(self.hidden_node_types_key, defaultValue="[]")
+        try:
+            node_types = json.loads(raw_value)
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(node_types, list):
+            return []
+        return node_types
+
+    def save_hidden_node_types(self, node_types: list[str]) -> None:
+        """
+        Stores the list of node types currently hidden on the schematic.
+        :param node_types: The list of node type keys to store.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.hidden_node_types_key, json.dumps(node_types))
 
     @property
     def zoom_level(self) -> float:

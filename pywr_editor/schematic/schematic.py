@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsScene,
     QGraphicsView,
+    QGridLayout,
     QPushButton,
-    QVBoxLayout,
 )
 
 from pywr_editor.dialogs import InspectorTree
@@ -48,6 +48,7 @@ from pywr_editor.toolbar import LibraryPanel
 from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
+from .legend import NodeTypeGroup, SchematicLegend
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -107,6 +108,7 @@ class Schematic(QGraphicsView):
         self.shape_items: dict[
             str, SchematicText | SchematicRectangle | SchematicArrow
         ] = {}
+        self.hidden_node_types: set[str] = set(self.editor_settings.hidden_node_types)
 
         self.schematic_move_event.connect(self.on_schematic_move)
         self.connect_node_event.connect(self.on_connect_node_end)
@@ -160,9 +162,20 @@ class Schematic(QGraphicsView):
         if center is not None:
             self.centerOn(center)
 
-        # add top button
+        # overlay widgets (floating on top of the viewport, not scene items)
+        self.overlay_layout = QGridLayout(self)
+        self.overlay_layout.setContentsMargins(10, 10, 10, 10)
+
         self.abort_node_connection_button = None
         self.add_abort_node_connection_button()
+
+        self.legend = SchematicLegend(self)
+        self.overlay_layout.addWidget(
+            self.legend,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+        )
 
     def add_scene_decorations(self) -> None:
         """
@@ -215,18 +228,23 @@ class Schematic(QGraphicsView):
             target_nodes = self.model_config.edges.targets(source_node_name)
             if target_nodes is not None:
                 for target_node_name in target_nodes:
-                    self.scene.addItem(
-                        Edge(
-                            source=source_node_obj,
-                            target=self.node_items[target_node_name],
-                            edge_color_name=model_edges.color(source_node_name),
-                            hide_arrow=self.editor_settings.are_edge_arrows_hidden,
-                        )
+                    target_node_obj = self.node_items[target_node_name]
+                    edge = Edge(
+                        source=source_node_obj,
+                        target=target_node_obj,
+                        edge_color_name=model_edges.color(source_node_name),
+                        hide_arrow=self.editor_settings.are_edge_arrows_hidden,
                     )
+                    edge.setVisible(
+                        source_node_obj.isVisible() and target_node_obj.isVisible()
+                    )
+                    self.scene.addItem(edge)
 
         # draw the shapes
         for shape_obj in self.model_config.shapes.get_all():
             self.add_shape(shape_obj)
+
+        self.legend.refresh()
 
         if self.init is True:
             self.init = False
@@ -248,6 +266,8 @@ class Schematic(QGraphicsView):
         :return: The graphical node instance.
         """
         node_obj = SchematicNode(node_props=node_props, view=self)
+        if node_obj.model_node.type in self.hidden_node_types:
+            node_obj.setVisible(False)
         self.scene.addItem(node_obj)
         self.node_items[node_obj.name] = node_obj
 
@@ -352,9 +372,12 @@ class Schematic(QGraphicsView):
         # noinspection PyUnresolvedReferences
         button.clicked.connect(self.on_connect_node_end)
 
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignCenter | Qt.AlignTop)
-        layout.addWidget(button)
+        self.overlay_layout.addWidget(
+            button,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+        )
         button.hide()
         self.abort_node_connection_button = button
 
@@ -632,6 +655,71 @@ class Schematic(QGraphicsView):
         self.editor_settings.save_hide_arrows(
             not self.editor_settings.are_edge_arrows_hidden
         )
+
+    @Slot()
+    def toggle_legend(self) -> None:
+        """
+        Shows or hides the schematic legend.
+        :return: None
+        """
+        self.legend.toggle()
+
+    def node_type_groups(self) -> list[NodeTypeGroup]:
+        """
+        Groups the nodes currently on the schematic by their pywr type, for use by
+        the legend.
+        :return: A list of node type groups, sorted alphabetically by label.
+        """
+        groups: dict[str, NodeTypeGroup] = {}
+        for node in self.node_items.values():
+            node_type = node.model_node.type
+            if node_type is None:
+                continue
+
+            if node_type not in groups:
+                label = node.model_node.humanised_type
+                # the generic "Custom" group name is not specific enough to tell
+                # different custom node types apart in the legend
+                if label == node.model_node.custom_node_group_name:
+                    label = node_type.title()
+
+                groups[node_type] = NodeTypeGroup(
+                    type=node_type,
+                    label=label,
+                    pixmap=SchematicLegend.pixmap_for_node_type(node.model_node),
+                    count=0,
+                    hidden=node_type in self.hidden_node_types,
+                )
+            groups[node_type]["count"] += 1
+
+        return sorted(groups.values(), key=lambda group: group["label"].lower())
+
+    def set_node_type_hidden(self, node_type: str, hidden: bool) -> None:
+        """
+        Shows or hides all the nodes of the provided type on the schematic. Edges
+        are also hidden when either of the nodes they connect is hidden.
+        :param node_type: The node type to show or hide.
+        :param hidden: True to hide the nodes of this type, False to show them.
+        :return: None
+        """
+        if hidden:
+            self.hidden_node_types.add(node_type)
+        else:
+            self.hidden_node_types.discard(node_type)
+
+        for node in self.node_items.values():
+            if node.model_node.type == node_type:
+                node.setVisible(not hidden)
+
+        for item in self.items():
+            if (
+                isinstance(item, Edge)
+                and item.source is not None
+                and item.target is not None
+            ):
+                item.setVisible(item.source.isVisible() and item.target.isVisible())
+
+        self.editor_settings.save_hidden_node_types(list(self.hidden_node_types))
 
     @Slot()
     def export_current_view(self) -> None:
