@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Sequence, Union
 
 import PySide6
 from PySide6 import QtGui
-from PySide6.QtCore import QPointF, QRectF, Qt, QUuid, Signal, Slot
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QUuid, Signal, Slot
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsScene,
     QGraphicsView,
+    QGridLayout,
     QPushButton,
-    QVBoxLayout,
 )
 
 from pywr_editor.dialogs import InspectorTree
@@ -48,6 +48,7 @@ from pywr_editor.toolbar import LibraryPanel
 from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
+from .legend import NodeTypeGroup, SchematicLegend
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -56,6 +57,9 @@ if TYPE_CHECKING:
 class Schematic(QGraphicsView):
     padding: int = 50
     """ canvas padding """
+    pan_margin: int = 50_000
+    """ extra space, on each side of the schematic bounds, that can be panned to -
+    this is what makes the canvas feel unbounded rather than just large """
     pywr_bounds: tuple[int] = (-100, 100)
     """ bounds used in the pixels conversion """
     max_view_size_delta: int = 50
@@ -88,29 +92,44 @@ class Schematic(QGraphicsView):
         self.editor_settings = self.app.editor_settings
         self.canvas_drag = False
 
+        # state for pressing on an unselected node (see mousePressEvent) - this
+        # pans the schematic instead of selecting/dragging the node straight away
+        self._node_press_target: Union["SchematicNode", None] = None
+        self._node_press_last_pos: QPoint | None = None
+        self._node_press_moved = False
+
         # initialises the schematic view
         schematic_size = model_config.schematic_size
         self.schematic_width = schematic_size[0]
         self.schematic_height = schematic_size[1]
         self.scaling_factor = self.editor_settings.zoom_level
-        self.nodes_wo_position = 0
         self.connecting_node_props = ConnectingNodeProps()
         self.node_items: dict[str, SchematicNode] = {}
         self.shape_items: dict[
             str, SchematicText | SchematicRectangle | SchematicArrow
         ] = {}
+        self.hidden_node_types: set[str] = set(self.editor_settings.hidden_node_types)
 
         self.schematic_move_event.connect(self.on_schematic_move)
         self.connect_node_event.connect(self.on_connect_node_end)
         self.node_classes = get_node_icon_classes()
 
         # behaviour
-        self.setCacheMode(QGraphicsView.CacheModeFlag.CacheBackground)
-        self.setViewportUpdateMode(
-            QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate
-        )
+        # CacheBackground is not used: the background now always fills the whole
+        # viewport (see add_scene_decorations), and caching it produced stale,
+        # incorrectly-sized background pixmaps that left parts of the viewport
+        # unpainted after the window was resized to its real initial geometry.
+        # FullViewportUpdate is used instead of BoundingRectViewportUpdate for the
+        # same reason: the latter only repaints the union of changed items'
+        # bounding rects, which left the newly-exposed background unpainted (and
+        # showing stale content) after the initial resize to the window's real
+        # size, since that background-brush area is not itself a scene item.
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        # zoom anchoring is handled manually in scale_view(), because Qt's built-in
+        # AnchorUnderMouse anchors around the real OS cursor position, which fights
+        # with the scene-point compensation done there
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setAcceptDrops(True)
@@ -143,17 +162,32 @@ class Schematic(QGraphicsView):
         if center is not None:
             self.centerOn(center)
 
-        # add top button
+        # overlay widgets (floating on top of the viewport, not scene items)
+        self.overlay_layout = QGridLayout(self)
+        self.overlay_layout.setContentsMargins(10, 10, 10, 10)
+
         self.abort_node_connection_button = None
         self.add_abort_node_connection_button()
 
+        self.legend = SchematicLegend(self)
+        self.overlay_layout.addWidget(
+            self.legend,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+        )
+
     def add_scene_decorations(self) -> None:
         """
-        Adds the canvas border and background to the scene.
+        Adds the background to the scene. The canvas is unbounded: there is no
+        visible border or frame marking the schematic bounds, only nodes, edges
+        and shapes on a flat background that always fills the viewport (it is
+        not a scene item, so it never visually grows or shrinks when zooming).
         :return: None
         """
-        self.scene.setBackgroundBrush(Color("gray", 300).qcolor)
-        # add the canvas
+        self.scene.setBackgroundBrush(Qt.GlobalColor.white)
+        # kept only for schematic.py's size tracking and run-mode dimming - it no
+        # longer draws anything (see SchematicCanvas.paint)
         self.canvas = SchematicCanvas(
             width=self.schematic_width, height=self.schematic_height
         )
@@ -180,7 +214,6 @@ class Schematic(QGraphicsView):
                         self.schematic_width / 2,
                         self.schematic_height / 2,
                     ]
-                    self.nodes_wo_position += 1
                 # set the new position and update the node dictionary
                 node_props = self.model_config.nodes.set_position(
                     node_index=node_index, position=node_position
@@ -195,25 +228,23 @@ class Schematic(QGraphicsView):
             target_nodes = self.model_config.edges.targets(source_node_name)
             if target_nodes is not None:
                 for target_node_name in target_nodes:
-                    self.scene.addItem(
-                        Edge(
-                            source=source_node_obj,
-                            target=self.node_items[target_node_name],
-                            edge_color_name=model_edges.color(source_node_name),
-                            hide_arrow=self.editor_settings.are_edge_arrows_hidden,
-                        )
+                    target_node_obj = self.node_items[target_node_name]
+                    edge = Edge(
+                        source=source_node_obj,
+                        target=target_node_obj,
+                        edge_color_name=model_edges.color(source_node_name),
+                        hide_arrow=self.editor_settings.are_edge_arrows_hidden,
                     )
-
-        # warn if some nodes do not have a position
-        if self.init:
-            self.trigger_missing_pos_warning()
+                    edge.setVisible(
+                        source_node_obj.isVisible() and target_node_obj.isVisible()
+                    )
+                    self.scene.addItem(edge)
 
         # draw the shapes
         for shape_obj in self.model_config.shapes.get_all():
             self.add_shape(shape_obj)
 
-        # move items that are outside the canvas edges
-        self.adjust_items_initial_pos()
+        self.legend.refresh()
 
         if self.init is True:
             self.init = False
@@ -235,6 +266,8 @@ class Schematic(QGraphicsView):
         :return: The graphical node instance.
         """
         node_obj = SchematicNode(node_props=node_props, view=self)
+        if node_obj.model_node.type in self.hidden_node_types:
+            node_obj.setVisible(False)
         self.scene.addItem(node_obj)
         self.node_items[node_obj.name] = node_obj
 
@@ -339,68 +372,14 @@ class Schematic(QGraphicsView):
         # noinspection PyUnresolvedReferences
         button.clicked.connect(self.on_connect_node_end)
 
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignCenter | Qt.AlignTop)
-        layout.addWidget(button)
+        self.overlay_layout.addWidget(
+            button,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+        )
         button.hide()
         self.abort_node_connection_button = button
-
-    def trigger_missing_pos_warning(self) -> None:
-        """
-        Warns if some nodes do not have a position.
-        :return: None
-        """
-        if self.nodes_wo_position > 0:
-            if self.nodes_wo_position == 1:
-                text = (
-                    f"{self.nodes_wo_position} node does not have a position "
-                    + "assigned. This has been placed at\nthe schematic centre"
-                    + "and may overlap with other nodes. Select and drag it\n"
-                    + "to a new location to store its correct position."
-                )
-            else:
-                text = (
-                    f"{self.nodes_wo_position} nodes do not have a position "
-                    + "assigned. These have been placed at\nthe schematic centre "
-                    + "and may overlap with other nodes. Select and drag them\n"
-                    + "to new locations to store their correct positions."
-                )
-            # noinspection PyUnresolvedReferences
-            self.app.warning_info_message.emit("Missing positions", text, "warn")
-
-    def adjust_items_initial_pos(self) -> None:
-        """
-        Move items that are outside the schematic onto the canvas.
-        :return: None
-        """
-        moved_items_count = False
-        for item in self.items():
-            # ignore children and work on node groups and shapes only
-            if not isinstance(item, (SchematicNode, AbstractSchematicShape)):
-                continue
-
-            was_item_moved = item.adjust_position()
-            if was_item_moved:
-                item.save_position_if_moved()
-                moved_items_count += 1
-
-        # print message only when the schematic is first drawn
-        if moved_items_count > 0 and self.init:
-            if moved_items_count == 1:
-                message = (
-                    f"{moved_items_count} item was outside the schematic canvas "
-                    + "and this was\nmoved to lie within the canvas limits."
-                )
-            else:
-                message = (
-                    f"{moved_items_count} items were outside the schematic "
-                    + "canvas and these were\nmoved to lie within the canvas limits."
-                )
-            self.app.warning_info_message.emit("Wrong item position", message, "info")
-
-        # disable decrease size buttons if at least one item is already on the edge
-        # or has been moved
-        self.toggle_schematic_size_buttons()
 
     def to_px(self, point: Sequence[float]) -> list[float]:
         """
@@ -433,28 +412,17 @@ class Schematic(QGraphicsView):
         self.schematic_height = self.schematic_height + self.max_view_size_delta
         self.update_size()
 
-        # re-enable button if it was disabled
-        if self.app.app_actions.get("decrease-height").isEnabled() is False:
-            self.enable_decrease_height_button(True)
-
     @Slot()
     def decrease_height(self) -> None:
         """
-        Decreases the schematic height.
+        Decreases the schematic height. This only resizes the (purely cosmetic)
+        bounds outline - the canvas is unbounded, so nodes may end up outside it.
         :return: None
         """
-        max_min_bbox = SchematicBBoxUtils(self.items()).min_max_bounding_box_coordinates
-        node_max_y = max_min_bbox.max_y.value
-
-        # height always changes from bottom - make sure that all the nodes fit in
-        # the schematic
-        view_size_delta = self.max_view_size_delta
-        if self.schematic_height - node_max_y < view_size_delta:
-            view_size_delta = self.schematic_height - node_max_y
-            # lock decrease height button
-            self.enable_decrease_height_button(False)
-
-        self.schematic_height = self.schematic_height - view_size_delta
+        self.schematic_height = max(
+            self.max_view_size_delta,
+            self.schematic_height - self.max_view_size_delta,
+        )
         self.update_size()
 
     @Slot()
@@ -466,40 +434,32 @@ class Schematic(QGraphicsView):
         self.schematic_width = self.schematic_width + self.max_view_size_delta
         self.update_size()
 
-        # re-enable button if it was disabled
-        if self.app.app_actions.get("decrease-width").isEnabled() is False:
-            self.enable_decrease_width_button(True)
-
     @Slot()
     def decrease_width(self) -> None:
         """
-        Decreases the schematic width.
+        Decreases the schematic width. This only resizes the (purely cosmetic)
+        bounds outline - the canvas is unbounded, so nodes may end up outside it.
         :return: None
         """
-        max_min_bbox = SchematicBBoxUtils(self.items()).min_max_bounding_box_coordinates
-        node_max_x = max_min_bbox.max_x.value
-
-        # width always changes from the left - make sure that all the nodes fit in the
-        # schematic
-        view_size_delta = self.max_view_size_delta
-        if self.schematic_width - node_max_x < view_size_delta:
-            view_size_delta = self.schematic_width - node_max_x
-            # lock decrease width button
-            self.enable_decrease_width_button(False)
-
-        self.schematic_width = self.schematic_width - view_size_delta
+        self.schematic_width = max(
+            self.max_view_size_delta,
+            self.schematic_width - self.max_view_size_delta,
+        )
         self.update_size()
 
     def update_scene_size(self) -> None:
         """
-        Updates the scene size.
+        Updates the scene size. This is deliberately much larger than the
+        schematic bounds (see pan_margin) so that panning never hits an edge in
+        practice, even though the canvas is not literally infinite.
         :return: None
         """
+        margin = self.padding + self.pan_margin
         self.setSceneRect(
-            -self.padding,
-            -self.padding,
-            self.schematic_width + self.padding * 2,
-            self.schematic_height + self.padding * 2,
+            -margin,
+            -margin,
+            self.schematic_width + margin * 2,
+            self.schematic_height + margin * 2,
         )
 
     def update_size(self) -> None:
@@ -515,7 +475,8 @@ class Schematic(QGraphicsView):
 
     def minimise_size(self) -> None:
         """
-        Minimises the schematic.
+        Shrinks the (purely cosmetic) bounds outline to tightly wrap the items on
+        the schematic.
         :return: None
         """
         max_min_bbox = SchematicBBoxUtils(self.items()).min_max_bounding_box_coordinates
@@ -523,8 +484,6 @@ class Schematic(QGraphicsView):
         self.schematic_height = max_min_bbox.max_y.value
 
         self.update_size()
-        self.enable_decrease_width_button(False)
-        self.enable_decrease_height_button(False)
 
     def toggle_lock(self) -> None:
         """
@@ -543,26 +502,16 @@ class Schematic(QGraphicsView):
             not self.editor_settings.is_schematic_locked
         )
 
-    def toggle_schematic_size_buttons(self) -> None:
-        """
-        Toggles the status of the 'reduce schematic size' buttons. If one or more node
-        is on the schematic edge, the buttons to reduce the schematic size must be
-        disabled.
-        :return: None
-        """
-        is_on_right_edge, is_on_bottom_edge = SchematicBBoxUtils(
-            self.items()
-        ).are_items_on_edges(self.schematic_width, self.schematic_height)
-        self.enable_decrease_width_button(not is_on_right_edge)
-        self.enable_decrease_height_button(not is_on_bottom_edge)
-
     def wheelEvent(self, event: PySide6.QtGui.QWheelEvent) -> None:
         """
         Handles zoom using the mouse wheel.
         :param event: The event being triggered.
         :return: None
         """
-        self.scale_view(units_to_factor(event.angleDelta().y()))
+        self.scale_view(
+            units_to_factor(event.angleDelta().y()),
+            anchor=event.position().toPoint(),
+        )
         event.accept()
 
     def reset_scale(self) -> None:
@@ -572,10 +521,16 @@ class Schematic(QGraphicsView):
         """
         self.setTransform(QtGui.QTransform())
 
-    def scale_view(self, f: float) -> None:
+    def scale_view(self, f: float, anchor: QPoint | None = None) -> None:
         """
         Scales the view and handles the zoom buttons status.
         :param f: The scaling factor.
+        :param anchor: The viewport position (e.g. the mouse cursor) to keep
+            fixed on screen while zooming. When not provided, the viewport
+            centre is used. This is needed because AnchorUnderMouse is
+            overridden by Qt whenever the scene content fits the viewport on
+            an axis (scrollbars are always off here and the view is centre
+            aligned), so the zoom anchor is restored manually.
         :return: None
         """
         self.scaling_factor = round(
@@ -608,7 +563,14 @@ class Schematic(QGraphicsView):
                 self.app.app_actions.get("zoom-100").setDisabled(False)
 
         self.app.editor_settings.save_zoom_level(self.scaling_factor)
+
+        if anchor is None:
+            anchor = self.viewport().rect().center()
+        old_scene_pos = self.mapToScene(anchor)
         self.scale(f, f)
+        new_scene_pos = self.mapToScene(anchor)
+        delta = new_scene_pos - old_scene_pos
+        self.translate(delta.x(), delta.y())
 
     @Slot(QPointF)
     def on_schematic_move(self, position: QPointF) -> None:
@@ -637,10 +599,23 @@ class Schematic(QGraphicsView):
     @Slot()
     def fit_view(self) -> None:
         """
-        Centers the view to the scene center.
+        Fits the view to the schematic items. The scene rect itself is not used,
+        as it is deliberately much larger than the content (see pan_margin) to
+        give the canvas unbounded panning.
         :return: None
         """
-        self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+        bbox = SchematicBBoxUtils(self.items()).min_max_bounding_box_coordinates
+        if bbox.min_x.value is None:
+            return
+        self.fitInView(
+            QRectF(
+                bbox.min_x.value,
+                bbox.min_y.value,
+                bbox.max_x.value - bbox.min_x.value,
+                bbox.max_y.value - bbox.min_y.value,
+            ),
+            Qt.KeepAspectRatio,
+        )
 
     def select_node_by_name(self, node_name: str) -> None:
         """
@@ -682,6 +657,71 @@ class Schematic(QGraphicsView):
         )
 
     @Slot()
+    def toggle_legend(self) -> None:
+        """
+        Shows or hides the schematic legend.
+        :return: None
+        """
+        self.legend.toggle()
+
+    def node_type_groups(self) -> list[NodeTypeGroup]:
+        """
+        Groups the nodes currently on the schematic by their pywr type, for use by
+        the legend.
+        :return: A list of node type groups, sorted alphabetically by label.
+        """
+        groups: dict[str, NodeTypeGroup] = {}
+        for node in self.node_items.values():
+            node_type = node.model_node.type
+            if node_type is None:
+                continue
+
+            if node_type not in groups:
+                label = node.model_node.humanised_type
+                # the generic "Custom" group name is not specific enough to tell
+                # different custom node types apart in the legend
+                if label == node.model_node.custom_node_group_name:
+                    label = node_type.title()
+
+                groups[node_type] = NodeTypeGroup(
+                    type=node_type,
+                    label=label,
+                    pixmap=SchematicLegend.pixmap_for_node_type(node.model_node),
+                    count=0,
+                    hidden=node_type in self.hidden_node_types,
+                )
+            groups[node_type]["count"] += 1
+
+        return sorted(groups.values(), key=lambda group: group["label"].lower())
+
+    def set_node_type_hidden(self, node_type: str, hidden: bool) -> None:
+        """
+        Shows or hides all the nodes of the provided type on the schematic. Edges
+        are also hidden when either of the nodes they connect is hidden.
+        :param node_type: The node type to show or hide.
+        :param hidden: True to hide the nodes of this type, False to show them.
+        :return: None
+        """
+        if hidden:
+            self.hidden_node_types.add(node_type)
+        else:
+            self.hidden_node_types.discard(node_type)
+
+        for node in self.node_items.values():
+            if node.model_node.type == node_type:
+                node.setVisible(not hidden)
+
+        for item in self.items():
+            if (
+                isinstance(item, Edge)
+                and item.source is not None
+                and item.target is not None
+            ):
+                item.setVisible(item.source.isVisible() and item.target.isVisible())
+
+        self.editor_settings.save_hidden_node_types(list(self.hidden_node_types))
+
+    @Slot()
     def export_current_view(self) -> None:
         """
         Exports the current view.
@@ -699,22 +739,6 @@ class Schematic(QGraphicsView):
             self.app.statusBar().showMessage(f"Exported current view as {file_name}")
         else:
             self.app.statusBar().showMessage("Schematic export aborted")
-
-    def enable_decrease_width_button(self, enable: bool = False) -> None:
-        """
-        Enables or disables the button to decrease the schematic width.
-        :param enable: Whether to enable the button. If False the button is disabled.
-        :return: None
-        """
-        self.app.app_actions.get("decrease-width").setEnabled(enable)
-
-    def enable_decrease_height_button(self, enable: bool = False) -> None:
-        """
-        Enables or disables the button to decrease the schematic height.
-        :param enable: Whether to enable the button. If False the button is disabled.
-        :return: None
-        """
-        self.app.app_actions.get("decrease-height").setEnabled(enable)
 
     def set_run_mode(self, enable: bool) -> None:
         """
@@ -909,7 +933,13 @@ class Schematic(QGraphicsView):
 
     def mousePressEvent(self, event: PySide6.QtGui.QMouseEvent) -> None:
         """
-        Enables the schematic panning on mouse click only when the canvas is selected.
+        Enables the schematic panning on mouse click only when the canvas is
+        selected. Pressing on an unselected node does not select or drag it
+        straight away either: the user must first click it (see
+        mouseReleaseEvent) to select it, and only then can a further press drag
+        it (handled natively by Qt, since a selected node is movable). This means
+        a drag that merely starts on an unselected node pans the schematic
+        instead of selecting/moving it - see _start_node_press.
         :param event: The event being triggered.
         :return: None
         """
@@ -919,7 +949,22 @@ class Schematic(QGraphicsView):
                 self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             else:
                 items = self.items(event.pos())
-                # check that no selectable item was selected and canvas can be dragged
+                node = next(
+                    (item for item in items if isinstance(item, SchematicNode)), None
+                )
+
+                if (
+                    node is not None
+                    and not node.isSelected()
+                    and not self.connecting_node_props.enabled
+                    and not self.editor_settings.is_schematic_locked
+                ):
+                    self._start_node_press(node, event.pos())
+                    event.accept()
+                    return
+
+                # check that no selectable item was selected and canvas can be
+                # dragged
                 is_selectable = map(
                     lambda item: isinstance(
                         item, (SchematicNode, AbstractSchematicShape)
@@ -934,12 +979,44 @@ class Schematic(QGraphicsView):
 
         super().mousePressEvent(event)
 
+    def _start_node_press(self, node: "SchematicNode", view_pos: QPoint) -> None:
+        """
+        Begins tracking a mouse press on an unselected node symbol. The rest of
+        the gesture pans the schematic (see mouseMoveEvent); the node itself is
+        only selected if the mouse is released without having moved (a plain
+        click - see mouseReleaseEvent).
+        :param node: The node that was pressed.
+        :param view_pos: The press position, in view/viewport coordinates.
+        :return: None
+        """
+        self._node_press_target = node
+        self._node_press_last_pos = view_pos
+        self._node_press_moved = False
+        self.canvas_drag = True
+
     def mouseReleaseEvent(self, event: PySide6.QtGui.QMouseEvent) -> None:
         """
         Handles drag, node position saving and toolbar buttons.
         :param event: The event being triggered.
         :return: None
         """
+        if event.button() == Qt.LeftButton and self._node_press_target is not None:
+            node = self._node_press_target
+
+            if not self._node_press_moved:
+                # a plain click with no drag - select the node. A further press
+                # can now drag it, since it is selected (see mousePressEvent)
+                self.de_select_all_items()
+                node.setSelected(True)
+            # else: the press dragged the schematic - the node is deliberately
+            # left unselected and unmoved
+
+            self._node_press_target = None
+            self._node_press_moved = False
+            self.canvas_drag = False
+            event.accept()
+            return
+
         super().mouseReleaseEvent(event)
         if event.button() == Qt.LeftButton:
             # perform action on selected nodes
@@ -965,10 +1042,6 @@ class Schematic(QGraphicsView):
                         .center()
                     )
                     self.schematic_move_event.emit(center)
-
-            # toggle the status of the 'reduce schematic size' buttons after a node
-            # is moved
-            self.toggle_schematic_size_buttons()
 
             # disable drag of canvas regardless of item
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -1003,10 +1076,26 @@ class Schematic(QGraphicsView):
 
     def mouseMoveEvent(self, event: PySide6.QtGui.QMouseEvent) -> None:
         """
-        Handles actions when the mouse pointer moves.
+        Handles actions when the mouse pointer moves. While a press on an
+        unselected node is in progress (see mousePressEvent), this pans the
+        schematic manually instead of moving/selecting the node.
         :param event: The event being triggered.
         :return: None
         """
+        if self._node_press_target is not None:
+            delta = event.pos() - self._node_press_last_pos
+            if delta.manhattanLength() > 0:
+                self._node_press_moved = True
+
+            h_bar = self.horizontalScrollBar()
+            v_bar = self.verticalScrollBar()
+            h_bar.setValue(h_bar.value() - delta.x())
+            v_bar.setValue(v_bar.value() - delta.y())
+
+            self._node_press_last_pos = event.pos()
+            event.accept()
+            return
+
         if self.connecting_node_props.enabled:
             # Updated the temporary edge position
             self.connecting_node_props.temp_edge.adjust(self.mapToScene(event.pos()))

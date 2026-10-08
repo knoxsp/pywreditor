@@ -102,41 +102,44 @@ class TestSchematicResize:
         "action, n",
         [("decrease-width", 20), ("decrease-height", 25)],
     )
-    def test_disable_decrease_buttons(
-        self, qtbot, resize, init_window, action, n, request
+    def test_decrease_button_not_limited_by_items(
+        self, qtbot, resize, init_window, action, n
     ) -> None:
         """
-        Tests that the resize buttons are disabled when the schematic is resized too
-        much (i.e. the schematic edge reaches one of the bbox of the nodes). This also
-        checks that the buttons are re-enabled when the size is increased again.
+        Tests that decreasing the schematic size repeatedly is not limited by
+        where nodes/shapes are (the bounds outline is purely cosmetic and does
+        not constrain item positions), and that the button stays enabled, as
+        there is no hard limit to disable it for.
         """
-        window, schematic, size_panel = init_window
+        _, _, size_panel = init_window
+        expected, measured, button = resize
+
+        assert expected == measured
+        assert button.isEnabled() is True
+
+    @pytest.mark.parametrize(
+        "action, n",
+        [("decrease-width", 100), ("decrease-height", 100)],
+    )
+    def test_decrease_button_floor(
+        self, qtbot, resize, init_window, action, n
+    ) -> None:
+        """
+        Tests that decreasing the schematic size repeatedly stops at a minimum
+        floor (max_view_size_delta), and that the button stays enabled at that
+        floor.
+        """
+        _, schematic, _ = init_window
         _, measured, button = resize
 
-        limiting_item = schematic.shape_items["466eaX"]
-        rect = limiting_item.mapRectToScene(limiting_item.boundingRect())
-        if "width" in request.node.callspec.id:
-            expected = rect.x() + rect.width()
-        else:
-            expected = rect.y() + rect.height()
-
-        assert button.isEnabled() is False and expected == measured
-
-        # increase size to re-enable the buttons
-        if "width" in request.node.callspec.id:
-            increase_action = "increase-width"
-        else:
-            increase_action = "increase-height"
-        increase_button = size_panel.buttons[
-            window.app_actions.get(increase_action).text()
-        ]
-        qtbot.mouseClick(increase_button, Qt.MouseButton.LeftButton)
+        assert measured == schematic.max_view_size_delta
         assert button.isEnabled() is True
 
     def test_minimise_button(self, qtbot, minimise, init_window) -> None:
         """
-        Tests that the decrease buttons are disabled when the minimise button is
-        clicked.
+        Tests that the minimise button shrinks the bounds outline to tightly wrap
+        the schematic items, without affecting button enabled state (the outline
+        is purely cosmetic and does not constrain item positions).
         """
         window, schematic, tab_panel = init_window
         _ = minimise
@@ -152,11 +155,11 @@ class TestSchematicResize:
             tab_panel.buttons[
                 window.app_actions.get("decrease-width").text()
             ].isEnabled()
-            is False
+            is True
             and tab_panel.buttons[
                 window.app_actions.get("decrease-height").text()
             ].isEnabled()
-            is False
+            is True
             and schematic.schematic_width == expected_width
             and schematic.schematic_height == expected_height
         )
