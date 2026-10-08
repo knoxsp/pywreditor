@@ -209,12 +209,27 @@ class Settings:
             return
         self.instance.setValue(self.schematic_center_key, position)
 
+    def _get_recent_files_list(self) -> list[str]:
+        """
+        Returns the stored recent-file paths as a proper list. QSettings' INI
+        backend serialises a single-item list the same way as a plain string,
+        so a 1-entry list is read back as a bare str rather than a list of one
+        - this normalises both that case and the unset (None) case.
+        :return: The list of recent file paths (empty if none are stored).
+        """
+        recent_files = self.global_instance.value(self.recent_projects_key)
+        if recent_files is None:
+            return []
+        if isinstance(recent_files, str):
+            return [recent_files]
+        return recent_files
+
     def get_recent_files(self) -> list[dict[str, str | ModelFileInfo]]:
         """
         Returns the list of recent open files.
         :return: The files as dictionary or an empty list if no file has been stored.
         """
-        recent_files: list[str] = self.global_instance.value(self.recent_projects_key)
+        recent_files = self._get_recent_files_list()
         valid_files = []
         file_info = []
 
@@ -259,11 +274,9 @@ class Settings:
         :return: None.
         """
         # this is not connected to any model file
-        recent_files: list[str] = self.global_instance.value(self.recent_projects_key)
+        recent_files = self._get_recent_files_list()
 
-        if recent_files is None:
-            recent_files = [file]
-        elif file not in recent_files:
+        if file not in recent_files:
             recent_files.append(file)
 
         self.global_instance.setValue(self.recent_projects_key, recent_files)
