@@ -1,6 +1,7 @@
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Sequence
 
 from PySide6.QtCore import QUuid
 from PySide6.QtGui import QColor
@@ -10,6 +11,30 @@ from pywr_editor.style import Color
 
 if TYPE_CHECKING:
     from pywr_editor.model import ModelConfig
+
+
+def parse_layer_color(
+    value: Sequence[int] | str | None, default_rgb: Sequence[int]
+) -> QColor:
+    """
+    Parses a layer colour. Like the shape colours, this is a list of RGB or RGBA
+    values (0-255). A CSS-like hex string ("#rrggbb" or "#rrggbbaa", where the optional
+    last pair is the opacity) is also accepted. Qt reads 8-digit hex strings as
+    #aarrggbb, so the string is parsed here.
+    :param value: The colour.
+    :param default_rgb: The RGB or RGBA colour to use if the colour is not valid.
+    :return: The QColor instance.
+    """
+    if isinstance(value, str):
+        match = re.fullmatch(r"#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?", value.strip())
+        if match is not None:
+            rgb = [int(match.group(1)[i : i + 2], 16) for i in (0, 2, 4)]
+            if match.group(2) is not None:
+                rgb.append(int(match.group(2), 16))
+            return QColor.fromRgb(*rgb)
+        return QColor.fromRgb(*default_rgb)
+
+    return BaseShape.parse_color(value, default_rgb)
 
 
 @dataclass
@@ -71,6 +96,19 @@ class GisLayerConfig:
         return "geojson"
 
     @property
+    def crs(self) -> str | None:
+        """
+        Returns the CRS of the file coordinates, when the user provided one. This
+        takes priority over the CRS defined in the file and is needed for the files
+        that do not define it (e.g. a Shapefile without the .prj file).
+        :return: The CRS definition (e.g. an EPSG code) or None to use the file CRS.
+        """
+        crs = self.layer_dict.get("crs", None)
+        if isinstance(crs, str) and len(crs.strip()) > 0:
+            return crs.strip()
+        return None
+
+    @property
     def visible(self) -> bool:
         """
         Returns whether the layer is visible on the schematic.
@@ -84,7 +122,7 @@ class GisLayerConfig:
         Returns the layer's stroke (outline) colour.
         :return: The colour instance.
         """
-        return BaseShape.parse_color(
+        return parse_layer_color(
             self.layer_dict.get("stroke_color", None), self.default_stroke_color
         )
 
@@ -94,7 +132,7 @@ class GisLayerConfig:
         Returns the layer's fill colour, used for polygon geometries.
         :return: The colour instance.
         """
-        return BaseShape.parse_color(
+        return parse_layer_color(
             self.layer_dict.get("fill_color", None), self.default_fill_color
         )
 
@@ -157,7 +195,9 @@ class GisLayers:
             None,
         )
 
-    def find(self, layer_id: str, as_dict: bool = False) -> dict | GisLayerConfig | None:
+    def find(
+        self, layer_id: str, as_dict: bool = False
+    ) -> dict | GisLayerConfig | None:
         """
         Find a layer by ID.
         :param layer_id: The layer ID.
@@ -239,6 +279,24 @@ class GisLayers:
         new_index = max(0, min(new_index, len(layers) - 1))
         layer_dict = layers.pop(idx)
         layers.insert(new_index, layer_dict)
+        self.model.has_changed()
+
+    def set_property(self, layer_id: str, key: str, value: Any) -> None:
+        """
+        Sets or, when the value is None, removes a layer property.
+        :param layer_id: The layer ID.
+        :param key: The property name (e.g. "name" or "stroke_width").
+        :param value: The new value. None removes the property.
+        :return: None
+        """
+        layer_dict = self.find(layer_id, as_dict=True)
+        if layer_dict is None:
+            return
+
+        if value is None:
+            layer_dict.pop(key, None)
+        else:
+            layer_dict[key] = value
         self.model.has_changed()
 
     def set_visible(self, layer_id: str, visible: bool) -> None:

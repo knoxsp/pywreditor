@@ -21,6 +21,7 @@
         <file alias="toggle-schematic-arrows">toolbar/arrowshapes.svg</file>
         <file alias="toggle-schematic-legend">toolbar/listbox.svg</file>
         <file alias="toggle-geo-view">toolbar/globe.svg</file>
+        <file alias="manage-gis-layers">toolbar/layers.svg</file>
         <file alias="listbox">toolbar/listbox.svg</file>
         <file alias="quit">toolbar/quit.svg</file>
         <file alias="new">toolbar/newdocument.svg</file>

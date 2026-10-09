@@ -2,6 +2,7 @@ import pytest
 from PySide6.QtGui import QColor
 
 from pywr_editor.model import GisLayerConfig, GisLayers, ModelConfig
+from pywr_editor.model.gis_layers import parse_layer_color
 from tests.utils import resolve_model_path
 
 
@@ -150,3 +151,74 @@ class TestGisLayers:
         gis_layers.move(third["id"], 0)
         ids = [layer.id for layer in gis_layers.get_all()]
         assert ids == [third["id"], first["id"], second["id"]]
+
+
+class TestGisLayerStyleAndProperties:
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ([10, 20, 30], QColor(10, 20, 30)),
+            ([10, 20, 30, 40], QColor(10, 20, 30, 40)),
+            # CSS-like strings: the last pair is the opacity, not the first (Qt)
+            ("#1f78b4", QColor(0x1F, 0x78, 0xB4)),
+            ("#1f78b460", QColor(0x1F, 0x78, 0xB4, 0x60)),
+            (" #AABBCC ", QColor(0xAA, 0xBB, 0xCC)),
+            # invalid values use the default
+            ("blue", QColor(1, 2, 3)),
+            ("#12345", QColor(1, 2, 3)),
+            ("#1234567", QColor(1, 2, 3)),
+            ([1, 2], QColor(1, 2, 3)),
+            (None, QColor(1, 2, 3)),
+            (42, QColor(1, 2, 3)),
+        ],
+    )
+    def test_parse_layer_color(self, value, expected):
+        assert parse_layer_color(value, (1, 2, 3)) == expected
+
+    def test_layer_colours_accept_hex_strings(self):
+        layer = GisLayerConfig(
+            layer_dict={
+                "id": "a",
+                "path": "a.geojson",
+                "stroke_color": "#1f78b4",
+                "fill_color": "#1f78b460",
+            }
+        )
+        assert layer.stroke_color == QColor(0x1F, 0x78, 0xB4)
+        assert layer.fill_color == QColor(0x1F, 0x78, 0xB4, 0x60)
+
+    @pytest.mark.parametrize(
+        "crs, expected",
+        [
+            ("EPSG:27700", "EPSG:27700"),
+            ("  EPSG:27700 ", "EPSG:27700"),
+            ("", None),
+            ("   ", None),
+            (None, None),
+            (27700, None),
+        ],
+    )
+    def test_layer_crs(self, crs, expected):
+        layer_dict = {"id": "a", "path": "a.shp"}
+        if crs is not None:
+            layer_dict["crs"] = crs
+        assert GisLayerConfig(layer_dict=layer_dict).crs == expected
+
+    def test_set_property(self):
+        model = ModelConfig(resolve_model_path("model_1.json"))
+        layers = GisLayers(model)
+        layer_id = layers.add("a.geojson")["id"]
+        model.reset_change_flag()
+
+        layers.set_property(layer_id, "stroke_width", 4)
+        assert layers.find(layer_id).stroke_width == 4
+        assert model.changed_ is True
+
+        layers.set_property(layer_id, "stroke_width", None)
+        assert "stroke_width" not in layers.find(layer_id, as_dict=True)
+        # removing a property that is not set is allowed
+        layers.set_property(layer_id, "stroke_width", None)
+
+        model.reset_change_flag()
+        layers.set_property("unknown", "name", "x")
+        assert model.changed_ is False

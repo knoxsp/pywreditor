@@ -16,6 +16,9 @@ from .about_dialog.about_button import AboutButton
 from .run_inspector.inspector_tree import InspectorTree
 from .run_inspector.inspector_dialog import InspectorDialog
 
+# this imports the schematic, which needs the inspector classes above
+from .gis_layers.gis_layers_dialog import GisLayersDialog
+
 # section classes for node dialog
 from .node.sections.abstract_node_section import AbstractNodeSection
 from .node.sections.abstract_storage_section import AbstractStorageSection

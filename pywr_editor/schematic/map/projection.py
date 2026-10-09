@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import pyproj
 
 WEB_MERCATOR_CRS = "EPSG:3857"
@@ -26,7 +28,7 @@ class Projector:
     view is active, since this is also the CRS OSM tiles are published in.
     """
 
-    def __init__(self, source_crs: str = "EPSG:4326"):
+    def __init__(self, source_crs: "str | pyproj.CRS" = "EPSG:4326"):
         """
         Initialise the class.
         :param source_crs: The CRS the input coordinates are provided in (e.g. an
@@ -48,6 +50,19 @@ class Projector:
         :return: The (x, y) coordinate pair in Web Mercator metres.
         """
         return self._to_merc.transform(x, y)
+
+    def lonlat_to_merc_many(
+        self, x: Sequence[float], y: Sequence[float]
+    ) -> tuple[list[float], list[float]]:
+        """
+        Converts many coordinate pairs from the source CRS to Web Mercator. The
+        coordinates that cannot be projected are returned as infinity.
+        :param x: The x coordinates.
+        :param y: The y coordinates.
+        :return: The x and y coordinates in Web Mercator metres.
+        """
+        merc_x, merc_y = self._to_merc.transform(list(x), list(y))
+        return list(merc_x), list(merc_y)
 
     def merc_to_lonlat(self, x: float, y: float) -> tuple[float, float]:
         """

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
 from pywr_editor.dialogs import (
     AboutButton,
     EdgeSlotsDialog,
+    GisLayersDialog,
     IncludesDialog,
     JsonCodeViewer,
     MetadataDialog,
@@ -540,6 +541,16 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="manage-gis-layers",
+                name="GIS layers",
+                icon=":toolbar/manage-gis-layers",
+                tooltip="Add, style and order the GeoJSON and Shapefile layers "
+                "shown on the schematic in the geographic view",
+                connection=self.open_gis_layers_dialog,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="center",
                 name="Centre",
                 icon=":toolbar/centre-schematic",
@@ -691,7 +702,9 @@ class MainWindow(QMainWindow):
         display_panel.add_button(self.app_actions.get("toggle-labels"), is_large=False)
         display_panel.add_button(self.app_actions.get("toggle-arrows"), is_large=False)
         display_panel.add_button(self.app_actions.get("toggle-legend"), is_large=False)
-        display_panel.add_button(self.app_actions.get("toggle-geo-view"), is_large=False)
+        display_panel.add_button(
+            self.app_actions.get("toggle-geo-view"), is_large=False
+        )
         display_panel.add_button(self.app_actions.get("center"), is_large=False)
 
         toggle_node_data_action = self.node_data_panel.toggleViewAction()
@@ -712,6 +725,7 @@ class MainWindow(QMainWindow):
 
         misc_panel = schematic_tab.add_panel("Misc", layout="vertical")
         misc_panel.add_button(self.app_actions.get("lock"), is_large=False)
+        misc_panel.add_button(self.app_actions.get("manage-gis-layers"), is_large=False)
         misc_panel.add_button(
             self.app_actions.get("export-current-view"), is_large=False
         )
@@ -913,6 +927,15 @@ class MainWindow(QMainWindow):
         :return: None
         """
         dialog = TablesDialog(model=self.model_config, parent=self)
+        dialog.show()
+
+    @Slot()
+    def open_gis_layers_dialog(self) -> None:
+        """
+        Opens the dialog to manage the GIS layers shown on the schematic.
+        :return: None
+        """
+        dialog = GisLayersDialog(model_config=self.model_config, parent=self)
         dialog.show()
 
     @Slot()

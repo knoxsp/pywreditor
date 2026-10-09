@@ -65,9 +65,10 @@ from .map import (
     ATTRIBUTION_URL,
     MAX_ZOOM,
     GeoTransform,
+    GisOverlay,
     Projector,
-    TileItem,
     TileLayer,
+    is_map_item,
 )
 
 if TYPE_CHECKING:
@@ -224,6 +225,7 @@ class Schematic(QGraphicsView):
 
         # the OSM basemap and its attribution, which must be visible with the tiles
         self.tile_layer = TileLayer(self)
+        self.gis_overlay = GisOverlay(self)
         self.tile_layer.basemap_visible = bool(
             self.model_config.map_config.get("show_basemap", True)
         )
@@ -387,6 +389,7 @@ class Schematic(QGraphicsView):
 
         self.legend.refresh()
         self.tile_layer.refresh()
+        self.gis_overlay.refresh()
 
         if self.init is True:
             self.init = False
@@ -398,6 +401,7 @@ class Schematic(QGraphicsView):
         """
         # the scene deletes its items: the tiles must be removed first
         self.tile_layer.clear()
+        self.gis_overlay.clear()
         self.scene.clear()
         self.add_scene_decorations()
         self.node_items = {}
@@ -971,6 +975,14 @@ class Schematic(QGraphicsView):
         self.editor_settings.save_legend_position(position)
         self.overlay_layout.setAlignment(self.legend, self.legend_alignment)
 
+    def refresh_gis_layers(self) -> None:
+        """
+        Draws the GIS layers of the model again, e.g. after the layers were added,
+        removed or changed. The layers are only shown in the geographic view.
+        :return: None
+        """
+        self.gis_overlay.refresh()
+
     def set_basemap_visible(self, visible: bool) -> None:
         """
         Shows or hides the OSM basemap and its attribution, without reloading the
@@ -1529,11 +1541,8 @@ class Schematic(QGraphicsView):
         """
         # when there is only one item (the canvas), prevent the schematic from being
         # minimised
-        # (the map tiles are not schematic items)
-        if (
-            len([item for item in self.scene.items() if not isinstance(item, TileItem)])
-            == 1
-        ):
+        # (the map tiles and the GIS layers are not schematic items)
+        if len([item for item in self.scene.items() if not is_map_item(item)]) == 1:
             enabled = False
         else:
             enabled = True
