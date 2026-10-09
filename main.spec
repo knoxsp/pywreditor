@@ -4,6 +4,7 @@ import shutil
 import sys
 from pathlib import Path
 
+import pyproj
 import pywr
 import tables
 from PyInstaller.utils.hooks import copy_metadata
@@ -51,6 +52,8 @@ a = Analysis(
         # pywr __init__.py relies on the dist info folder to set __version__.
         # This must be manually copied
         # (pywr_dist.as_posix(), pywr_dist.name),
+        # pyproj's PROJ datum/grid data is not picked up automatically
+        (pyproj.datadir.get_data_dir(), "pyproj/proj_dir/share/proj"),
     ]
     + metadata,
     hiddenimports=[
@@ -68,6 +71,8 @@ a = Analysis(
         "inspector_dialog",
         "matplotlib",
         "numpy",
+        "pyproj",
+        "shapefile",
     ],
     hookspath=[],
     hooksconfig={},
