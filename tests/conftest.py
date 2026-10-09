@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
+from pywr_editor.schematic.map import TileCache, TileFetcher
 from pywr_editor.utils import Settings
+from tests.fake_network import FakeNetwork
 
 
 def clean_env(model_file: str) -> None:
@@ -34,6 +36,18 @@ def clean_recent_files() -> None:
             editor_settings.recent_projects_key, kept_files
         )
         editor_settings.global_instance.sync()
+
+
+@pytest.fixture(autouse=True)
+def offline_map_tiles(monkeypatch, tmp_path_factory):
+    """
+    Prevents the tests from downloading OSM tiles, which must not be requested by
+    automated runs, and from writing to the real tile cache.
+    """
+    monkeypatch.setattr(TileFetcher, "network_factory", FakeNetwork)
+    monkeypatch.setattr(
+        TileCache, "default_root", tmp_path_factory.getbasetemp() / "osm_tiles"
+    )
 
 
 def pytest_sessionfinish(session):

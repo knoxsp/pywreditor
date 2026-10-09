@@ -2,6 +2,14 @@ import math
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
+from .tile_source import TILE_SIZE
+
+ORIGIN_SHIFT = 20037508.342789244
+""" Half the width of the Web Mercator world in metres. The tile grid starts at the
+north west corner (-ORIGIN_SHIFT, ORIGIN_SHIFT) """
+INITIAL_RESOLUTION = 2 * ORIGIN_SHIFT / TILE_SIZE
+""" The metres covered by one pixel of a tile at zoom level 0 """
+
 MIN_SPAN_METRES = 1000.0
 """ Smallest extent, in Web Mercator metres, fitted to the schematic. This stops a
 single node (or nodes sharing a location) from zooming the map to an infinite scale """
@@ -97,6 +105,15 @@ class GeoTransform:
         :return: The Web Mercator metres covered by one screen pixel.
         """
         return self.metres_per_unit / max(view_scale, 1e-12)
+
+    def scale_for_zoom(self, tile_zoom: int) -> float:
+        """
+        Returns the view scale at which the tiles of a zoom level are displayed
+        without being enlarged or reduced (one tile pixel per screen pixel).
+        :param tile_zoom: The tile zoom level.
+        :return: The view scale.
+        """
+        return self.metres_per_unit / (INITIAL_RESOLUTION / 2**tile_zoom)
 
     @staticmethod
     def is_finite(point: Sequence[float]) -> bool:

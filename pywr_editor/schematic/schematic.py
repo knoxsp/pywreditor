@@ -60,7 +60,15 @@ from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
 from .legend import NodeTypeGroup, SchematicLegend
-from .map import GeoTransform, Projector
+from .map import (
+    ATTRIBUTION,
+    ATTRIBUTION_URL,
+    MAX_ZOOM,
+    GeoTransform,
+    Projector,
+    TileItem,
+    TileLayer,
+)
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -214,6 +222,41 @@ class Schematic(QGraphicsView):
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
         )
 
+        # the OSM basemap and its attribution, which must be visible with the tiles
+        self.tile_layer = TileLayer(self)
+        self.tile_layer.basemap_visible = bool(
+            self.model_config.map_config.get("show_basemap", True)
+        )
+        self.attribution = QLabel(
+            f'<a href="{ATTRIBUTION_URL}">{ATTRIBUTION}</a>', self
+        )
+        self.attribution.setObjectName("map-attribution")
+        self.attribution.setOpenExternalLinks(True)
+        self.attribution.setStyleSheet(
+            stylesheet_dict_to_str(
+                {
+                    "#map-attribution": {
+                        "background-color": f"rgba{str(Color('gray', 50).rgba(.8))}",
+                        "color": Color("gray", 600).hex,
+                        "font-size": "11px",
+                        "padding": "1px 4px",
+                    },
+                }
+            )
+        )
+        self.attribution.hide()
+        # the attribution is on its own row at the bottom, so that it never
+        # overlaps the legend
+        self.overlay_layout.addWidget(
+            self.attribution,
+            1,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+        )
+        self.overlay_layout.setRowStretch(0, 1)
+        self.overlay_layout.setRowStretch(1, 0)
+        self.tile_layer.active_changed.connect(self.attribution.setVisible)
+
     def add_scene_decorations(self) -> None:
         """
         Adds the background to the scene. The canvas is unbounded: there is no
@@ -238,6 +281,9 @@ class Schematic(QGraphicsView):
         :return: None
         """
         super().drawBackground(painter, rect)
+        # every pan and zoom repaints the background: load the tiles for the
+        # new area (this does not change the scene while it is painted)
+        self.tile_layer.request_refresh()
 
         if not self.editor_settings.is_grid_shown:
             return
@@ -340,6 +386,7 @@ class Schematic(QGraphicsView):
             self.add_shape(shape_obj)
 
         self.legend.refresh()
+        self.tile_layer.refresh()
 
         if self.init is True:
             self.init = False
@@ -349,6 +396,8 @@ class Schematic(QGraphicsView):
         Reloads the scene and schematic.
         :return: None
         """
+        # the scene deletes its items: the tiles must be removed first
+        self.tile_layer.clear()
         self.scene.clear()
         self.add_scene_decorations()
         self.node_items = {}
@@ -704,6 +753,23 @@ class Schematic(QGraphicsView):
         """
         self.setTransform(QtGui.QTransform())
 
+    @property
+    def zoom_limits(self) -> tuple[float, float]:
+        """
+        Returns the minimum and maximum zoom of the view. The schematic limits are
+        too narrow for a map, as the geographic view must go from the whole world
+        to the most detailed tiles, so it uses the scales of these tile zoom levels.
+        :return: The (minimum, maximum) view scale.
+        """
+        if not self.editor_settings.is_geo_view_enabled:
+            return self.min_zoom, self.max_zoom
+
+        transform = self.geo_transform
+        return (
+            min(self.min_zoom, transform.scale_for_zoom(0)),
+            max(self.max_zoom, transform.scale_for_zoom(MAX_ZOOM)),
+        )
+
     def scale_view(self, f: float, anchor: QPoint | None = None) -> None:
         """
         Scales the view and handles the zoom buttons status.
@@ -716,27 +782,29 @@ class Schematic(QGraphicsView):
             aligned), so the zoom anchor is restored manually.
         :return: None
         """
-        self.scaling_factor = round(
-            self.transform().scale(f, f).mapRect(QRectF(0, 0, 1, 1)).width(), 4
-        )
+        new_scale = self.transform().scale(f, f).mapRect(QRectF(0, 0, 1, 1)).width()
+        self.scaling_factor = round(new_scale, 4)
 
+        # the limits are checked on the unrounded scale, as the geographic view
+        # can be zoomed out to scales smaller than the rounding precision
+        min_zoom, max_zoom = self.zoom_limits
         if self.scaling_factor is not None:
             # zoom out button
-            if self.scaling_factor <= self.min_zoom:
+            if new_scale <= min_zoom:
                 self.app.app_actions.get("zoom-out").setDisabled(True)
             else:
                 self.app.app_actions.get("zoom-out").setDisabled(False)
             # block scaling
-            if self.scaling_factor < self.min_zoom:
+            if new_scale < min_zoom:
                 return
 
-            if self.scaling_factor >= self.max_zoom:
+            if new_scale >= max_zoom:
                 # zoom in button
                 self.app.app_actions.get("zoom-in").setDisabled(True)
             else:
                 self.app.app_actions.get("zoom-in").setDisabled(False)
             # block scaling
-            if self.scaling_factor > self.max_zoom:
+            if new_scale > max_zoom:
                 return
 
             # zoom 100% button
@@ -754,6 +822,7 @@ class Schematic(QGraphicsView):
         new_scene_pos = self.mapToScene(anchor)
         delta = new_scene_pos - old_scene_pos
         self.translate(delta.x(), delta.y())
+        self.tile_layer.request_refresh()
 
     @Slot(QPointF)
     def on_schematic_move(self, position: QPointF) -> None:
@@ -901,6 +970,18 @@ class Schematic(QGraphicsView):
         """
         self.editor_settings.save_legend_position(position)
         self.overlay_layout.setAlignment(self.legend, self.legend_alignment)
+
+    def set_basemap_visible(self, visible: bool) -> None:
+        """
+        Shows or hides the OSM basemap and its attribution, without reloading the
+        schematic. The tiles are only displayed in the geographic view.
+        :param visible: True to show the basemap, False to hide it.
+        :return: None
+        """
+        # whether a model has a basemap is saved with the model
+        self.model_config.map_config["show_basemap"] = visible
+        self.model_config.has_changed()
+        self.tile_layer.set_basemap_visible(visible)
 
     def set_grid_visible(self, visible: bool) -> None:
         """
@@ -1448,7 +1529,11 @@ class Schematic(QGraphicsView):
         """
         # when there is only one item (the canvas), prevent the schematic from being
         # minimised
-        if len(self.scene.items()) == 1:
+        # (the map tiles are not schematic items)
+        if (
+            len([item for item in self.scene.items() if not isinstance(item, TileItem)])
+            == 1
+        ):
             enabled = False
         else:
             enabled = True
