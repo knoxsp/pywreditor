@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QGraphicsScene,
     QGraphicsView,
     QGridLayout,
+    QLabel,
     QPushButton,
 )
 
@@ -59,6 +60,7 @@ from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
 from .legend import NodeTypeGroup, SchematicLegend
+from .map import Projector
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -119,6 +121,10 @@ class Schematic(QGraphicsView):
             str, SchematicText | SchematicRectangle | SchematicArrow
         ] = {}
         self.hidden_node_types: set[str] = set(self.editor_settings.hidden_node_types)
+        # lazily built (see geo_projector) - most models never use the geographic
+        # view, so building the CRS transformer on every schematic load would be
+        # wasted work
+        self._geo_projector: Projector | None = None
 
         self.schematic_move_event.connect(self.on_schematic_move)
         self.connect_node_event.connect(self.on_connect_node_end)
@@ -182,6 +188,29 @@ class Schematic(QGraphicsView):
         self.legend = SchematicLegend(self)
         self.overlay_layout.addWidget(self.legend, 0, 0, self.legend_alignment)
 
+        self.geo_view_banner = QLabel(self)
+        self.geo_view_banner.setObjectName("geo-view-banner")
+        self.geo_view_banner.setStyleSheet(
+            stylesheet_dict_to_str(
+                {
+                    "#geo-view-banner": {
+                        "background-color": f"rgba{str(Color('amber', 100).rgba(.9))}",
+                        "border": f"1px solid {Color('amber', 300).hex}",
+                        "border-radius": "4px",
+                        "color": Color("amber", 900).hex,
+                        "padding": "4px 10px",
+                    },
+                }
+            )
+        )
+        self.geo_view_banner.hide()
+        self.overlay_layout.addWidget(
+            self.geo_view_banner,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+        )
+
     def add_scene_decorations(self) -> None:
         """
         Adds the background to the scene. The canvas is unbounded: there is no
@@ -234,11 +263,36 @@ class Schematic(QGraphicsView):
         Draw the schematic.
         :return: None
         """
+        is_geo_view = self.editor_settings.is_geo_view_enabled
+        hidden_geo_node_count = 0
+
         # draw the nodes
         for node_index, node_props in enumerate(self.model_config.nodes.get_all()):
             node_config = self.model_config.nodes.node(node_props)
-            node_position = node_config.position
 
+            if is_geo_view:
+                geographic_position = node_config.geographic_position
+                if geographic_position is not None:
+                    node_obj = self.add_node(
+                        node_props=node_props,
+                        position_override=self.to_geo_px(geographic_position),
+                    )
+                else:
+                    # do not fabricate a position from the node's schematic or
+                    # editor position - that would plant fake geodata. Instead
+                    # hide the node and warn via the banner below
+                    node_obj = self.add_node(
+                        node_props=node_props,
+                        position_override=[
+                            self.schematic_width / 2,
+                            self.schematic_height / 2,
+                        ],
+                    )
+                    node_obj.setVisible(False)
+                    hidden_geo_node_count += 1
+                continue
+
+            node_position = node_config.position
             # position is not available
             if node_position is None:
                 # use pywr position if available
@@ -257,6 +311,8 @@ class Schematic(QGraphicsView):
 
             # draw the node
             self.add_node(node_props=node_props)
+
+        self.set_geo_view_banner(hidden_geo_node_count if is_geo_view else 0)
 
         # draw the edges
         model_edges = Edges(self.model_config)
@@ -295,13 +351,21 @@ class Schematic(QGraphicsView):
         self.node_items = {}
         self.draw()
 
-    def add_node(self, node_props: dict) -> SchematicNode:
+    def add_node(
+        self,
+        node_props: dict,
+        position_override: Sequence[float] | None = None,
+    ) -> SchematicNode:
         """
         Add a new graphical node to the schematic.
         :param node_props: The dictionary with the node properties.
+        :param position_override: The [x, y] scene position to use instead of the
+        node's stored editor_position. Used by the geographic view. Optional.
         :return: The graphical node instance.
         """
-        node_obj = SchematicNode(node_props=node_props, view=self)
+        node_obj = SchematicNode(
+            node_props=node_props, view=self, position_override=position_override
+        )
         if node_obj.model_node.type in self.hidden_node_types:
             node_obj.setVisible(False)
         self.scene.addItem(node_obj)
@@ -438,6 +502,58 @@ class Schematic(QGraphicsView):
                 )
             )
         return point_px
+
+    @property
+    def geo_projector(self) -> Projector:
+        """
+        Returns the CRS projector used by the geographic view, building it the
+        first time it is needed (see to_geo_px()).
+        :return: The Projector instance.
+        """
+        if self._geo_projector is None:
+            self._geo_projector = Projector(self.model_config.geographic_crs)
+        return self._geo_projector
+
+    def to_geo_px(self, lonlat: Sequence[float]) -> list[float]:
+        """
+        Transforms a node's geographic (longitude, latitude) coordinates to scene
+        coordinates, via Web Mercator. One scene unit equals one Web Mercator
+        metre; the y axis is flipped to match Qt's y-down convention (mirroring
+        how to_px() flips the pywr y axis). As with to_px(), the current view
+        zoom (see scale_view()) provides the on-screen magnification - this just
+        maps to a fixed, zoom-independent scene coordinate.
+        :param lonlat: The [longitude, latitude] pair, in the model's configured
+        geographic CRS.
+        :return: The transformed [x, y] scene coordinates.
+        """
+        x, y = self.geo_projector.lonlat_to_merc(lonlat[0], lonlat[1])
+        return [round(x, 4), round(-y, 4)]
+
+    def rebuild_geo_projector(self) -> None:
+        """
+        Rebuilds the CRS projector used by the geographic view. Call this after
+        the model's geographic CRS setting changes.
+        :return: None
+        """
+        self._geo_projector = Projector(self.model_config.geographic_crs)
+
+    def set_geo_view_banner(self, hidden_node_count: int) -> None:
+        """
+        Shows or hides the banner warning that some nodes are hidden in the
+        geographic view because they do not have a "geographic" position set.
+        :param hidden_node_count: The number of hidden nodes. The banner is
+        hidden when this is zero.
+        :return: None
+        """
+        if hidden_node_count == 0:
+            self.geo_view_banner.hide()
+            return
+
+        noun = "node" if hidden_node_count == 1 else "nodes"
+        self.geo_view_banner.setText(
+            f"{hidden_node_count} {noun} hidden - no geographic position set"
+        )
+        self.geo_view_banner.show()
 
     @Slot()
     def increase_height(self) -> None:
@@ -703,6 +819,21 @@ class Schematic(QGraphicsView):
         :return: None
         """
         self.legend.toggle()
+
+    @Slot()
+    def toggle_coordinate_system(self) -> None:
+        """
+        Switches the schematic between the schematic and the geographic
+        coordinate system, and persists the choice. Not undoable - this is a
+        display preference, like the legend/grid/label toggles.
+        :return: None
+        """
+        self.editor_settings.save_geo_view(not self.editor_settings.is_geo_view_enabled)
+        if self.editor_settings.is_geo_view_enabled:
+            self.rebuild_geo_projector()
+        self.reload()
+        if self.editor_settings.is_geo_view_enabled:
+            self.fit_view()
 
     @property
     def legend_alignment(self) -> Qt.AlignmentFlag:

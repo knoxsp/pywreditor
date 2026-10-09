@@ -1,0 +1,43 @@
+{
+  "metadata": {
+    "title": "Geographic positions",
+    "description": "A model with some nodes having a geographic position and some not.",
+    "minimum_version": "0.1"
+  },
+  "timestepper": {
+    "start": "2015-01-01",
+    "end": "2015-12-31",
+    "timestep": 1
+  },
+  "nodes": [
+    {
+      "name": "Reservoir",
+      "type": "Storage",
+      "max_volume": 35,
+      "initial_volume": 35,
+      "position": {
+        "editor_position": [200, 500],
+        "geographic": [-0.448083, 51.6217]
+      }
+    },
+    {
+      "name": "Link1",
+      "type": "Link",
+      "position": {
+        "editor_position": [1000, 300],
+        "geographic": [-1.5, 52.1]
+      }
+    },
+    {
+      "name": "Link2",
+      "type": "Link",
+      "position": {
+        "editor_position": [600, 100]
+      }
+    }
+  ],
+  "edges": [
+    ["Reservoir", "Link1"],
+    ["Link1", "Link2"]
+  ]
+}

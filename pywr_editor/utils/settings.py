@@ -18,6 +18,7 @@ class Settings:
     hide_labels_key = "schematic/hide_labels"
     hide_arrows_key = "schematic/hide_arrows"
     hide_legend_key = "schematic/hide_legend"
+    geo_view_key = "schematic/geo_view"
     hidden_node_types_key = "schematic/hidden_node_types"
     zoom_level_key = "schematic/zoom_level"
     schematic_center_key = "schematic/schematic_center"
@@ -199,6 +200,27 @@ class Settings:
         if self.app_name is None:
             return
         self.instance.setValue(self.hide_legend_key, hide)
+
+    @property
+    def is_geo_view_enabled(self) -> bool:
+        """
+        Whether the schematic should plot nodes using their geographic (lon/lat)
+        position instead of their schematic position.
+        :return: True if the geographic view is enabled, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.geo_view_key, defaultValue=False)
+        )
+
+    def save_geo_view(self, enabled: bool) -> None:
+        """
+        Sets whether the schematic should use the geographic view.
+        :param enabled: True to enable the geographic view, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.geo_view_key, enabled)
 
     @property
     def hidden_node_types(self) -> list[str]:

@@ -529,6 +529,17 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="toggle-geo-view",
+                name="Geographic view",
+                icon=":toolbar/toggle-geo-view",
+                tooltip="Switch the schematic between the schematic and "
+                "geographic coordinate system",
+                is_checked=self.editor_settings.is_geo_view_enabled,
+                connection=self.schematic.toggle_coordinate_system,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="center",
                 name="Centre",
                 icon=":toolbar/centre-schematic",
@@ -680,6 +691,7 @@ class MainWindow(QMainWindow):
         display_panel.add_button(self.app_actions.get("toggle-labels"), is_large=False)
         display_panel.add_button(self.app_actions.get("toggle-arrows"), is_large=False)
         display_panel.add_button(self.app_actions.get("toggle-legend"), is_large=False)
+        display_panel.add_button(self.app_actions.get("toggle-geo-view"), is_large=False)
         display_panel.add_button(self.app_actions.get("center"), is_large=False)
 
         toggle_node_data_action = self.node_data_panel.toggleViewAction()
