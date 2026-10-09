@@ -18,3 +18,13 @@ class Constants(Enum):
     """ default size of the schematic when this is not provided in the model file """
     SCHEMATIC_SIZE_KEY = "schematic_size"
     """ key where to store the schematic size """
+    GEOGRAPHIC_KEY = "geographic"
+    """ key in a node's "position" dict containing its [longitude, latitude] """
+    MAP_KEY = "map"
+    """ key in the editor's setting dictionary where to locate the map settings """
+    DEFAULT_GEOGRAPHIC_CRS = "EPSG:4326"
+    """ CRS assumed for a node's "geographic" coordinates when the model does not
+    override it """
+    GIS_LAYERS_KEY = "layers"
+    """ key, under the map setting dictionary, holding the list of GIS overlay
+    layers """

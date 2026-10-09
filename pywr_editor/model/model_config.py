@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal
 from pywr_editor.model import (
     Constants,
     Edges,
+    GisLayers,
     Includes,
     ModelFileInfo,
     Nodes,
@@ -67,6 +68,7 @@ class ModelConfig(QObject):
         self.scenarios = Scenarios(model=self)
         self.includes = Includes(model=self)
         self.shapes = Shapes(model=self)
+        self.gis_layers = GisLayers(model=self)
 
         # custom components cannot use same name as built-in parameters. Pywr always
         # prioritises its own
@@ -289,6 +291,10 @@ class ModelConfig(QObject):
                 Constants.SHAPES_KEY.value
             ] = []
             self.has_changed()
+
+        # note: the "map" key self-heals lazily via the map_config property (like
+        # "schematic_size" does), without marking the model as changed, since
+        # practically every existing model file predates this key
 
         # check that the metadata dictionary and its key/value pairs are defined
         default_metadata = {
@@ -520,6 +526,51 @@ class ModelConfig(QObject):
         :return: None
         """
         self.editor_config[Constants.SCHEMATIC_SIZE_KEY.value] = size
+        self.has_changed()
+
+    @property
+    def map_config(self) -> dict:
+        """
+        Gets the map configuration dictionary (CRS, basemap visibility and GIS
+        overlay layers). Missing keys are self-healed with their defaults.
+        :return: The map configuration dictionary.
+        """
+        map_key = Constants.MAP_KEY.value
+        if map_key not in self.editor_config or not isinstance(
+            self.editor_config[map_key], dict
+        ):
+            self.editor_config[map_key] = {
+                "crs": Constants.DEFAULT_GEOGRAPHIC_CRS.value,
+                "show_basemap": True,
+                Constants.GIS_LAYERS_KEY.value: [],
+            }
+        if Constants.GIS_LAYERS_KEY.value not in self.editor_config[map_key]:
+            self.editor_config[map_key][Constants.GIS_LAYERS_KEY.value] = []
+
+        return self.editor_config[map_key]
+
+    @property
+    def geographic_crs(self) -> str:
+        """
+        Gets the CRS to use to interpret the nodes' "geographic" coordinates.
+        :return: The CRS from the model config file as an EPSG string (e.g.
+        "EPSG:4326"). If not available or invalid, the default CRS is returned.
+        """
+        default_crs = Constants.DEFAULT_GEOGRAPHIC_CRS.value
+        if "crs" in self.map_config and isinstance(self.map_config["crs"], str):
+            return self.map_config["crs"]
+        else:
+            # store the CRS if it is not set or wrong
+            self.map_config["crs"] = default_crs
+            return default_crs
+
+    def update_geographic_crs(self, crs: str) -> None:
+        """
+        Sets the CRS to use to interpret the nodes' "geographic" coordinates.
+        :param crs: The CRS as an EPSG string (e.g. "EPSG:4326").
+        :return: None
+        """
+        self.map_config["crs"] = crs
         self.has_changed()
 
     def normalize_file_path(self, file: str | None) -> str | None:

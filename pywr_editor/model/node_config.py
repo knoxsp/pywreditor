@@ -77,6 +77,22 @@ class NodeConfig(ComponentConfig):
         return None
 
     @property
+    def geographic_position(self) -> list[float] | None:
+        """
+        Return the node's geographic position (longitude, latitude).
+        :return: The [longitude, latitude] pair if available, None otherwise.
+        """
+        geographic_key = Constants.GEOGRAPHIC_KEY.value
+        if (
+            "position" in self.props
+            and geographic_key in self.props["position"]
+            and isinstance(self.props["position"][geographic_key], list)
+            and len(self.props["position"][geographic_key]) == 2
+        ):
+            return self.props["position"][geographic_key]
+        return None
+
+    @property
     def position(self) -> list[float | int] | None:
         """
         Return the node position.

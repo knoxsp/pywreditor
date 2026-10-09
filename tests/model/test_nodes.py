@@ -58,6 +58,53 @@ class TestNodesClass:
             410,
         ]
 
+    def test_set_geographic_position(self):
+        """
+        Tests the set_geographic_position method.
+        """
+        model = self.model("model_1.json")
+        node_index = 1
+        # by name
+        model.nodes.set_geographic_position([-0.448083, 51.6217], node_name="Link")
+        assert model.json["nodes"][node_index]["position"]["geographic"] == [
+            -0.448083,
+            51.6217,
+        ]
+
+        # by index
+        model.nodes.set_geographic_position([-1.5, 52.1], node_index=node_index)
+        assert model.json["nodes"][node_index]["position"]["geographic"] == [
+            -1.5,
+            52.1,
+        ]
+
+        assert model.has_changes is True
+
+    def test_set_geographic_position_missing_props(self):
+        """
+        Tests the set_geographic_position method when the node does not have the
+        position keys set.
+        """
+        model = self.model("model_missing_schematic_props.json")
+
+        model.nodes.set_geographic_position([-0.1, 51.5], node_name="Link1")
+        assert model.json["nodes"][1]["position"]["geographic"] == [-0.1, 51.5]
+
+    def test_update_preserves_geographic_position(self):
+        """
+        Tests that Nodes.update() preserves an existing geographic position.
+        """
+        model = self.model("model_1.json")
+        model.nodes.set_geographic_position([-0.448083, 51.6217], node_name="Link")
+
+        model.nodes.update({"name": "Link", "type": "Link", "comment": "updated"})
+
+        node_index = model.nodes.find_node_index_by_name("Link")
+        assert model.json["nodes"][node_index]["position"]["geographic"] == [
+            -0.448083,
+            51.6217,
+        ]
+
     def test_find_node_index(self):
         """
         Tests the find_node_index_by_name method.
