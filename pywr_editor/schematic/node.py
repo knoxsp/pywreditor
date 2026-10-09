@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Literal, Sequence, TypedDict, Union
 
 import PySide6
 import qtawesome as qta
@@ -46,11 +46,20 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
     disabled_node_opacity: float = 0.3
     """ The opacity of the nodes when they are disabled """
 
-    def __init__(self, node_props: dict, view: "Schematic"):
+    def __init__(
+        self,
+        node_props: dict,
+        view: "Schematic",
+        position_override: Sequence[float] | None = None,
+    ):
         """
         Initialise the class.
         :param node_props: The node properties from the model dictionary.
         :param view: The view where to draw the item.
+        :param position_override: The [x, y] scene position to use instead of the
+        node's stored editor_position. Used by the geographic view, which plots
+        nodes by their geographic position without touching their stored
+        editor_position. Optional.
         :return None
         """
         AbstractSchematicItem.__init__(self, view)
@@ -58,7 +67,11 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
 
         self.model_node = view.model_config.nodes.node(node_props)
         self.name = self.model_node.name
-        self.x, self.y = self.model_node.position
+        self.x, self.y = (
+            position_override
+            if position_override is not None
+            else self.model_node.position
+        )
         self.edges: list[Edge] = []
         self.view = view
         self.tooltip_text = ModelComponentTooltip(
@@ -66,10 +79,13 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         ).render()
         self.setToolTip(self.tooltip_text)
 
-        # allow interaction
+        # allow interaction - dragging is also disabled in the geographic view,
+        # since a node's on-screen position there is derived from its geographic
+        # position, not a freely-set editor_position
         self.setFlag(
             QGraphicsItem.ItemIsMovable,
-            self.view.editor_settings.is_schematic_locked is False,
+            self.view.editor_settings.is_schematic_locked is False
+            and self.view.editor_settings.is_geo_view_enabled is False,
         )
         self.setFlag(QGraphicsItem.ItemIsSelectable)
         # enable notifications for position and transformation changes
