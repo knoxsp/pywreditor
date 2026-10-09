@@ -60,7 +60,7 @@ from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
 from .legend import NodeTypeGroup, SchematicLegend
-from .map import Projector
+from .map import GeoTransform, Projector
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -125,6 +125,9 @@ class Schematic(QGraphicsView):
         # view, so building the CRS transformer on every schematic load would be
         # wasted work
         self._geo_projector: Projector | None = None
+        self._geo_transform: GeoTransform | None = None
+        # view transform and centre to restore when leaving the geographic view
+        self._schematic_view_state: tuple[QtGui.QTransform, QPointF] | None = None
 
         self.schematic_move_event.connect(self.on_schematic_move)
         self.connect_node_event.connect(self.on_connect_node_end)
@@ -514,28 +517,52 @@ class Schematic(QGraphicsView):
             self._geo_projector = Projector(self.model_config.geographic_crs)
         return self._geo_projector
 
+    @property
+    def geo_transform(self) -> GeoTransform:
+        """
+        Returns the transform between Web Mercator coordinates and scene
+        coordinates, fitted to the nodes with a geographic position. It is built the
+        first time it is needed and rebuilt by rebuild_geo_projector().
+        :return: The GeoTransform instance.
+        """
+        if self._geo_transform is None:
+            merc_points = []
+            for node_props in self.model_config.nodes.get_all():
+                position = self.model_config.nodes.node(node_props).geographic_position
+                if position is not None:
+                    merc_point = self.geo_projector.lonlat_to_merc(*position)
+                    if GeoTransform.is_finite(merc_point):
+                        merc_points.append(merc_point)
+            self._geo_transform = GeoTransform.fit(
+                merc_points, (self.schematic_width, self.schematic_height)
+            )
+        return self._geo_transform
+
     def to_geo_px(self, lonlat: Sequence[float]) -> list[float]:
         """
-        Transforms a node's geographic (longitude, latitude) coordinates to scene
-        coordinates, via Web Mercator. One scene unit equals one Web Mercator
-        metre; the y axis is flipped to match Qt's y-down convention (mirroring
-        how to_px() flips the pywr y axis). As with to_px(), the current view
-        zoom (see scale_view()) provides the on-screen magnification - this just
-        maps to a fixed, zoom-independent scene coordinate.
+        Transforms a node's geographic coordinates to scene coordinates, via Web
+        Mercator. The transform is fitted to the extent of the nodes (see
+        GeoTransform), so one scene unit is not a fixed distance. As with to_px(),
+        the current view zoom (see scale_view()) provides the on-screen magnification.
         :param lonlat: The [longitude, latitude] pair, in the model's configured
         geographic CRS.
         :return: The transformed [x, y] scene coordinates.
         """
         x, y = self.geo_projector.lonlat_to_merc(lonlat[0], lonlat[1])
-        return [round(x, 4), round(-y, 4)]
+        if not GeoTransform.is_finite((x, y)):
+            return [self.schematic_width / 2, self.schematic_height / 2]
+        scene_x, scene_y = self.geo_transform.merc_to_scene(x, y)
+        return [round(scene_x, 4), round(scene_y, 4)]
 
     def rebuild_geo_projector(self) -> None:
         """
-        Rebuilds the CRS projector used by the geographic view. Call this after
-        the model's geographic CRS setting changes.
+        Rebuilds the CRS projector and the scene transform used by the geographic
+        view. Call this after the model's geographic CRS setting changes or before
+        the view is drawn in the geographic coordinate system.
         :return: None
         """
         self._geo_projector = Projector(self.model_config.geographic_crs)
+        self._geo_transform = None
 
     def set_geo_view_banner(self, hidden_node_count: int) -> None:
         """
@@ -828,12 +855,28 @@ class Schematic(QGraphicsView):
         display preference, like the legend/grid/label toggles.
         :return: None
         """
-        self.editor_settings.save_geo_view(not self.editor_settings.is_geo_view_enabled)
-        if self.editor_settings.is_geo_view_enabled:
+        enable = not self.editor_settings.is_geo_view_enabled
+        if enable:
+            # the geographic view is fitted to the nodes, which changes the zoom and
+            # the centre of the view. Remember them to restore the schematic view
+            self._schematic_view_state = (
+                QtGui.QTransform(self.transform()),
+                self.mapToScene(self.viewport().rect().center()),
+            )
+        self.editor_settings.save_geo_view(enable)
+        if enable:
             self.rebuild_geo_projector()
         self.reload()
-        if self.editor_settings.is_geo_view_enabled:
+
+        if enable:
             self.fit_view()
+        elif self._schematic_view_state is not None:
+            transform, centre = self._schematic_view_state
+            self.setTransform(transform)
+            self.centerOn(centre)
+            self.scaling_factor = round(self.transform().m11(), 4)
+            self.editor_settings.save_zoom_level(self.scaling_factor)
+            self._schematic_view_state = None
 
     @property
     def legend_alignment(self) -> Qt.AlignmentFlag:
