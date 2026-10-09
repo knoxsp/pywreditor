@@ -16,5 +16,6 @@ from .shapes.abstract_schematic_shape import AbstractSchematicShape
 from .shapes.text_shape import SchematicText
 from .shapes.rectangle_shape import SchematicRectangle
 from .shapes.arrow_shape import SchematicArrow
+from .map import Projector, is_valid_crs, WEB_MERCATOR_CRS
 from .schematic import Schematic
 from .edge import *
