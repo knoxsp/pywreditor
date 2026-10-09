@@ -36,5 +36,21 @@
         100
       ]
     }
+  },
+  "node_w_geographic": {
+    "name": "Test node",
+    "type": "link",
+    "position": {
+      "schematic": [-66, 15],
+      "geographic": [-0.448083, 51.6217],
+      "editor_position": [136.0, 255.0]
+    }
+  },
+  "node_wrong_geographic": {
+    "name": "Test node",
+    "type": "link",
+    "position": {
+      "geographic": [-0.448083]
+    }
   }
 }

@@ -73,3 +73,31 @@ def test_wrong_position(node_config, node_props):
     Tests that the correct value is returned for the position property.
     """
     assert node_config.position is None
+
+
+@pytest.mark.parametrize("node_props", [get_all_node_props()["node_w_geographic"]])
+def test_geographic_position(node_config, node_props):
+    """
+    Tests that the correct value is returned for the geographic_position property.
+    """
+    assert node_config.geographic_position == [-0.448083, 51.6217]
+
+
+@pytest.mark.parametrize("node_props", [get_all_node_props()["node_wo_position"]])
+def test_geographic_position_missing(node_config, node_props):
+    """
+    Tests that None is returned for the geographic_position property when the
+    node does not have a position dictionary.
+    """
+    assert node_config.geographic_position is None
+
+
+@pytest.mark.parametrize(
+    "node_props", [get_all_node_props()["node_wrong_geographic"]]
+)
+def test_geographic_position_invalid(node_config, node_props):
+    """
+    Tests that None is returned for the geographic_position property when the
+    coordinates are not a valid [longitude, latitude] pair.
+    """
+    assert node_config.geographic_position is None

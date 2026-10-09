@@ -95,6 +95,28 @@ class TestModelConfig:
         model = self.model("model_1.json")
         assert model.schematic_size == [1900, 1450]
 
+    def test_update_geographic_crs(self):
+        """
+        Test the update_geographic_crs method.
+        """
+        model = self.model("model_1.json")
+        model.update_geographic_crs("EPSG:27700")
+        assert model.geographic_crs == "EPSG:27700"
+        assert model.has_changes is True
+
+    def test_missing_geographic_crs(self):
+        """
+        Tests that the geographic_crs prop returns the default CRS when this is not
+        available in the JSON file, and that the map config self-heals.
+        """
+        model = self.model("model_2.json")
+        assert model.geographic_crs == Constants.DEFAULT_GEOGRAPHIC_CRS.value
+        assert (
+            model.editor_config[Constants.MAP_KEY.value]["crs"]
+            == Constants.DEFAULT_GEOGRAPHIC_CRS.value
+        )
+        assert model.map_config[Constants.GIS_LAYERS_KEY.value] == []
+
     def test_validation_missing_props(self):
         """
         Tests that the model JSOn is filled with the missing keys.

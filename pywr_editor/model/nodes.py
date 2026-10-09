@@ -113,6 +113,39 @@ class Nodes:
 
         self.model.has_changed()
 
+    def set_geographic_position(
+        self,
+        position: list[float],
+        node_name: str | None = None,
+        node_index: int | None = None,
+    ) -> None:
+        """
+        Set or update the geographic position (longitude, latitude) of a node.
+        :param position: The [longitude, latitude] position to set.
+        :param node_name: The name of the node.
+        :param node_index: The index of the node.
+        :return: None
+        """
+        if node_name is None and node_index is None:
+            raise ValueError(
+                "You must provide a node name or index to update its position"
+            )
+
+        if node_name is not None:
+            node_index = self.find_node_index_by_name(node_name)
+
+        geographic_key = Constants.GEOGRAPHIC_KEY.value
+        if "position" in self.model.json["nodes"][node_index]:
+            self.model.json["nodes"][node_index]["position"][
+                geographic_key
+            ] = position
+        else:
+            self.model.json["nodes"][node_index]["position"] = {
+                geographic_key: position
+            }
+
+        self.model.has_changed()
+
     def find_node_index_by_name(self, node_name: str) -> int | None:
         """
         Find the node index in the list by the node name.
@@ -213,6 +246,10 @@ class Nodes:
             new_node_dict["position"]["schematic"] = node_obj.pywr_position
         if node_obj.position is not None:
             new_node_dict["position"][Constants.POSITION_KEY.value] = node_obj.position
+        if node_obj.geographic_position is not None:
+            new_node_dict["position"][
+                Constants.GEOGRAPHIC_KEY.value
+            ] = node_obj.geographic_position
         if "color" in node_obj.props:
             new_node_dict["color"] = node_obj.props["color"]
 
