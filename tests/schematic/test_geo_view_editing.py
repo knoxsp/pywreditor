@@ -340,3 +340,50 @@ class TestNotice:
         window.statusBar().clearMessage()
         schematic.show_map_notice(True)
         assert window.statusBar().currentMessage() == ""
+
+
+class TestSetGeoView:
+    def test_is_idempotent_and_emits_the_signal(self, qtbot):
+        window, schematic = open_window(qtbot, BASE_MODEL, geo_view=False)
+        nodes = schematic.node_items
+        with qtbot.waitSignal(schematic.geo_view_changed) as blocker:
+            schematic.set_geo_view(True)
+        assert blocker.args == [True]
+        assert window.editor_settings.is_geo_view_enabled is True
+
+        # no change: no signal and the schematic is not drawn again
+        drawn = schematic.node_items
+        with qtbot.assertNotEmitted(schematic.geo_view_changed):
+            schematic.set_geo_view(True)
+        assert schematic.node_items is drawn
+        assert nodes is not drawn
+
+        with qtbot.waitSignal(schematic.geo_view_changed) as blocker:
+            schematic.set_geo_view(False)
+        assert blocker.args == [False]
+
+    def test_toolbar_action_follows_the_setting(self, qtbot):
+        window, schematic = open_window(qtbot, BASE_MODEL, geo_view=False)
+        action = window.app_actions.get("toggle-geo-view")
+        assert action.isChecked() is False
+
+        # the action triggers the schematic
+        action.trigger()
+        assert window.editor_settings.is_geo_view_enabled is True
+        assert action.isChecked() is True
+
+        # a change from another control updates the action, without a loop
+        schematic.set_geo_view(False)
+        assert action.isChecked() is False
+        schematic.set_geo_view(True)
+        assert action.isChecked() is True
+
+    def test_not_changed_while_the_model_runs(self, qtbot):
+        window, schematic = open_window(qtbot, BASE_MODEL, geo_view=False)
+        window.is_model_running = True
+        action = window.app_actions.get("toggle-geo-view")
+        action.setChecked(True)
+        schematic.set_geo_view(True)
+        assert window.editor_settings.is_geo_view_enabled is False
+        assert action.isChecked() is False
+        window.is_model_running = False

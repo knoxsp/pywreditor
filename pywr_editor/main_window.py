@@ -1049,6 +1049,8 @@ class MainWindow(QMainWindow):
             "edit-recorders",
             "find-orphaned-nodes",
             "find-orphaned-parameters",
+            "toggle-geo-view",
+            "manage-gis-layers",
         ]
         for action_name in to_disable:
             self.app_actions.get(action_name).setDisabled(is_running)

@@ -94,6 +94,8 @@ class Schematic(QGraphicsView):
     schematic_move_event = Signal(QPointF)
     """ event emitted when schematic is moved """
     connect_node_event = Signal(SchematicNode)
+    geo_view_changed = Signal(bool)
+    """ Emitted after the schematic switched to (True) or from (False) the geographic view """
     """ event emitted when a node is being connected to another """
     min_zoom = get_scaling_factor("zoom-out", 3)
     """ min zoom factor"""
@@ -147,6 +149,8 @@ class Schematic(QGraphicsView):
 
         self.schematic_move_event.connect(self.on_schematic_move)
         self.connect_node_event.connect(self.on_connect_node_end)
+        # every control of the geographic view follows this signal
+        self.geo_view_changed.connect(self.sync_geo_view_action)
         self.node_classes = get_node_icon_classes()
 
         # behaviour
@@ -1106,6 +1110,13 @@ class Schematic(QGraphicsView):
         """
         was_enabled = self.editor_settings.is_geo_view_enabled
         if enable == was_enabled:
+            # keep the controls in line when they were changed by the user
+            self.sync_geo_view_action()
+            return
+        if getattr(self.app, "is_model_running", False):
+            # redrawing the schematic would remove the run mode (locked nodes and
+            # the tooltips with the results)
+            self.sync_geo_view_action()
             return
 
         if enable:
@@ -1144,18 +1155,17 @@ class Schematic(QGraphicsView):
             self.scaling_factor = round(self.transform().m11(), 4)
             self.editor_settings.save_zoom_level(self.scaling_factor)
             self._schematic_view_state = None
+        self.geo_view_changed.emit(enable)
 
     def sync_geo_view_action(self) -> None:
         """
-        Updates the checked state of the toolbar action with the current setting,
-        without triggering it.
+        Updates the checked state of the toolbar action with the current setting.
+        Changing the state does not trigger the action.
         :return: None
         """
         action = self.app.app_actions.get("toggle-geo-view")
         if action is not None:
-            action.blockSignals(True)
             action.setChecked(self.editor_settings.is_geo_view_enabled)
-            action.blockSignals(False)
 
     def draw_safely(self) -> None:
         """
