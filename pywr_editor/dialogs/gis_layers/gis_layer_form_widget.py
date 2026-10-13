@@ -1,6 +1,7 @@
+import html
 from typing import Callable
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -117,6 +118,8 @@ class GisLayerFormWidget(QWidget):
         self._loading = False
 
         self.title = FormTitle("GIS layer")
+        # layer names are not markup
+        self.title.setTextFormat(Qt.TextFormat.PlainText)
         self.name_field = QLineEdit()
         self.name_field.setPlaceholderText("Name of the layer")
         self.name_field.editingFinished.connect(self.on_name_changed)
@@ -229,7 +232,7 @@ class GisLayerFormWidget(QWidget):
         warning_color = Color("amber", 700).hex
         if info.error is not None:
             self.status.setText(
-                f'<span style="color:{error_color}">{info.error}</span>'
+                f'<span style="color:{error_color}">{html.escape(info.error)}</span>'
             )
             return
 
@@ -241,10 +244,10 @@ class GisLayerFormWidget(QWidget):
         }[data.crs_source]
         lines = [
             f"{data.feature_count:,} feature(s), {data.vertex_count:,} vertices. "
-            f"CRS: {data.crs} ({source})."
+            f"CRS: {html.escape(str(data.crs))} ({source})."
         ]
         lines += [
-            f'<span style="color:{warning_color}">{warning}</span>'
+            f'<span style="color:{warning_color}">{html.escape(warning)}</span>'
             for warning in data.warnings
         ]
         self.status.setText("<br>".join(lines))
@@ -282,8 +285,11 @@ class GisLayerFormWidget(QWidget):
         if len(file) == 0:
             return
 
-        self.set_property("path", self.model_config.path_to_relative(file))
-        self.path_field.setText(self.model_config.path_to_relative(file))
+        path = self.model_config.gis_layers.portable_path(
+            self.model_config.path_to_relative(file)
+        )
+        self.set_property("path", path)
+        self.path_field.setText(path)
         self.update_status()
 
     @Slot(bool)

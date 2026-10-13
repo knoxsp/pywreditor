@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import pyproj
 import shapefile
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt
-from PySide6.QtGui import QPainter, QPainterPath, QPen
+from PySide6.QtGui import QGuiApplication, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsItemGroup,
@@ -30,6 +30,11 @@ below the nodes, edges and shapes (0 or more). Each layer is slightly above the
 previous one, so they stack in the order of the list """
 Z_VALUE_STEP = 0.01
 """ The z-value difference between two layers """
+SUPPORTED_SUFFIXES = {".shp": "shapefile", ".geojson": "geojson", ".json": "geojson"}
+""" The supported file extensions and file type """
+MAX_FEATURES = 200_000
+""" The maximum number of features of a layer. Each feature is a graphics item, and
+drawing more makes the schematic too slow """
 MAX_VERTICES = 1_000_000
 """ The maximum number of vertices of a layer. A layer with more vertices would make
 the editor unresponsive """
@@ -104,6 +109,14 @@ class GisLayerLoader:
         path = Path(file_path)
         if not path.is_file():
             raise GisLayerError(f"The file {file_path} does not exist")
+
+        suffix = path.suffix.lower()
+        if suffix not in SUPPORTED_SUFFIXES:
+            raise GisLayerError(
+                f'The file format "{suffix or path.name}" is not supported. Use a '
+                "GeoJSON (.geojson) or a Shapefile (.shp). Other formats, such as "
+                "GeoPackage, can be converted with QGIS or ogr2ogr"
+            )
 
         warnings: list[str] = []
         if layer.crs is not None and not is_valid_crs(layer.crs):
@@ -295,6 +308,12 @@ class GisLayerLoader:
         :param projector: The projector from the CRS of the file.
         :return: The geometries, the number of vertices and the warnings.
         """
+        if len(features) > MAX_FEATURES:
+            raise GisLayerError(
+                f"The layer is too large (more than {MAX_FEATURES:,} features). "
+                "Simplify it or split it in several layers"
+            )
+
         geometries: list[GisGeometry] = []
         vertex_count = 0
         skipped = 0
@@ -479,22 +498,31 @@ class GisOverlay(QObject):
         """
         path = self.layer_path(layer)
         default_crs = self.schematic.model_config.geographic_crs
-        try:
-            modified = os.stat(path).st_mtime_ns
-        except OSError:
-            modified = None
-        signature = (path, modified, layer.crs, default_crs, layer.file_type)
+        # the sidecar files of a Shapefile hold the CRS and the attributes
+        modified = []
+        for file in [path] + [
+            str(Path(path).with_suffix(suffix)) for suffix in (".prj", ".dbf", ".shx")
+        ]:
+            try:
+                modified.append(os.stat(file).st_mtime_ns)
+            except OSError:
+                modified.append(None)
+        signature = (path, tuple(modified), layer.crs, default_crs, layer.file_type)
 
         cached = self._cache.get(layer.id)
         if cached is not None and cached[0] == signature:
             return cached[1]
 
+        # large files can take a while to read
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             info = GisLayerInfo(
                 data=GisLayerLoader(default_crs=default_crs).load(layer, path)
             )
         except GisLayerError as error:
             info = GisLayerInfo(error=str(error))
+        finally:
+            QGuiApplication.restoreOverrideCursor()
         self._cache[layer.id] = (signature, info)
         return info
 

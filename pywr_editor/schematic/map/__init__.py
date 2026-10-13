@@ -1,5 +1,11 @@
-from .projection import Projector, is_valid_crs, WEB_MERCATOR_CRS
-from .geo_transform import GeoTransform
+from .projection import (
+    Projector,
+    WEB_MERCATOR_CRS,
+    count_outside_area_of_use,
+    is_valid_crs,
+    looks_like_degrees,
+)
+from .geo_transform import GeoTransform, europe_extent_merc
 from .tile_cache import TileCache
 from .tile_fetcher import TileFetcher
 from .tile_source import ATTRIBUTION, ATTRIBUTION_URL, MAX_ZOOM

@@ -115,13 +115,14 @@ class Nodes:
 
     def set_geographic_position(
         self,
-        position: list[float],
+        position: list[float] | None,
         node_name: str | None = None,
         node_index: int | None = None,
     ) -> None:
         """
-        Set or update the geographic position (longitude, latitude) of a node.
-        :param position: The [longitude, latitude] position to set.
+        Set, update or remove the geographic position of a node.
+        :param position: The [x, y] position to set, in the map CRS (e.g.
+        [longitude, latitude] for EPSG:4326). None removes the position.
         :param node_name: The name of the node.
         :param node_index: The index of the node.
         :return: None
@@ -135,14 +136,14 @@ class Nodes:
             node_index = self.find_node_index_by_name(node_name)
 
         geographic_key = Constants.GEOGRAPHIC_KEY.value
-        if "position" in self.model.json["nodes"][node_index]:
-            self.model.json["nodes"][node_index]["position"][
-                geographic_key
-            ] = position
+        node_dict = self.model.json["nodes"][node_index]
+        if position is None:
+            if isinstance(node_dict.get("position"), dict):
+                node_dict["position"].pop(geographic_key, None)
+        elif isinstance(node_dict.get("position"), dict):
+            node_dict["position"][geographic_key] = position
         else:
-            self.model.json["nodes"][node_index]["position"] = {
-                geographic_key: position
-            }
+            node_dict["position"] = {geographic_key: position}
 
         self.model.has_changed()
 

@@ -19,6 +19,7 @@ class Settings:
     hide_arrows_key = "schematic/hide_arrows"
     hide_legend_key = "schematic/hide_legend"
     geo_view_key = "schematic/geo_view"
+    map_notice_key = "schematic/map_notice_shown"
     hidden_node_types_key = "schematic/hidden_node_types"
     zoom_level_key = "schematic/zoom_level"
     schematic_center_key = "schematic/schematic_center"
@@ -221,6 +222,28 @@ class Settings:
         if self.app_name is None:
             return
         self.instance.setValue(self.geo_view_key, enabled)
+
+    @property
+    def is_map_notice_shown(self) -> bool:
+        """
+        Whether the user was told that the map tiles are downloaded from the
+        internet.
+        :return: True if the notice was already shown, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.map_notice_key, defaultValue=False)
+        )
+
+    def save_map_notice_shown(self, shown: bool = True) -> None:
+        """
+        Stores whether the user was told that the map tiles are downloaded from the
+        internet.
+        :param shown: True if the notice was shown.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.map_notice_key, shown)
 
     @property
     def hidden_node_types(self) -> list[str]:

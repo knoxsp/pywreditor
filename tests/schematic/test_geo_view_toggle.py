@@ -1,3 +1,4 @@
+import copy
 from typing import Tuple
 
 import pytest
@@ -37,11 +38,12 @@ class TestGeoViewToggle:
     def test_toggle_geo_view(self, qtbot, init_window):
         """
         Tests that enabling the geographic view plots the nodes with a geographic
-        position by that position, hides nodes without one (showing the warning
-        banner), hides edges connected to a hidden node, persists the setting, and
+        position by that position, places nodes without one at a default location (showing the warning
+        banner), persists the setting, and
         that toggling back restores the schematic view.
         """
         window, schematic, display_panel = init_window
+        initial_json = copy.deepcopy(window.model_config.json)
         button = display_panel.buttons[window.app_actions.get("toggle-geo-view").text()]
 
         assert window.editor_settings.is_geo_view_enabled is False
@@ -64,21 +66,27 @@ class TestGeoViewToggle:
         )
         assert link1.pos().toTuple() == tuple(schematic.to_geo_px([-1.5, 52.1]))
 
-        # Link2 has no geographic position: it is hidden and the banner is shown
-        assert link2.isVisible() is False
+        # Link2 has no geographic position: it is shown at a default location
+        # (the centre of the view), the banner warns about it and nothing is saved
+        assert link2.isVisible() is True
+        assert link2.pos().toTuple() == pytest.approx(
+            schematic.geo_transform.centre_scene
+        )
         assert schematic.geo_view_banner.isHidden() is False
-        assert "1 node hidden" in schematic.geo_view_banner.text()
+        assert "1 node has no geographic position" in schematic.geo_view_banner.text()
+        assert (
+            window.model_config.nodes.config("Link2", as_dict=False).geographic_position
+            is None
+        )
+        assert window.model_config.json == initial_json
 
-        # the edge to the hidden node is hidden too, the other edge is visible
+        # all the edges are visible
         edges = [item for item in schematic.items() if isinstance(item, Edge)]
-        for edge in edges:
-            if edge.target.name == "Link2" or edge.source.name == "Link2":
-                assert edge.isVisible() is False
-            else:
-                assert edge.isVisible() is True
+        assert len(edges) == 2
+        assert all(edge.isVisible() for edge in edges)
 
-        # dragging is disabled while the geographic view is active
-        assert bool(reservoir.flags() & QGraphicsItem.ItemIsMovable) is False
+        # nodes can be moved in the geographic view
+        assert bool(reservoir.flags() & QGraphicsItem.ItemIsMovable) is True
 
         # toggle back to the schematic view
         qtbot.mouseClick(button, Qt.MouseButton.LeftButton)

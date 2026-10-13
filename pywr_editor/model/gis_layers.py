@@ -1,3 +1,5 @@
+import math
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -114,7 +116,8 @@ class GisLayerConfig:
         Returns whether the layer is visible on the schematic.
         :return: True if the layer is visible, False otherwise.
         """
-        return bool(self.layer_dict.get("visible", True))
+        visible = self.layer_dict.get("visible", True)
+        return visible if isinstance(visible, bool) else True
 
     @property
     def stroke_color(self) -> QColor:
@@ -142,7 +145,15 @@ class GisLayerConfig:
         Returns the layer's stroke width.
         :return: The stroke width.
         """
-        return self.layer_dict.get("stroke_width", self.default_stroke_width)
+        width = self.layer_dict.get("stroke_width", self.default_stroke_width)
+        if (
+            isinstance(width, bool)
+            or not isinstance(width, (int, float))
+            or not math.isfinite(width)
+            or width <= 0
+        ):
+            return self.default_stroke_width
+        return width
 
     def is_valid(self) -> bool:
         """
@@ -217,6 +228,16 @@ class GisLayers:
         layer = GisLayerConfig(layer_dict=layer_dict)
         return layer if layer.is_valid() else None
 
+    @staticmethod
+    def portable_path(path: str) -> str:
+        """
+        Converts the Windows path separators to forward slashes, which are valid on
+        every platform, so that a model saved on Windows opens on Linux and macOS.
+        :param path: The path.
+        :return: The path with forward slashes on Windows, unchanged otherwise.
+        """
+        return path.replace("\\", "/") if os.sep == "\\" else path
+
     def add(self, path: str, name: str | None = None) -> dict:
         """
         Adds a new GIS overlay layer, stacked on top of the existing ones.
@@ -229,10 +250,12 @@ class GisLayers:
         layer_dict = {
             "id": GisLayerConfig.generate_id(),
             "name": name or Path(path).stem,
-            "path": self.model.path_to_relative(path),
+            "path": self.portable_path(self.model.path_to_relative(path)),
             "visible": True,
         }
-        self.model.map_config[Constants.GIS_LAYERS_KEY.value].append(layer_dict)
+        self.model.writable_map_config[Constants.GIS_LAYERS_KEY.value].append(
+            layer_dict
+        )
         self.model.has_changed()
 
         return layer_dict
@@ -247,7 +270,7 @@ class GisLayers:
         if idx is None:
             return
 
-        del self.model.map_config[Constants.GIS_LAYERS_KEY.value][idx]
+        del self.model.writable_map_config[Constants.GIS_LAYERS_KEY.value][idx]
         self.model.has_changed()
 
     def update(self, layer_id: str, layer_dict: dict) -> None:
@@ -261,7 +284,7 @@ class GisLayers:
         if idx is None:
             return
 
-        self.model.map_config[Constants.GIS_LAYERS_KEY.value][idx] = layer_dict
+        self.model.writable_map_config[Constants.GIS_LAYERS_KEY.value][idx] = layer_dict
         self.model.has_changed()
 
     def move(self, layer_id: str, new_index: int) -> None:
@@ -275,7 +298,7 @@ class GisLayers:
         if idx is None:
             return
 
-        layers = self.model.map_config[Constants.GIS_LAYERS_KEY.value]
+        layers = self.model.writable_map_config[Constants.GIS_LAYERS_KEY.value]
         new_index = max(0, min(new_index, len(layers) - 1))
         layer_dict = layers.pop(idx)
         layers.insert(new_index, layer_dict)
@@ -310,5 +333,7 @@ class GisLayers:
         if idx is None:
             return
 
-        self.model.map_config[Constants.GIS_LAYERS_KEY.value][idx]["visible"] = visible
+        self.model.writable_map_config[Constants.GIS_LAYERS_KEY.value][idx][
+            "visible"
+        ] = visible
         self.model.has_changed()

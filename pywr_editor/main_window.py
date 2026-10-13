@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
 
         # Draw the widgets
         self.components_tree.draw()
-        self.schematic.draw()
+        self.schematic.draw_safely()
 
         # handle schematic status during a model ru
         self.is_model_running = False

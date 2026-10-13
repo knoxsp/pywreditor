@@ -17,6 +17,36 @@ FILL_RATIO = 0.7
 """ The share of the schematic size that the geographic extent of the nodes fills """
 
 
+EUROPE_LONLAT_EXTENT = (-12.0, 34.0, 32.0, 62.0)
+""" The (west, south, east, north) extent, in degrees, shown by the geographic view when
+no node has a geographic position: Europe including the UK and Ireland """
+EARTH_RADIUS = 6378137.0
+""" The radius of the sphere used by Web Mercator, in metres """
+
+
+def lonlat_to_merc(lon: float, lat: float) -> tuple[float, float]:
+    """
+    Converts a WGS84 longitude and latitude to Web Mercator without pyproj.
+    :param lon: The longitude in degrees.
+    :param lat: The latitude in degrees.
+    :return: The (x, y) Web Mercator coordinates in metres.
+    """
+    return (
+        EARTH_RADIUS * math.radians(lon),
+        EARTH_RADIUS * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2)),
+    )
+
+
+def europe_extent_merc() -> tuple[tuple[float, float], tuple[float, float]]:
+    """
+    Returns the south west and north east corners of the default extent in Web
+    Mercator.
+    :return: The two (x, y) corners in metres.
+    """
+    west, south, east, north = EUROPE_LONLAT_EXTENT
+    return lonlat_to_merc(west, south), lonlat_to_merc(east, north)
+
+
 @dataclass(frozen=True)
 class GeoTransform:
     """
@@ -119,8 +149,12 @@ class GeoTransform:
     def is_finite(point: Sequence[float]) -> bool:
         """
         Checks that a projected point can be placed on the schematic. pyproj returns
-        infinity for the coordinates that cannot be projected.
+        infinity for the coordinates that cannot be projected, and the points
+        beyond the Web Mercator world (the latitudes above about 85.05 degrees)
+        are not covered by the map.
         :param point: The coordinates.
-        :return: True if all the values are finite.
+        :return: True if all the values are finite and within the Web Mercator world.
         """
-        return all(math.isfinite(value) for value in point)
+        return all(
+            math.isfinite(value) and abs(value) <= ORIGIN_SHIFT for value in point
+        )

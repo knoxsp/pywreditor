@@ -278,6 +278,22 @@ class TestGeoJsonLoader:
             GisLayerLoader().load(layer(path), str(path))
         assert MAX_VERTICES > 5
 
+    def test_too_many_features(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("pywr_editor.schematic.map.gis_overlay.MAX_FEATURES", 2)
+        point = feature({"type": "Point", "coordinates": [1, 1]})
+        path = write_geojson(
+            tmp_path / "many.geojson",
+            {"type": "FeatureCollection", "features": [point] * 3},
+        )
+        with pytest.raises(GisLayerError, match="too large.*features"):
+            GisLayerLoader().load(layer(path), str(path))
+
+    def test_unsupported_format(self, tmp_path):
+        path = tmp_path / "layers.gpkg"
+        path.write_bytes(b"SQLite format 3")
+        with pytest.raises(GisLayerError, match="not supported.*GeoPackage"):
+            GisLayerLoader().load(layer(path), str(path))
+
 
 def write_shapefile(
     base: Path,

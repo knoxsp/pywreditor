@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import pyproj
 from pandas import period_range
 from PySide6.QtCore import QObject, Signal
 
@@ -292,9 +293,8 @@ class ModelConfig(QObject):
             ] = []
             self.has_changed()
 
-        # note: the "map" key self-heals lazily via the map_config property (like
-        # "schematic_size" does), without marking the model as changed, since
-        # practically every existing model file predates this key
+        # note: the "map" key is only added when a map setting is changed (see
+        # writable_map_config), as practically every existing model file predates it
 
         # check that the metadata dictionary and its key/value pairs are defined
         default_metadata = {
@@ -532,37 +532,86 @@ class ModelConfig(QObject):
     def map_config(self) -> dict:
         """
         Gets the map configuration dictionary (CRS, basemap visibility and GIS
-        overlay layers). Missing keys are self-healed with their defaults.
+        overlay layers) for reading. When the model does not have a map section, a
+        detached dictionary with the defaults is returned, so that merely opening
+        and saving a model does not add the section to its file. Use
+        writable_map_config to change the settings.
+        :return: The map configuration dictionary.
+        """
+        map_dict = self.editor_config.get(Constants.MAP_KEY.value)
+        if not isinstance(map_dict, dict):
+            return self._default_map_config()
+
+        layers_key = Constants.GIS_LAYERS_KEY.value
+        if not isinstance(map_dict.get(layers_key), list):
+            # not stored: this is only a view with the defaults
+            return {**map_dict, layers_key: []}
+        return map_dict
+
+    @property
+    def writable_map_config(self) -> dict:
+        """
+        Gets the map configuration dictionary stored in the model, creating the
+        section with the defaults and healing the invalid keys if needed. Use this
+        before changing a map setting.
         :return: The map configuration dictionary.
         """
         map_key = Constants.MAP_KEY.value
-        if map_key not in self.editor_config or not isinstance(
-            self.editor_config[map_key], dict
-        ):
-            self.editor_config[map_key] = {
-                "crs": Constants.DEFAULT_GEOGRAPHIC_CRS.value,
-                "show_basemap": True,
-                Constants.GIS_LAYERS_KEY.value: [],
-            }
-        if Constants.GIS_LAYERS_KEY.value not in self.editor_config[map_key]:
-            self.editor_config[map_key][Constants.GIS_LAYERS_KEY.value] = []
+        if not isinstance(self.editor_config.get(map_key), dict):
+            self.editor_config[map_key] = self._default_map_config()
+        map_dict = self.editor_config[map_key]
+        if not isinstance(map_dict.get(Constants.GIS_LAYERS_KEY.value), list):
+            map_dict[Constants.GIS_LAYERS_KEY.value] = []
+        return map_dict
 
-        return self.editor_config[map_key]
+    @staticmethod
+    def _default_map_config() -> dict:
+        """
+        Returns a new map configuration dictionary with the default values.
+        :return: The dictionary.
+        """
+        return {
+            "crs": Constants.DEFAULT_GEOGRAPHIC_CRS.value,
+            "show_basemap": True,
+            Constants.GIS_LAYERS_KEY.value: [],
+        }
+
+    @staticmethod
+    def _is_valid_crs(crs: object) -> bool:
+        """
+        Checks that a value is a CRS definition pyproj can parse.
+        :param crs: The value.
+        :return: True if the CRS is valid.
+        """
+        if not isinstance(crs, str):
+            return False
+        try:
+            pyproj.CRS.from_user_input(crs)
+            return True
+        except pyproj.exceptions.CRSError:
+            return False
 
     @property
     def geographic_crs(self) -> str:
         """
-        Gets the CRS to use to interpret the nodes' "geographic" coordinates.
+        Gets the CRS to use to interpret the nodes' "geographic" coordinates. The
+        stored value is not changed when it is invalid.
         :return: The CRS from the model config file as an EPSG string (e.g.
         "EPSG:4326"). If not available or invalid, the default CRS is returned.
         """
-        default_crs = Constants.DEFAULT_GEOGRAPHIC_CRS.value
-        if "crs" in self.map_config and isinstance(self.map_config["crs"], str):
-            return self.map_config["crs"]
-        else:
-            # store the CRS if it is not set or wrong
-            self.map_config["crs"] = default_crs
-            return default_crs
+        crs = self.map_config.get("crs")
+        if self._is_valid_crs(crs):
+            return crs
+        return Constants.DEFAULT_GEOGRAPHIC_CRS.value
+
+    @property
+    def has_valid_geographic_crs(self) -> bool:
+        """
+        Whether the stored CRS is missing (the default applies) or valid.
+        :return: False if the model stores an invalid CRS, True otherwise.
+        """
+        crs = self.map_config.get("crs")
+        return crs is None or self._is_valid_crs(crs)
 
     def update_geographic_crs(self, crs: str) -> None:
         """
@@ -570,7 +619,7 @@ class ModelConfig(QObject):
         :param crs: The CRS as an EPSG string (e.g. "EPSG:4326").
         :return: None
         """
-        self.map_config["crs"] = crs
+        self.writable_map_config["crs"] = crs
         self.has_changed()
 
     def normalize_file_path(self, file: str | None) -> str | None:

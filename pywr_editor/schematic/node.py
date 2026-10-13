@@ -74,18 +74,22 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         )
         self.edges: list[Edge] = []
         self.view = view
+        # the stored geographic position (None if the node does not have one), used
+        # to restore it when a move in the geographic view is undone
+        self.prev_geographic = (
+            list(self.model_node.geographic_position)
+            if self.model_node.geographic_position is not None
+            else None
+        )
         self.tooltip_text = ModelComponentTooltip(
             model_config=view.model_config, comp_obj=self.model_node
         ).render()
         self.setToolTip(self.tooltip_text)
 
-        # allow interaction - dragging is also disabled in the geographic view,
-        # since a node's on-screen position there is derived from its geographic
-        # position, not a freely-set editor_position
+        # allow interaction
         self.setFlag(
             QGraphicsItem.ItemIsMovable,
-            self.view.editor_settings.is_schematic_locked is False
-            and self.view.editor_settings.is_geo_view_enabled is False,
+            self.view.editor_settings.is_schematic_locked is False,
         )
         self.setFlag(QGraphicsItem.ItemIsSelectable)
         # enable notifications for position and transformation changes
@@ -229,14 +233,30 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
 
     def save_position_if_moved(self) -> None:
         """
-        Saves the new node position in the configuration file.
+        Saves the new node position in the configuration file. In the geographic
+        view, the position is converted to the model's geographic CRS and saved as
+        the node's geographic position, and the schematic position is not changed.
         :return: None
         """
-        if self.has_position_changed():
+        if not self.has_position_changed():
+            return
+
+        if self.view.editor_settings.is_geo_view_enabled:
+            geographic = self.view.from_geo_px(*self.position)
+            if geographic is None:
+                # the new position is outside the map: put the node back
+                self.setPos(*self.prev_position)
+                return
+            self.view.app.model_config.nodes.set_geographic_position(
+                node_name=self.name, position=geographic
+            )
+            self.prev_geographic = geographic
+            self.view.update_geo_view_banner()
+        else:
             self.view.app.model_config.nodes.set_position(
                 node_name=self.name, position=self.position
             )
-            self.prev_position = self.position
+        self.prev_position = self.position
 
     def draw_edge(self, edge: Edge) -> None:
         """

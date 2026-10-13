@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Tuple
 
+import pyproj
 import pytest
 from PySide6.QtCore import QPointF, QTimer
 from PySide6.QtGui import QColor
@@ -259,6 +260,34 @@ class TestGisOverlay:
         third = overlay.inspect(layers.find(layer_id))
         assert third is not second
         assert third.data.geometries[0].kind == "line"
+
+    def test_cache_follows_the_shapefile_sidecar_files(self, init_window, tmp_path):
+        """
+        Changing the .prj file of a Shapefile reloads the layer.
+        """
+        import os
+
+        import shapefile
+
+        window, schematic = init_window
+        base = tmp_path / "points"
+        with shapefile.Writer(str(base), shapeType=shapefile.POINT) as writer:
+            writer.field("name", "C")
+            writer.point(-1, 52)
+            writer.record("a")
+        prj = base.with_suffix(".prj")
+        prj.write_text(pyproj.CRS.from_epsg(4326).to_wkt())
+        layer_id = self.add_layer(schematic, base.with_suffix(".shp"))
+
+        overlay = schematic.gis_overlay
+        layers = window.model_config.gis_layers
+        first = overlay.inspect(layers.find(layer_id))
+        assert overlay.inspect(layers.find(layer_id)) is first
+
+        prj.write_text(pyproj.CRS.from_epsg(4326).to_wkt() + " ")
+        stat = os.stat(prj)
+        os.utime(prj, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10_000_000_000))
+        assert overlay.inspect(layers.find(layer_id)) is not first
 
     def test_map_items_are_not_schematic_items(self, init_window, tmp_path, qtbot):
         window, schematic = init_window

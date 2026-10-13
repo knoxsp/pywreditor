@@ -107,15 +107,29 @@ class TestModelConfig:
     def test_missing_geographic_crs(self):
         """
         Tests that the geographic_crs prop returns the default CRS when this is not
-        available in the JSON file, and that the map config self-heals.
+        available in the JSON file, and that reading the map config does not add the
+        map section to the model.
         """
         model = self.model("model_2.json")
         assert model.geographic_crs == Constants.DEFAULT_GEOGRAPHIC_CRS.value
-        assert (
-            model.editor_config[Constants.MAP_KEY.value]["crs"]
-            == Constants.DEFAULT_GEOGRAPHIC_CRS.value
-        )
         assert model.map_config[Constants.GIS_LAYERS_KEY.value] == []
+        assert Constants.MAP_KEY.value not in model.editor_config
+
+        # the section is created when a setting is changed
+        model.update_geographic_crs("EPSG:27700")
+        assert model.editor_config[Constants.MAP_KEY.value]["crs"] == "EPSG:27700"
+
+    def test_invalid_geographic_crs(self):
+        """
+        Tests that an invalid or non-string CRS falls back to the default one,
+        without overwriting the stored value.
+        """
+        model = self.model("model_2.json")
+        for crs in ["not a crs", 4326, None, ["EPSG:4326"]]:
+            model.editor_config[Constants.MAP_KEY.value] = {"crs": crs}
+            assert model.geographic_crs == Constants.DEFAULT_GEOGRAPHIC_CRS.value
+            assert model.has_valid_geographic_crs is (crs is None)
+            assert model.editor_config[Constants.MAP_KEY.value]["crs"] == crs
 
     def test_validation_missing_props(self):
         """

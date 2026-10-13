@@ -1,3 +1,4 @@
+import math
 from copy import deepcopy as dp
 from typing import Sequence
 
@@ -79,17 +80,28 @@ class NodeConfig(ComponentConfig):
     @property
     def geographic_position(self) -> list[float] | None:
         """
-        Return the node's geographic position (longitude, latitude).
-        :return: The [longitude, latitude] pair if available, None otherwise.
+        Return the node's geographic position, as stored in the map CRS (e.g.
+        longitude and latitude for EPSG:4326).
+        :return: The [x, y] pair if available and made of two finite numbers, None
+        otherwise.
         """
         geographic_key = Constants.GEOGRAPHIC_KEY.value
+        position = self.props.get("position")
+        if not isinstance(position, dict):
+            return None
+
+        value = position.get(geographic_key)
         if (
-            "position" in self.props
-            and geographic_key in self.props["position"]
-            and isinstance(self.props["position"][geographic_key], list)
-            and len(self.props["position"][geographic_key]) == 2
+            isinstance(value, list)
+            and len(value) == 2
+            and all(
+                isinstance(v, (int, float))
+                and not isinstance(v, bool)
+                and math.isfinite(v)
+                for v in value
+            )
         ):
-            return self.props["position"][geographic_key]
+            return value
         return None
 
     @property

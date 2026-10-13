@@ -1,4 +1,5 @@
 import inspect
+import math
 from typing import TYPE_CHECKING, Literal, Sequence, Union
 
 import PySide6
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 from pywr_editor.dialogs import InspectorTree
 from pywr_editor.model import (
     BaseShape,
+    Constants,
     Edges,
     LineArrowShape,
     ModelConfig,
@@ -55,6 +57,7 @@ from pywr_editor.schematic import (
 )
 from pywr_editor.style import Color, stylesheet_dict_to_str
 from pywr_editor.toolbar import LibraryPanel
+from pywr_editor.utils import Logging
 
 from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
@@ -68,7 +71,10 @@ from .map import (
     GisOverlay,
     Projector,
     TileLayer,
+    count_outside_area_of_use,
+    europe_extent_merc,
     is_map_item,
+    looks_like_degrees,
 )
 
 if TYPE_CHECKING:
@@ -130,6 +136,7 @@ class Schematic(QGraphicsView):
             str, SchematicText | SchematicRectangle | SchematicArrow
         ] = {}
         self.hidden_node_types: set[str] = set(self.editor_settings.hidden_node_types)
+        self.logger = Logging().logger(self.__class__.__name__)
         # lazily built (see geo_projector) - most models never use the geographic
         # view, so building the CRS transformer on every schematic load would be
         # wasted work
@@ -258,6 +265,25 @@ class Schematic(QGraphicsView):
         self.overlay_layout.setRowStretch(0, 1)
         self.overlay_layout.setRowStretch(1, 0)
         self.tile_layer.active_changed.connect(self.attribution.setVisible)
+        self.tile_layer.active_changed.connect(self.show_map_notice)
+
+    @Slot(bool)
+    def show_map_notice(self, active: bool) -> None:
+        """
+        Tells the user, the first time the map is shown, that the tiles are
+        downloaded from the internet, as this is the first network request the
+        editor makes.
+        :param active: Whether the map tiles are shown.
+        :return: None
+        """
+        if not active or self.editor_settings.is_map_notice_shown:
+            return
+        self.editor_settings.save_map_notice_shown()
+        self.app.statusBar().showMessage(
+            "The map tiles are downloaded from OpenStreetMap and stored on this "
+            "computer",
+            15000,
+        )
 
     def add_scene_decorations(self) -> None:
         """
@@ -315,32 +341,33 @@ class Schematic(QGraphicsView):
         :return: None
         """
         is_geo_view = self.editor_settings.is_geo_view_enabled
-        hidden_geo_node_count = 0
+        # the nodes that cannot be placed on the map are drawn at a default
+        # location, which is not saved unless the node is moved
+        default_geo_nodes = 0
+        geo_default_count = (
+            sum(
+                self.geo_point(node.geographic_position) is None
+                for node in map(
+                    self.model_config.nodes.node, self.model_config.nodes.get_all()
+                )
+            )
+            if is_geo_view
+            else 0
+        )
+        default_centre = self.geo_default_centre() if is_geo_view else None
 
         # draw the nodes
         for node_index, node_props in enumerate(self.model_config.nodes.get_all()):
             node_config = self.model_config.nodes.node(node_props)
 
             if is_geo_view:
-                geographic_position = node_config.geographic_position
-                if geographic_position is not None:
-                    node_obj = self.add_node(
-                        node_props=node_props,
-                        position_override=self.to_geo_px(geographic_position),
+                position = self.geo_to_scene(node_config.geographic_position)
+                if position is None:
+                    position = self.geo_default_position(
+                        default_centre, default_geo_nodes, geo_default_count
                     )
-                else:
-                    # do not fabricate a position from the node's schematic or
-                    # editor position - that would plant fake geodata. Instead
-                    # hide the node and warn via the banner below
-                    node_obj = self.add_node(
-                        node_props=node_props,
-                        position_override=[
-                            self.schematic_width / 2,
-                            self.schematic_height / 2,
-                        ],
-                    )
-                    node_obj.setVisible(False)
-                    hidden_geo_node_count += 1
+                    default_geo_nodes += 1
+                self.add_node(node_props=node_props, position_override=position)
                 continue
 
             node_position = node_config.position
@@ -363,7 +390,7 @@ class Schematic(QGraphicsView):
             # draw the node
             self.add_node(node_props=node_props)
 
-        self.set_geo_view_banner(hidden_geo_node_count if is_geo_view else 0)
+        self.update_geo_view_banner()
 
         # draw the edges
         model_edges = Edges(self.model_config)
@@ -574,22 +601,61 @@ class Schematic(QGraphicsView):
     def geo_transform(self) -> GeoTransform:
         """
         Returns the transform between Web Mercator coordinates and scene
-        coordinates, fitted to the nodes with a geographic position. It is built the
-        first time it is needed and rebuilt by rebuild_geo_projector().
+        coordinates, fitted to the nodes with a geographic position (or to Europe
+        when there are none). It is built the first time it is needed and rebuilt
+        by rebuild_geo_projector().
         :return: The GeoTransform instance.
         """
         if self._geo_transform is None:
-            merc_points = []
-            for node_props in self.model_config.nodes.get_all():
-                position = self.model_config.nodes.node(node_props).geographic_position
-                if position is not None:
-                    merc_point = self.geo_projector.lonlat_to_merc(*position)
-                    if GeoTransform.is_finite(merc_point):
-                        merc_points.append(merc_point)
+            merc_points = self.located_merc_points()
+            if len(merc_points) == 0:
+                merc_points = list(europe_extent_merc())
             self._geo_transform = GeoTransform.fit(
                 merc_points, (self.schematic_width, self.schematic_height)
             )
         return self._geo_transform
+
+    def geo_point(self, position: Sequence[float] | None) -> tuple[float, float] | None:
+        """
+        Projects a node's geographic position to Web Mercator.
+        :param position: The [x, y] position in the model's geographic CRS.
+        :return: The Web Mercator (x, y) coordinates in metres, or None if the
+        position is missing or cannot be placed on the map.
+        """
+        if position is None:
+            return None
+        try:
+            point = self.geo_projector.lonlat_to_merc(position[0], position[1])
+        except Exception:
+            return None
+        return point if GeoTransform.is_finite(point) else None
+
+    def located_merc_points(self) -> list[tuple[float, float]]:
+        """
+        Returns the Web Mercator coordinates of the nodes that have a geographic
+        position that can be placed on the map.
+        :return: The list of (x, y) coordinates.
+        """
+        points = []
+        for node_props in self.model_config.nodes.get_all():
+            node_config = self.model_config.nodes.node(node_props)
+            point = self.geo_point(node_config.geographic_position)
+            if point is not None:
+                points.append(point)
+        return points
+
+    def geo_to_scene(self, position: Sequence[float] | None) -> list[float] | None:
+        """
+        Transforms a node's geographic position to scene coordinates.
+        :param position: The [x, y] position in the model's geographic CRS.
+        :return: The [x, y] scene coordinates, or None if the position is missing
+        or cannot be placed on the map.
+        """
+        point = self.geo_point(position)
+        if point is None:
+            return None
+        scene_x, scene_y = self.geo_transform.merc_to_scene(*point)
+        return [round(scene_x, 4), round(scene_y, 4)]
 
     def to_geo_px(self, lonlat: Sequence[float]) -> list[float]:
         """
@@ -599,13 +665,66 @@ class Schematic(QGraphicsView):
         the current view zoom (see scale_view()) provides the on-screen magnification.
         :param lonlat: The [longitude, latitude] pair, in the model's configured
         geographic CRS.
-        :return: The transformed [x, y] scene coordinates.
+        :return: The transformed [x, y] scene coordinates. The centre of the
+        schematic if the position cannot be placed on the map.
         """
-        x, y = self.geo_projector.lonlat_to_merc(lonlat[0], lonlat[1])
-        if not GeoTransform.is_finite((x, y)):
+        position = self.geo_to_scene(lonlat)
+        if position is None:
             return [self.schematic_width / 2, self.schematic_height / 2]
-        scene_x, scene_y = self.geo_transform.merc_to_scene(x, y)
-        return [round(scene_x, 4), round(scene_y, 4)]
+        return position
+
+    def from_geo_px(self, x: float, y: float) -> list[float] | None:
+        """
+        Transforms scene coordinates in the geographic view to a geographic position
+        in the model's CRS. This is the inverse of geo_to_scene().
+        :param x: The scene x coordinate.
+        :param y: The scene y coordinate.
+        :return: The [x, y] position in the model's geographic CRS, or None if the
+        scene position is outside the map or cannot be converted.
+        """
+        merc = self.geo_transform.scene_to_merc(x, y)
+        if not GeoTransform.is_finite(merc):
+            return None
+        try:
+            position = self.geo_projector.merc_to_lonlat(*merc)
+        except Exception:
+            return None
+        if not all(math.isfinite(v) for v in position):
+            return None
+        return [round(position[0], 6), round(position[1], 6)]
+
+    def geo_default_centre(self) -> tuple[float, float]:
+        """
+        Returns the scene position where the nodes without a geographic position are
+        placed: the centre of the visible area or, if the view is not displayed yet,
+        the centre of the map.
+        :return: The (x, y) scene coordinates.
+        """
+        viewport = self.viewport().rect()
+        if self.isVisible() and viewport.width() > 100 and viewport.height() > 100:
+            centre = self.mapToScene(viewport.center())
+            return centre.x(), centre.y()
+        return self.geo_transform.centre_scene
+
+    @staticmethod
+    def geo_default_position(
+        centre: Sequence[float], index: int, total: int
+    ) -> list[float]:
+        """
+        Returns the default scene position of a node without a geographic position.
+        These nodes are laid on a grid around the centre, so they do not overlap.
+        :param centre: The (x, y) scene coordinates of the centre of the grid.
+        :param index: The index of the node among the nodes without a position.
+        :param total: The number of nodes without a position.
+        :return: The [x, y] scene position.
+        """
+        columns = max(math.ceil(math.sqrt(total)), 1)
+        rows = math.ceil(total / columns)
+        spacing = 80
+        return [
+            round(centre[0] + ((index % columns) - (columns - 1) / 2) * spacing, 4),
+            round(centre[1] + ((index // columns) - (rows - 1) / 2) * spacing, 4),
+        ]
 
     def rebuild_geo_projector(self) -> None:
         """
@@ -614,25 +733,72 @@ class Schematic(QGraphicsView):
         the view is drawn in the geographic coordinate system.
         :return: None
         """
-        self._geo_projector = Projector(self.model_config.geographic_crs)
+        try:
+            self._geo_projector = Projector(self.model_config.geographic_crs)
+        except Exception:
+            self._geo_projector = Projector(Constants.DEFAULT_GEOGRAPHIC_CRS.value)
         self._geo_transform = None
 
-    def set_geo_view_banner(self, hidden_node_count: int) -> None:
+    def geo_view_messages(self) -> list[str]:
         """
-        Shows or hides the banner warning that some nodes are hidden in the
-        geographic view because they do not have a "geographic" position set.
-        :param hidden_node_count: The number of hidden nodes. The banner is
-        hidden when this is zero.
+        Returns the warnings to show in the banner of the geographic view.
+        :return: The list of messages. Empty if there is nothing to warn about.
+        """
+        if not self.editor_settings.is_geo_view_enabled:
+            return []
+
+        messages = []
+        if not self.model_config.has_valid_geographic_crs:
+            messages.append(
+                f"The map CRS '{self.model_config.map_config.get('crs')}' is not "
+                f"valid, {self.model_config.geographic_crs} is used instead"
+            )
+
+        default_count = sum(
+            self.geo_point(self.model_config.nodes.node(props).geographic_position)
+            is None
+            for props in self.model_config.nodes.get_all()
+        )
+        if default_count > 0:
+            noun = "node has" if default_count == 1 else "nodes have"
+            messages.append(
+                f"{default_count} {noun} no geographic position - drag "
+                f"{'it' if default_count == 1 else 'them'} into place"
+            )
+
+        positions = [
+            node.geographic_position
+            for node in map(
+                self.model_config.nodes.node, self.model_config.nodes.get_all()
+            )
+            if node.geographic_position is not None
+        ]
+        result = count_outside_area_of_use(self.model_config.geographic_crs, positions)
+        if result is not None and result[0] > 0:
+            messages.append(
+                f"{result[0]} of {result[1]} nodes are outside the area where "
+                f"{self.model_config.geographic_crs} is valid - check the CRS and "
+                "the axis order"
+            )
+        if looks_like_degrees(self.model_config.geographic_crs, positions):
+            messages.append(
+                f"The positions look like longitudes and latitudes, but "
+                f"{self.model_config.geographic_crs} uses metres - check the CRS"
+            )
+        return messages
+
+    def update_geo_view_banner(self) -> None:
+        """
+        Shows the warnings of the geographic view in the banner, or hides it if
+        there are none.
         :return: None
         """
-        if hidden_node_count == 0:
+        messages = self.geo_view_messages()
+        if len(messages) == 0:
             self.geo_view_banner.hide()
             return
 
-        noun = "node" if hidden_node_count == 1 else "nodes"
-        self.geo_view_banner.setText(
-            f"{hidden_node_count} {noun} hidden - no geographic position set"
-        )
+        self.geo_view_banner.setText("\n".join(messages))
         self.geo_view_banner.show()
 
     @Slot()
@@ -924,11 +1090,24 @@ class Schematic(QGraphicsView):
     def toggle_coordinate_system(self) -> None:
         """
         Switches the schematic between the schematic and the geographic
-        coordinate system, and persists the choice. Not undoable - this is a
-        display preference, like the legend/grid/label toggles.
+        coordinate system.
         :return: None
         """
-        enable = not self.editor_settings.is_geo_view_enabled
+        self.set_geo_view(not self.editor_settings.is_geo_view_enabled)
+
+    def set_geo_view(self, enable: bool) -> None:
+        """
+        Switches the schematic to the geographic or the schematic coordinate system,
+        and persists the choice once the schematic is drawn. Not undoable - this is
+        a display preference, like the legend/grid/label toggles. If the geographic
+        view cannot be drawn, the schematic view is kept.
+        :param enable: True to enable the geographic view, False for the schematic.
+        :return: None
+        """
+        was_enabled = self.editor_settings.is_geo_view_enabled
+        if enable == was_enabled:
+            return
+
         if enable:
             # the geographic view is fitted to the nodes, which changes the zoom and
             # the centre of the view. Remember them to restore the schematic view
@@ -936,13 +1115,28 @@ class Schematic(QGraphicsView):
                 QtGui.QTransform(self.transform()),
                 self.mapToScene(self.viewport().rect().center()),
             )
+        # the drawing reads the setting
         self.editor_settings.save_geo_view(enable)
-        if enable:
-            self.rebuild_geo_projector()
-        self.reload()
+        try:
+            if enable:
+                self.rebuild_geo_projector()
+                # the nodes without a position are placed at the centre of the view
+                self.centerOn(*self.geo_transform.centre_scene)
+            self.reload()
+        except Exception as error:
+            self.logger.exception("Cannot switch the coordinate system")
+            self.editor_settings.save_geo_view(was_enabled)
+            self._schematic_view_state = None
+            self._geo_transform = None
+            self.reload()
+            self.sync_geo_view_action()
+            self.app.statusBar().showMessage(
+                f"Cannot draw the geographic view: {error}", 10000
+            )
+            return
 
         if enable:
-            self.fit_view()
+            self.fit_geo_view()
         elif self._schematic_view_state is not None:
             transform, centre = self._schematic_view_state
             self.setTransform(transform)
@@ -950,6 +1144,50 @@ class Schematic(QGraphicsView):
             self.scaling_factor = round(self.transform().m11(), 4)
             self.editor_settings.save_zoom_level(self.scaling_factor)
             self._schematic_view_state = None
+
+    def sync_geo_view_action(self) -> None:
+        """
+        Updates the checked state of the toolbar action with the current setting,
+        without triggering it.
+        :return: None
+        """
+        action = self.app.app_actions.get("toggle-geo-view")
+        if action is not None:
+            action.blockSignals(True)
+            action.setChecked(self.editor_settings.is_geo_view_enabled)
+            action.blockSignals(False)
+
+    def draw_safely(self) -> None:
+        """
+        Draws the schematic when the model is opened. If the geographic view, which
+        is restored from the previous session, cannot be drawn, the schematic view
+        is used so that the model can always be opened.
+        :return: None
+        """
+        try:
+            self.draw()
+        except Exception:
+            if not self.editor_settings.is_geo_view_enabled:
+                raise
+            self.logger.exception("Cannot draw the geographic view")
+            self.editor_settings.save_geo_view(False)
+            self.sync_geo_view_action()
+            self.reload()
+
+    def fit_geo_view(self) -> None:
+        """
+        Fits the geographic view to the nodes or, when no node has a geographic
+        position, to Europe.
+        :return: None
+        """
+        if len(self.located_merc_points()) > 0:
+            self.fit_view()
+            return
+
+        south_west, north_east = europe_extent_merc()
+        x1, y2 = self.geo_transform.merc_to_scene(*south_west)
+        x2, y1 = self.geo_transform.merc_to_scene(*north_east)
+        self.fitInView(QRectF(x1, y1, x2 - x1, y2 - y1), Qt.KeepAspectRatio)
 
     @property
     def legend_alignment(self) -> Qt.AlignmentFlag:
@@ -991,7 +1229,7 @@ class Schematic(QGraphicsView):
         :return: None
         """
         # whether a model has a basemap is saved with the model
-        self.model_config.map_config["show_basemap"] = visible
+        self.model_config.writable_map_config["show_basemap"] = visible
         self.model_config.has_changed()
         self.tile_layer.set_basemap_visible(visible)
 

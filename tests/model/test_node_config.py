@@ -92,9 +92,7 @@ def test_geographic_position_missing(node_config, node_props):
     assert node_config.geographic_position is None
 
 
-@pytest.mark.parametrize(
-    "node_props", [get_all_node_props()["node_wrong_geographic"]]
-)
+@pytest.mark.parametrize("node_props", [get_all_node_props()["node_wrong_geographic"]])
 def test_geographic_position_invalid(node_config, node_props):
     """
     Tests that None is returned for the geographic_position property when the

@@ -64,6 +64,8 @@ class TestGeoTransform:
         assert GeoTransform.is_finite((1, 2))
         assert not GeoTransform.is_finite((math.inf, 2))
         assert not GeoTransform.is_finite((1, math.nan))
+        # beyond the Web Mercator world
+        assert not GeoTransform.is_finite((1, 20037509))
 
 
 class TestSchematicToGeoPx:
@@ -118,6 +120,10 @@ class TestSchematicToGeoPx:
         # the poles cannot be represented in Web Mercator
         position = schematic.to_geo_px([0, 90])
         assert all(math.isfinite(v) for v in position)
+        # the drawing places these nodes at a default location instead
+        assert schematic.geo_to_scene([0, 90]) is None
+        assert schematic.geo_to_scene([0, 89]) is None
+        assert schematic.geo_to_scene([0, 80]) is not None
 
     def test_nodes_are_visible_and_zoom_works_in_geo_view(self, init_window):
         """

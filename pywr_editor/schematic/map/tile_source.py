@@ -1,5 +1,3 @@
-from pywr_editor import __version__
-
 """
 The OpenStreetMap raster tile source. OSM tiles are published in Web Mercator
 (EPSG:3857) as a slippy map pyramid: zoom level z is a grid of 2^z x 2^z tiles of
@@ -7,6 +5,8 @@ The OpenStreetMap raster tile source. OSM tiles are published in Web Mercator
 (https://operations.osmfoundation.org/policies/tiles/) requires a descriptive
 User-Agent, caching, a limit on concurrent connections and a visible attribution.
 """
+
+from pywr_editor import __version__
 
 OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 """ The XYZ URL template of the tile server """
