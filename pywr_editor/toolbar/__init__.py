@@ -1,4 +1,5 @@
 from .grid_settings import GridSettings
+from .map_settings import MapSettings
 from .model_navigation_settings import ModelNavigationSettings
 from .node_library.library_item import LibraryItem
 from .node_library.library_item_label import LibraryItemLabel

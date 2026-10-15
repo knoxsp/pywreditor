@@ -2,6 +2,7 @@ from .projection import (
     Projector,
     WEB_MERCATOR_CRS,
     count_outside_area_of_use,
+    crs_name,
     is_valid_crs,
     looks_like_degrees,
 )

@@ -21,6 +21,18 @@ def is_valid_crs(crs: str) -> bool:
         return False
 
 
+def crs_name(crs: str) -> str | None:
+    """
+    Returns the human-readable name of a CRS.
+    :param crs: The CRS definition.
+    :return: The name (e.g. "WGS 84"), or None if the CRS is not valid.
+    """
+    try:
+        return pyproj.CRS.from_user_input(crs).name
+    except pyproj.exceptions.CRSError:
+        return None
+
+
 class Projector:
     """
     Converts coordinates between a source CRS (e.g. the CRS used by a node's

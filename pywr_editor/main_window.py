@@ -29,6 +29,7 @@ from pywr_editor.schematic import Schematic, get_scaling_factor
 from pywr_editor.style import AppStylesheet
 from pywr_editor.toolbar import (
     GridSettings,
+    MapSettings,
     ModelNavigationSettings,
     RunWidget,
     SchematicItemsLibrary,
@@ -736,6 +737,9 @@ class MainWindow(QMainWindow):
         navigation_panel.add_widget(ModelNavigationSettings(self))
         grid_panel = settings_tab.add_panel("Schematic -> Grid")
         grid_panel.add_widget(GridSettings(self))
+        map_panel = settings_tab.add_panel("Schematic -> Map")
+        self.map_settings = MapSettings(self)
+        map_panel.add_widget(self.map_settings)
 
     def add_status_bar(self) -> None:
         """
@@ -1063,6 +1067,7 @@ class MainWindow(QMainWindow):
         node_library.setDisabled(is_running)
 
         self.schematic.set_run_mode(is_running)
+        self.map_settings.setDisabled(is_running)
 
         # handle the timestepper fields
         # noinspection PyUnresolvedReferences

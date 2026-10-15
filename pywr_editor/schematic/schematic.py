@@ -94,6 +94,8 @@ class Schematic(QGraphicsView):
     schematic_move_event = Signal(QPointF)
     """ event emitted when schematic is moved """
     connect_node_event = Signal(SchematicNode)
+    gis_layers_changed = Signal()
+    """ Emitted when the GIS layers of the model were changed and drawn again """
     geo_view_changed = Signal(bool)
     """ Emitted after the schematic switched to (True) or from (False) the geographic view """
     """ event emitted when a node is being connected to another """
@@ -770,6 +772,14 @@ class Schematic(QGraphicsView):
                 f"{'it' if default_count == 1 else 'them'} into place"
             )
 
+        return messages + self.crs_warnings()
+
+    def crs_warnings(self) -> list[str]:
+        """
+        Returns the warnings about the nodes' geographic positions not fitting the
+        model's geographic CRS.
+        :return: The list of messages. Empty if the positions look right.
+        """
         positions = [
             node.geographic_position
             for node in map(
@@ -777,17 +787,18 @@ class Schematic(QGraphicsView):
             )
             if node.geographic_position is not None
         ]
-        result = count_outside_area_of_use(self.model_config.geographic_crs, positions)
+        crs = self.model_config.geographic_crs
+        messages = []
+        result = count_outside_area_of_use(crs, positions)
         if result is not None and result[0] > 0:
             messages.append(
                 f"{result[0]} of {result[1]} nodes are outside the area where "
-                f"{self.model_config.geographic_crs} is valid - check the CRS and "
-                "the axis order"
+                f"{crs} is valid - check the CRS and the axis order"
             )
-        if looks_like_degrees(self.model_config.geographic_crs, positions):
+        if looks_like_degrees(crs, positions):
             messages.append(
-                f"The positions look like longitudes and latitudes, but "
-                f"{self.model_config.geographic_crs} uses metres - check the CRS"
+                "The positions look like longitudes and latitudes, but "
+                f"{crs} uses metres - check the CRS"
             )
         return messages
 
@@ -1230,6 +1241,21 @@ class Schematic(QGraphicsView):
         :return: None
         """
         self.gis_overlay.refresh()
+        self.gis_layers_changed.emit()
+
+    def on_geographic_crs_changed(self) -> None:
+        """
+        Draws the schematic again after the model's geographic CRS was changed, as
+        the positions of the nodes on the map change. The view is fitted to the
+        nodes again. Nothing is drawn in the schematic view.
+        :return: None
+        """
+        self.rebuild_geo_projector()
+        if not self.editor_settings.is_geo_view_enabled:
+            return
+
+        self.reload()
+        self.fit_geo_view()
 
     def set_basemap_visible(self, visible: bool) -> None:
         """
