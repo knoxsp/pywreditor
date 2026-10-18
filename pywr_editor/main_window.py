@@ -14,6 +14,8 @@ from pywr_editor.dialogs import (
     EdgeSlotsDialog,
     GisLayersDialog,
     IncludesDialog,
+    PythonPathsDialog,
+    ResultsDialog,
     JsonCodeViewer,
     MetadataDialog,
     NodeDataPanel,
@@ -30,6 +32,7 @@ from pywr_editor.style import AppStylesheet
 from pywr_editor.toolbar import (
     GridSettings,
     MapSettings,
+    RunSettings,
     ModelNavigationSettings,
     RunWidget,
     SchematicItemsLibrary,
@@ -183,10 +186,11 @@ class MainWindow(QMainWindow):
         :return: None
         """
         if self.model_config.has_changes is False or self.maybe_save():
-            # event.accept()
             self.editor_settings.save_window_attributes(self)
         else:
+            # the user cancelled or the model could not be saved: keep the window
             event.ignore()
+            return
 
         self.timer.stop()
 
@@ -291,6 +295,16 @@ class MainWindow(QMainWindow):
                 tooltip="Add and delete imports of custom parameters, nodes and "
                 "recorders",
                 connection=self.open_imports_dialog,
+            )
+        )
+        self.app_actions.add(
+            Action(
+                key="edit-python-paths",
+                name="Python\npaths",
+                icon=":/toolbar/edit-imports",
+                tooltip="Add folders or virtual environments to the Python path "
+                "used to run the model",
+                connection=self.open_python_paths_dialog,
             )
         )
         self.app_actions.add(
@@ -561,6 +575,27 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="auto-layout",
+                name="Auto\nlayout",
+                icon=":toolbar/plot-data",
+                tooltip="Spread the nodes with a force-directed layout, keeping "
+                "connected nodes close. Only the schematic positions are changed",
+                connection=self.schematic.auto_layout,
+            )
+        )
+        self.app_actions.add(
+            Action(
+                key="infer-geo-positions",
+                name="Estimate\npositions",
+                icon=":toolbar/toggle-geo-view",
+                tooltip="Estimate the geographic position of the nodes that do not "
+                "have one from the position of the connected nodes (geographic "
+                "view only)",
+                connection=self.schematic.infer_geographic_positions,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="zoom-in",
                 name="Zoom\nin",
                 icon=":toolbar/zoom-in",
@@ -616,6 +651,16 @@ class MainWindow(QMainWindow):
         # )
         self.app_actions.add(
             Action(
+                key="run-results",
+                name="Results",
+                icon=":toolbar/plot-data",
+                tooltip="View the saved recorder results of the model runs in a "
+                "table and a plot",
+                connection=self.open_results_dialog,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="run-inspector",
                 name="Inspector",
                 icon=":toolbar/run-inspector",
@@ -650,6 +695,7 @@ class MainWindow(QMainWindow):
                 self.app_actions.get("edit-slots"),
             ]
         )
+        settings_panel.add_button(self.app_actions.get("edit-python-paths"))
         settings_panel.add_button(self.app_actions.get("edit-tables"))
         settings_panel.add_button(self.app_actions.get("edit-parameters"))
         settings_panel.add_button(self.app_actions.get("edit-recorders"))
@@ -690,6 +736,7 @@ class MainWindow(QMainWindow):
         nodes_panel.add_widget(RunWidget(self))
 
         results_panel = run.add_panel("Results")
+        results_panel.add_button(self.app_actions.get("run-results"))
         results_panel.add_button(self.app_actions.get("run-inspector"))
 
         # View tab
@@ -699,14 +746,15 @@ class MainWindow(QMainWindow):
         zoom_panel.add_button(self.app_actions.get("zoom-out"))
         zoom_panel.add_button(self.app_actions.get("zoom-100"))
 
-        display_panel = schematic_tab.add_panel("Display", layout="vertical")
-        display_panel.add_button(self.app_actions.get("toggle-labels"), is_large=False)
-        display_panel.add_button(self.app_actions.get("toggle-arrows"), is_large=False)
-        display_panel.add_button(self.app_actions.get("toggle-legend"), is_large=False)
-        display_panel.add_button(
-            self.app_actions.get("toggle-geo-view"), is_large=False
+        # two columns of (at most) three small buttons each
+        display_panel = schematic_tab.add_panel("Display")
+        display_panel.add_vertical_small_buttons(
+            [
+                self.app_actions.get("toggle-labels"),
+                self.app_actions.get("toggle-arrows"),
+                self.app_actions.get("toggle-legend"),
+            ]
         )
-        display_panel.add_button(self.app_actions.get("center"), is_large=False)
 
         toggle_node_data_action = self.node_data_panel.toggleViewAction()
         toggle_node_data_action.setText("Hide node data")
@@ -715,7 +763,17 @@ class MainWindow(QMainWindow):
             "Show or hide the dockable panel with the data of the node currently "
             "selected on the schematic"
         )
-        display_panel.add_button(toggle_node_data_action, is_large=False)
+        display_panel.add_vertical_small_buttons(
+            [
+                self.app_actions.get("toggle-geo-view"),
+                self.app_actions.get("center"),
+                toggle_node_data_action,
+            ]
+        )
+
+        layout_panel = schematic_tab.add_panel("Layout")
+        layout_panel.add_button(self.app_actions.get("auto-layout"))
+        layout_panel.add_button(self.app_actions.get("infer-geo-positions"))
 
         size_panel = schematic_tab.add_panel("Size")
         size_panel.add_button(self.app_actions.get("increase-width"))
@@ -735,6 +793,8 @@ class MainWindow(QMainWindow):
         settings_tab = self.toolbar.add_tab("Settings")
         navigation_panel = settings_tab.add_panel("Model -> Navigation")
         navigation_panel.add_widget(ModelNavigationSettings(self))
+        run_panel = settings_tab.add_panel("Model -> Run")
+        run_panel.add_widget(RunSettings(self))
         grid_panel = settings_tab.add_panel("Schematic -> Grid")
         grid_panel.add_widget(GridSettings(self))
         map_panel = settings_tab.add_panel("Schematic -> Map")
@@ -925,6 +985,34 @@ class MainWindow(QMainWindow):
         dialog.show()
 
     @Slot()
+    def open_results_dialog(self, run_dir: str | None = None) -> None:
+        """
+        Opens the dialog to view the saved results.
+        :param run_dir: The run to show. Default to the most recent one.
+        :return: None
+        """
+        from pywr_editor.model.results import resolve_output_dir
+
+        output_dir = resolve_output_dir(
+            self.editor_settings.output_dir, self.model_config.json_file
+        )
+        dialog = ResultsDialog(
+            output_dir=output_dir,
+            select_run=run_dir if isinstance(run_dir, str) else None,
+            parent=self,
+        )
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        dialog.show()
+
+    @Slot()
+    def open_python_paths_dialog(self) -> None:
+        """
+        Opens the dialog to edit the Python paths used to run the model.
+        :return: None
+        """
+        PythonPathsDialog(self.editor_settings, parent=self).exec()
+
+    @Slot()
     def open_tables_dialog(self) -> None:
         """
         Opens the dialog to edit the model tables.
@@ -1054,6 +1142,8 @@ class MainWindow(QMainWindow):
             "find-orphaned-nodes",
             "find-orphaned-parameters",
             "toggle-geo-view",
+            "auto-layout",
+            "infer-geo-positions",
             "manage-gis-layers",
         ]
         for action_name in to_disable:

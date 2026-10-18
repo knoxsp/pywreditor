@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from pywr_editor.dialogs import InspectorDialog
 from pywr_editor.model import PywrProgress, PywrWorker
+from pywr_editor.model.results import resolve_output_dir
 from pywr_editor.style import Color, stylesheet_dict_to_str
 from pywr_editor.toolbar.small_button import ToolbarSmallButton
 from pywr_editor.utils import Logging
@@ -53,6 +54,7 @@ class RunWidget(QWidget):
         self.worker: PywrWorker | None = None
         self.thread: QThread | None = None
         self.is_running = False
+        self.last_results_dir: str | None = None
         self.is_past_run_to_date = False
         self.is_end_date_reached = False
 
@@ -159,6 +161,19 @@ class RunWidget(QWidget):
             model_file=self.model_config.json_file,
             end_date=pd.Timestamp(end_date),
             run_to_date=pd.Timestamp(run_to_date),
+            python_paths=self.app.editor_settings.python_paths,
+            python_modules=self.app.editor_settings.python_modules,
+            solver=self.app.editor_settings.solver,
+            results_dir=(
+                str(
+                    resolve_output_dir(
+                        self.app.editor_settings.output_dir,
+                        self.model_config.json_file,
+                    )
+                )
+                if self.app.editor_settings.are_results_saved
+                else None
+            ),
         )
         self.thread = QThread(self)
         self.worker.moveToThread(self.thread)
@@ -181,6 +196,8 @@ class RunWidget(QWidget):
         self.worker.status_update.connect(self.update_status)
 
         self.worker.model_error.connect(self.on_model_error)
+        self.worker.results_saved.connect(self.on_results_saved)
+        self.worker.results_error.connect(self.on_results_error)
 
         self.thread.start()
         self.is_running = True
@@ -361,6 +378,43 @@ class RunWidget(QWidget):
         :return: None
         """
         self.progress_status.setText(message)
+
+    @Slot(str)
+    def on_results_saved(self, run_dir: str) -> None:
+        """
+        Tells the user where the results were saved.
+        :param run_dir: The folder of the run.
+        :return: None
+        """
+        self.app.statusBar().showMessage(f"Results saved to {run_dir}")
+        self.last_results_dir = run_dir
+
+        box = QMessageBox(self.app)
+        box.setWindowTitle("Results saved")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(f"The recorder results were saved to:\n{run_dir}")
+        view = box.addButton("View results", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.setWindowModality(Qt.WindowModality.NonModal)
+        # noinspection PyUnresolvedReferences
+        view.clicked.connect(lambda: self.app.open_results_dialog(run_dir))
+        box.show()
+        self._results_box = box
+
+    @Slot(str)
+    def on_results_error(self, exception: str) -> None:
+        """
+        Shows the error that stopped the results from being saved.
+        :param exception: The exception message.
+        :return: None
+        """
+        message = QMessageBox(self.app)
+        message.setWindowTitle("Results not saved")
+        message.setIcon(QMessageBox.Icon.Warning)
+        message.setText("The recorder results could not be saved.")
+        message.setDetailedText(exception)
+        message.show()
+        self._results_box = message
 
     @Slot(str)
     def on_model_error(self, exception: str) -> None:

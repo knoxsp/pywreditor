@@ -182,7 +182,9 @@ class TestEmptyState:
             (south_west[0] + north_east[0]) / 2,
             (south_west[1] + north_east[1]) / 2,
         )
-        assert centre == pytest.approx(expected, rel=1e-3)
+        # fitInView centres to within a couple of pixels, which depends on the
+        # parity of the viewport size (and so on the width of the toolbar)
+        assert centre == pytest.approx(expected, abs=5e3)
         assert schematic.tile_layer.is_active is True
         # nothing is saved
         assert window.model_config.json == initial_json

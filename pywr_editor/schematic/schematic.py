@@ -17,6 +17,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QFrame,
     QGraphicsItem,
@@ -39,6 +40,11 @@ from pywr_editor.model import (
     TextShape,
 )
 from pywr_editor.node_shapes import get_node_icon_classes
+from pywr_editor.schematic.layout import (
+    force_directed_layout,
+    infer_positions,
+    snap_to_grid,
+)
 from pywr_editor.schematic import (
     AbstractSchematicItem,
     AbstractSchematicShape,
@@ -46,6 +52,7 @@ from pywr_editor.schematic import (
     AddShapeCommand,
     ConnectNodeCommand,
     DeleteItemCommand,
+    LayoutNodesCommand,
     MoveItemCommand,
     SchematicArrow,
     SchematicBBoxUtils,
@@ -63,6 +70,7 @@ from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
 from .legend import NodeTypeGroup, SchematicLegend
+from .minimap import SchematicMinimap
 from .map import (
     ATTRIBUTION,
     ATTRIBUTION_URL,
@@ -125,6 +133,7 @@ class Schematic(QGraphicsView):
 
         # state for pressing on an unselected node (see mousePressEvent) - this
         # pans the schematic instead of selecting/dragging the node straight away
+        self._middle_pan_pos: QPoint | None = None
         self._node_press_target: Union["SchematicNode", None] = None
         self._node_press_last_pos: QPoint | None = None
         self._node_press_moved = False
@@ -213,6 +222,8 @@ class Schematic(QGraphicsView):
         self.legend = SchematicLegend(self)
         self.overlay_layout.addWidget(self.legend, 0, 0, self.legend_alignment)
 
+        self.minimap = SchematicMinimap(self)
+
         self.geo_view_banner = QLabel(self)
         self.geo_view_banner.setObjectName("geo-view-banner")
         self.geo_view_banner.setStyleSheet(
@@ -271,6 +282,7 @@ class Schematic(QGraphicsView):
         self.overlay_layout.setRowStretch(0, 1)
         self.overlay_layout.setRowStretch(1, 0)
         self.tile_layer.active_changed.connect(self.attribution.setVisible)
+        self.tile_layer.active_changed.connect(lambda *_: self.minimap.reposition())
         self.tile_layer.active_changed.connect(self.show_map_notice)
 
     @Slot(bool)
@@ -421,6 +433,7 @@ class Schematic(QGraphicsView):
             self.add_shape(shape_obj)
 
         self.legend.refresh()
+        self.minimap.refresh()
         self.tile_layer.refresh()
         self.gis_overlay.refresh()
 
@@ -650,6 +663,20 @@ class Schematic(QGraphicsView):
                 points.append(point)
         return points
 
+    def geo_located_scene_points(self) -> list[tuple[float, float]]:
+        """
+        Returns the scene position of the nodes that have a geographic position that
+        can be placed on the map.
+        :return: The list of (x, y) scene coordinates.
+        """
+        points = []
+        for node_props in self.model_config.nodes.get_all():
+            node_config = self.model_config.nodes.node(node_props)
+            point = self.geo_to_scene(node_config.geographic_position)
+            if point is not None:
+                points.append((point[0], point[1]))
+        return points
+
     def geo_to_scene(self, position: Sequence[float] | None) -> list[float] | None:
         """
         Transforms a node's geographic position to scene coordinates.
@@ -702,14 +729,10 @@ class Schematic(QGraphicsView):
     def geo_default_centre(self) -> tuple[float, float]:
         """
         Returns the scene position where the nodes without a geographic position are
-        placed: the centre of the visible area or, if the view is not displayed yet,
-        the centre of the map.
+        placed: the centre of the nodes that have one (not of the visible area, which
+        can be anywhere), or of the map if there are none.
         :return: The (x, y) scene coordinates.
         """
-        viewport = self.viewport().rect()
-        if self.isVisible() and viewport.width() > 100 and viewport.height() > 100:
-            centre = self.mapToScene(viewport.center())
-            return centre.x(), centre.y()
         return self.geo_transform.centre_scene
 
     @staticmethod
@@ -795,6 +818,17 @@ class Schematic(QGraphicsView):
                 f"{result[0]} of {result[1]} nodes are outside the area where "
                 f"{crs} is valid - check the CRS and the axis order"
             )
+        if result is not None and result[0] == result[1] and result[1] > 0:
+            # nothing fits the CRS: look for one that fits all the positions
+            for candidate in ("EPSG:27700", "EPSG:4326", "EPSG:3857"):
+                if candidate == crs:
+                    continue
+                candidate_result = count_outside_area_of_use(candidate, positions)
+                if candidate_result is not None and candidate_result[0] == 0:
+                    messages.append(
+                        f"The positions fit {candidate}: set it as the CRS"
+                    )
+                    break
         if looks_like_degrees(crs, positions):
             messages.append(
                 "The positions look like longitudes and latitudes, but "
@@ -1023,15 +1057,113 @@ class Schematic(QGraphicsView):
     def center_view_on(self, position: QPointF | None = None) -> None:
         """
         Centers the view on the provided position. If this is None, the schematic is
-        centered on the scene center.
+        centered on the nodes and shapes (or on the scene centre if there are none),
+        as the scene is much larger than the content.
         :param position: The position to center the schematic on. Optional.
         :return: None
         """
         if not position:  # can be also False when triggered from QAction
-            position = self.scene.sceneRect().center()
+            bbox = SchematicBBoxUtils(self.items()).min_max_bounding_box_coordinates
+            if bbox.min_x.value is None:
+                position = self.scene.sceneRect().center()
+            else:
+                position = QPointF(
+                    (bbox.min_x.value + bbox.max_x.value) / 2,
+                    (bbox.min_y.value + bbox.max_y.value) / 2,
+                )
         self.centerOn(position)
         # noinspection PyUnresolvedReferences
         self.schematic_move_event.emit(position)
+
+    @Slot()
+    def infer_geographic_positions(self) -> None:
+        """
+        Estimates the geographic position of the nodes that do not have one from the
+        position of the connected nodes (see infer_positions()) and saves it. The
+        nodes that already have a position are not changed. The change can be
+        undone.
+        :return: None
+        """
+        if not self.editor_settings.is_geo_view_enabled:
+            self.app.statusBar().showMessage(
+                "Switch to the geographic view to estimate the node positions", 5000
+            )
+            return
+        if getattr(self.app, "is_model_running", False):
+            return
+
+        names, known = [], {}
+        for node_props in self.model_config.nodes.get_all():
+            name = node_props["name"]
+            names.append(name)
+            point = self.geo_point(self.model_config.nodes.node(node_props).geographic_position)
+            if point is not None:
+                known[name] = point
+        missing = [name for name in names if name not in known]
+        if len(missing) == 0:
+            self.app.statusBar().showMessage("All the nodes have a position", 5000)
+            return
+
+        xs = [p[0] for p in known.values()] or [0.0]
+        ys = [p[1] for p in known.values()] or [0.0]
+        extent = max(max(xs) - min(xs), max(ys) - min(ys))
+        edges = [(edge[0], edge[1]) for edge in self.model_config.edges.get_all()]
+        inferred = infer_positions(known, names, edges, spread=extent / 150)
+        if len(inferred) == 0:
+            self.app.statusBar().showMessage(
+                "No node without a position is connected to a node with one", 8000
+            )
+            return
+
+        positions = {}
+        for name, (x, y) in inferred.items():
+            lon_lat = self.geo_projector.merc_to_lonlat(x, y)
+            positions[name] = [round(lon_lat[0], 6), round(lon_lat[1], 6)]
+        self.app.undo_stack.push(
+            LayoutNodesCommand(self, positions, geographic=True)
+        )
+        unplaced = len(missing) - len(positions)
+        self.app.statusBar().showMessage(
+            f"Estimated the position of {len(positions)} nodes"
+            + (f"; {unplaced} are not connected to a located node" if unplaced else ""),
+            8000,
+        )
+
+    @Slot()
+    def auto_layout(self) -> None:
+        """
+        Spreads the nodes with a force-directed layout, which pushes all the nodes
+        apart while keeping the connected ones close. The schematic positions are
+        changed (the geographic positions are not) and the change can be undone. When
+        snap-to-grid is enabled, the nodes are put on distinct grid points.
+        :return: None
+        """
+        if self.editor_settings.is_geo_view_enabled:
+            self.app.statusBar().showMessage(
+                "Switch to the schematic view to lay out the nodes", 5000
+            )
+            return
+        if getattr(self.app, "is_model_running", False):
+            return
+
+        names = [item.name for item in self.node_items.values()]
+        initial = {
+            name: (item.pos().x(), item.pos().y())
+            for name, item in self.node_items.items()
+        }
+        edges = [(edge[0], edge[1]) for edge in self.model_config.edges.get_all()]
+        snap = self.editor_settings.is_snap_to_grid_enabled
+        grid_size = max(self.editor_settings.grid_size, 1)
+        # keep the nodes a few cells apart so that snapping does not crowd them
+        spacing = max(90.0, 3.0 * grid_size) if snap else 90.0
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            positions = force_directed_layout(names, edges, initial, spacing=spacing)
+            if snap:
+                positions = snap_to_grid(positions, grid_size)
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.app.undo_stack.push(LayoutNodesCommand(self, positions))
 
     @Slot()
     def fit_view(self) -> None:
@@ -1092,6 +1224,25 @@ class Schematic(QGraphicsView):
         self.editor_settings.save_hide_arrows(
             not self.editor_settings.are_edge_arrows_hidden
         )
+
+    def set_minimap_visible(self, visible: bool) -> None:
+        """
+        Shows or hides the minimap and persists the choice.
+        :param visible: True to show the minimap, False to hide it.
+        :return: None
+        """
+        self.editor_settings.save_hide_minimap(not visible)
+        self.minimap.refresh()
+
+    def resizeEvent(self, event) -> None:
+        """
+        Keeps the minimap in the bottom-right corner of the view.
+        :param event: The resize event.
+        :return: None
+        """
+        super().resizeEvent(event)
+        if hasattr(self, "minimap"):
+            self.minimap.reposition()
 
     @Slot()
     def toggle_legend(self) -> None:
@@ -1201,8 +1352,17 @@ class Schematic(QGraphicsView):
         position, to Europe.
         :return: None
         """
-        if len(self.located_merc_points()) > 0:
-            self.fit_view()
+        located = self.geo_located_scene_points()
+        if len(located) > 0:
+            # the nodes without a position (and the edges to them) are not used, as
+            # they can be far from the located ones
+            xs, ys = zip(*located)
+            self.fitInView(
+                QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)).adjusted(
+                    -40, -40, 40, 40
+                ),
+                Qt.KeepAspectRatio,
+            )
             return
 
         south_west, north_east = europe_extent_merc()
@@ -1233,6 +1393,7 @@ class Schematic(QGraphicsView):
         """
         self.editor_settings.save_legend_position(position)
         self.overlay_layout.setAlignment(self.legend, self.legend_alignment)
+        self.minimap.reposition()
 
     def refresh_gis_layers(self) -> None:
         """
@@ -1567,6 +1728,13 @@ class Schematic(QGraphicsView):
         :param event: The event being triggered.
         :return: None
         """
+        if event.button() == Qt.MiddleButton:
+            # pan the canvas
+            self._middle_pan_pos = event.pos()
+            self.viewport().setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
+
         if event.button() == Qt.LeftButton:
             # enable selection rectangle
             if event.modifiers() == Qt.ControlModifier:
@@ -1595,8 +1763,12 @@ class Schematic(QGraphicsView):
                     ),
                     items,
                 )
-                # enable canvas dragging
-                if len(items) > 0 and not any(is_selectable):
+                if event.modifiers() == Qt.ShiftModifier and not any(is_selectable):
+                    # Shift + drag on the empty canvas draws a selection box
+                    self.de_select_all_items()
+                    self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+                elif len(items) > 0 and not any(is_selectable):
+                    # enable canvas dragging
                     self.de_select_all_items()
                     self.canvas_drag = True
                     self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
@@ -1624,6 +1796,14 @@ class Schematic(QGraphicsView):
         :param event: The event being triggered.
         :return: None
         """
+        if event.button() == Qt.MiddleButton and self._middle_pan_pos is not None:
+            self._middle_pan_pos = None
+            self.viewport().unsetCursor()
+            center = self.mapToScene(self.viewport().geometry()).boundingRect().center()
+            self.schematic_move_event.emit(center)
+            event.accept()
+            return
+
         if event.button() == Qt.LeftButton and self._node_press_target is not None:
             node = self._node_press_target
 
@@ -1706,6 +1886,18 @@ class Schematic(QGraphicsView):
         :param event: The event being triggered.
         :return: None
         """
+        if self._middle_pan_pos is not None:
+            delta = event.pos() - self._middle_pan_pos
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - delta.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - delta.y()
+            )
+            self._middle_pan_pos = event.pos()
+            event.accept()
+            return
+
         if self._node_press_target is not None:
             delta = event.pos() - self._node_press_last_pos
             if delta.manhattanLength() > 0:

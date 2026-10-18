@@ -99,6 +99,10 @@ class SchematicLegend(QFrame):
         self.setVisible(
             len(groups) > 0 and not self.schematic.editor_settings.are_legend_hidden
         )
+        # the minimap sits above the legend when both are on the right
+        minimap = getattr(self.schematic, "minimap", None)
+        if minimap is not None:
+            minimap.reposition()
 
     def _build_row(self, group: NodeTypeGroup) -> QWidget:
         """

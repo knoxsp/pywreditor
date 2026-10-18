@@ -146,3 +146,53 @@ class TestMapSettings:
         assert self.panel.layers_button.isEnabled() is False
         action.setDisabled(False)
         assert self.panel.layers_button.isEnabled() is True
+
+
+class TestCrsSuggestion:
+    def test_suggests_the_crs_fitting_the_positions(self, qtbot, tmp_path):
+        """
+        Tests that British National Grid positions in a model using the default CRS
+        produce a warning suggesting EPSG:27700.
+        """
+        with open(BASE_MODEL) as fp:
+            model = json.load(fp)
+        for node in model["nodes"]:
+            if "position" in node and "geographic" in node["position"]:
+                node["position"]["geographic"] = [530000.0, 180000.0]
+        path = tmp_path / "model.json"
+        path.write_text(json.dumps(model))
+        QTimer.singleShot(100, close_message_box)
+        window = MainWindow(str(path))
+        window.hide()
+
+        warnings = window.schematic.crs_warnings()
+        assert any("fit EPSG:27700" in warning for warning in warnings)
+
+        window.model_config.update_geographic_crs("EPSG:27700")
+        window.schematic.rebuild_geo_projector()
+        assert not any("fit EPSG" in w for w in window.schematic.crs_warnings())
+
+
+class TestCrsPersistence:
+    def test_crs_is_saved_and_close_can_be_cancelled(self, qtbot, tmp_path):
+        with open(BASE_MODEL) as fp:
+            model = json.load(fp)
+        path = tmp_path / "model.json"
+        path.write_text(json.dumps(model))
+        QTimer.singleShot(100, close_message_box)
+        window = MainWindow(str(path))
+        window.show()
+        window.map_settings.crs_field.setText("EPSG:27700")
+        window.map_settings.on_crs_edited()
+        assert window.model_config.has_changes
+
+        # cancelling the "unsaved changes" prompt keeps the window open
+        window.maybe_save = lambda: False
+        assert window.close() is False
+        assert window.isVisible()
+
+        window.model_config.save()
+        assert json.loads(path.read_text())["pywr_editor"]["map"]["crs"] == "EPSG:27700"
+        window.prompt_unsaved_changes = False
+        window.model_config.reset_change_flag()
+        window.close()

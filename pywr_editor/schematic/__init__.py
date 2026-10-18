@@ -7,6 +7,7 @@ from .commands.add_node_command import AddNodeCommand
 from .commands.add_shape_command import AddShapeCommand
 from .commands.connect_node_command import ConnectNodeCommand
 from .commands.disconnect_node_command import DisconnectNodeCommand
+from .commands.layout_nodes_command import LayoutNodesCommand
 from .commands.move_item_command import MoveItemCommand
 from .commands.resize_shape_command import ResizeShapeCommand
 from .abstract_schematic_item import AbstractSchematicItem

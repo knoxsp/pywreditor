@@ -79,3 +79,12 @@ def delay() -> None:
     :return: None
     """
     time.sleep(1)
+
+
+@pytest.fixture(autouse=True)
+def do_not_save_run_results(monkeypatch):
+    """
+    Runs do not write an "outputs" folder next to the test models, unless a test
+    turns the setting on explicitly.
+    """
+    monkeypatch.setattr(Settings, "default_save_results", False)

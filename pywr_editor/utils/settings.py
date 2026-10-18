@@ -18,6 +18,7 @@ class Settings:
     hide_labels_key = "schematic/hide_labels"
     hide_arrows_key = "schematic/hide_arrows"
     hide_legend_key = "schematic/hide_legend"
+    hide_minimap_key = "schematic/hide_minimap"
     geo_view_key = "schematic/geo_view"
     map_notice_key = "schematic/map_notice_shown"
     hidden_node_types_key = "schematic/hidden_node_types"
@@ -30,6 +31,13 @@ class Settings:
     show_grid_key = "schematic/show_grid"
     recent_projects_key = "recent_projects"
     run_to_date_key = "run_to_date"
+    python_paths_key = "python/paths"
+    solver_key = "run/solver"
+    output_dir_key = "run/output_dir"
+    save_results_key = "run/save_results"
+    default_solver = "glpk-edge"
+    default_save_results = True
+    python_modules_key = "python/modules"
 
     def __init__(self, json_file: str | None = None):
         """
@@ -201,6 +209,131 @@ class Settings:
         if self.app_name is None:
             return
         self.instance.setValue(self.hide_legend_key, hide)
+
+    @property
+    def python_paths(self) -> list[str]:
+        """
+        The folders (source folders or virtual environments) added to the Python
+        search path when the model is run.
+        :return: The list of paths.
+        """
+        value = self.instance.value(self.python_paths_key, defaultValue=[])
+        if isinstance(value, str):
+            value = [value]
+        return [str(p) for p in value or []]
+
+    def save_python_paths(self, paths: list[str]) -> None:
+        """
+        Saves the Python paths used to run the model.
+        :param paths: The list of paths.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.python_paths_key, list(paths))
+
+    @property
+    def solver(self) -> str:
+        """
+        The Pywr solver used to run the model, unless the model file sets one.
+        :return: The solver name. Defaults to glpk-edge.
+        """
+        return str(
+            self.instance.value(self.solver_key, defaultValue=self.default_solver)
+        )
+
+    def save_solver(self, name: str) -> None:
+        """
+        Saves the Pywr solver used to run the model.
+        :param name: The solver name.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.solver_key, name)
+
+    @property
+    def output_dir(self) -> str:
+        """
+        The folder where the run results are saved, as set by the user.
+        :return: The folder. An empty string means the "outputs" folder next to the
+        model file. A relative path is relative to the model folder.
+        """
+        return str(self.instance.value(self.output_dir_key, defaultValue=""))
+
+    def save_output_dir(self, folder: str) -> None:
+        """
+        Saves the folder where the run results are saved.
+        :param folder: The folder.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.output_dir_key, folder)
+
+    @property
+    def are_results_saved(self) -> bool:
+        """
+        Whether the recorder results are saved when a run ends.
+        :return: True if the results are saved. Defaults to True.
+        """
+        return self.str_to_bool(
+            self.instance.value(
+                self.save_results_key, defaultValue=self.default_save_results
+            )
+        )
+
+    def save_results_enabled(self, enabled: bool) -> None:
+        """
+        Sets whether the recorder results are saved when a run ends.
+        :param enabled: True to save the results.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.save_results_key, enabled)
+
+    @property
+    def python_modules(self) -> list[str]:
+        """
+        The modules imported before the model is loaded, so that the custom
+        components they define are registered with Pywr.
+        :return: The list of module names.
+        """
+        value = self.instance.value(self.python_modules_key, defaultValue=[])
+        if isinstance(value, str):
+            value = [value]
+        return [str(m) for m in value or []]
+
+    def save_python_modules(self, modules: list[str]) -> None:
+        """
+        Saves the modules imported before the model is loaded.
+        :param modules: The list of module names.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.python_modules_key, list(modules))
+
+    @property
+    def are_minimap_hidden(self) -> bool:
+        """
+        Whether the schematic minimap (overview) should be hidden.
+        :return: True if the minimap is hidden, False otherwise. Defaults to False.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.hide_minimap_key, defaultValue=False)
+        )
+
+    def save_hide_minimap(self, hide: bool) -> None:
+        """
+        Sets the display status of the schematic minimap.
+        :param hide: True to hide the minimap, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.hide_minimap_key, hide)
 
     @property
     def is_geo_view_enabled(self) -> bool:

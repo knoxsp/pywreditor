@@ -1,7 +1,7 @@
 import html
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
@@ -32,7 +32,9 @@ class MapSettings(QWidget):
         self.model_config = parent.model_config
 
         main_layout = QGridLayout()
-        main_layout.setRowMinimumHeight(0, 40)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setVerticalSpacing(2)
+        main_layout.setHorizontalSpacing(8)
 
         main_layout.addWidget(QLabel("Geographic view"), 0, 0)
         self.geo_view = ToggleSwitchWidget()
@@ -73,12 +75,15 @@ class MapSettings(QWidget):
         # noinspection PyUnresolvedReferences
         self.crs_field.editingFinished.connect(self.on_crs_edited)
         main_layout.addWidget(self.crs_field, 2, 1)
+        # the message is long: the toolbar is short, so show it on the right and put
+        # the full text in the tooltip
         self.crs_message = QLabel()
         self.crs_message.setWordWrap(True)
-        self.crs_message.setMaximumWidth(260)
-        main_layout.addWidget(self.crs_message, 3, 0, 1, 2)
+        self.crs_message.setFixedWidth(280)
+        self.crs_message.setMaximumHeight(62)
+        self.crs_message.setStyleSheet("font-size: 11px")
+        main_layout.addWidget(self.crs_message, 0, 3, 3, 1, Qt.AlignmentFlag.AlignTop)
 
-        main_layout.addWidget(QLabel("GIS layers"), 4, 0)
         self.layers_button = QPushButton("Manage GIS layers...")
         self.layers_button.setToolTip(
             "Add, style and order the GeoJSON and Shapefile layers shown in the "
@@ -89,9 +94,9 @@ class MapSettings(QWidget):
         self.layers_button.clicked.connect(self.layers_action.trigger)
         # noinspection PyUnresolvedReferences
         self.layers_action.changed.connect(self.on_layers_action_changed)
-        main_layout.addWidget(self.layers_button, 4, 1)
+        main_layout.addWidget(self.layers_button, 0, 2)
         self.layers_label = QLabel()
-        main_layout.addWidget(self.layers_label, 5, 1)
+        main_layout.addWidget(self.layers_label, 1, 2)
         # noinspection PyUnresolvedReferences
         self.schematic.gis_layers_changed.connect(self.update_layers_label)
         self.update_layers_label()
@@ -189,6 +194,7 @@ class MapSettings(QWidget):
         :return: None
         """
         self.crs_message.setText(f'<span style="color:{color}">{message}</span>')
+        self.crs_message.setToolTip(self.crs_message.text())
 
     @Slot()
     def on_layers_action_changed(self) -> None:
