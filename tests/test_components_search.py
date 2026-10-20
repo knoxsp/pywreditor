@@ -135,3 +135,30 @@ def test_typing_in_the_entry_filters_and_shows_the_count(qtbot, window):
         "Demand", Qt.MatchExactly | Qt.MatchRecursive, 0
     )
     assert demand and not demand[0].isHidden()
+
+
+def test_multi_select_filtered_nodes_and_colour(window) -> None:
+    """Filter nodes, select them all in the tree and colour them in one go."""
+    tree = window.components_tree
+    tree.filter_items("reservoir")
+    tree.expandAll()
+    from pywr_editor.tree.tree_widget_node import TreeWidgetNode
+
+    nodes = [
+        item
+        for item in tree.findItems("", Qt.MatchContains | Qt.MatchRecursive, 0)
+        if isinstance(item, TreeWidgetNode) and not item.isHidden()
+    ]
+    assert len(nodes) == 2
+    for item in nodes:
+        item.setSelected(True)
+    tree.on_item_click(nodes[0])
+    assert {n.name for n in window.schematic.selected_nodes} == {
+        "Reservoir North",
+        "Reservoir South",
+    }
+
+    schematic = window.schematic
+    schematic.set_nodes_color([n.name for n in nodes], "blue")
+    assert schematic.node_items["Reservoir North"].color_ring is not None
+    assert schematic.node_items["Demand"].color_ring is None

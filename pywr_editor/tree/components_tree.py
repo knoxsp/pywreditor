@@ -59,16 +59,18 @@ class ComponentsTree(QTreeWidget):
         # noinspection PyUnresolvedReferences
         self.itemCollapsed.connect(self.on_collapse_item)
 
-        # remove focus
-        self.setFocusPolicy(Qt.NoFocus)
+        # select several nodes with Ctrl/Shift (and Ctrl+A on the filtered list)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.setFocusPolicy(Qt.ClickFocus)
         # bold font on selected
         self.setItemDelegate(StyleDelegate(self))
         self.setHeaderLabels(("Component", "Value"))
         self.setColumnCount(2)
 
         self.header().resizeSection(0, 200)
-        self.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.header().setStretchLastSection(False)
+        # the value column fills the remaining width of the surrounding panel
+        self.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.header().setStretchLastSection(True)
         self.setStyleSheet(self.stylesheet())
 
     def draw(self) -> None:
@@ -432,6 +434,16 @@ class ComponentsTree(QTreeWidget):
         schematic = self.parent.schematic
         schematic.de_select_all_items()
 
+        # several nodes selected: select them all on the schematic
+        selected_nodes = [
+            i for i in self.selectedItems() if isinstance(i, TreeWidgetNode)
+        ]
+        if len(selected_nodes) > 1:
+            for node_item in selected_nodes:
+                if node_item.name in schematic.node_items:
+                    schematic.node_items[node_item.name].setSelected(True)
+            return
+
         # center node on the schematic
         if (
             isinstance(clicked_item, TreeWidgetNode)
@@ -474,23 +486,19 @@ class ComponentsTree(QTreeWidget):
         delete_icon = qta.icon("msc.trash", color=icon_color)
 
         if isinstance(item, TreeWidgetNode):
-            node_name = item.name
-            context_menu = ContextualMenu()
-            context_menu.set_title(node_name)
-            # Edit node
-            edit_action = context_menu.addAction(edit_icon, "Edit")
-            # noinspection PyUnresolvedReferences
-            edit_action.triggered.connect(
-                lambda *args, name=node_name: self.on_edit_node(name)
-            )
-
-            # Delete node
-            edit_action = context_menu.addAction(delete_icon, "Delete")
-            # noinspection PyUnresolvedReferences
-            edit_action.triggered.connect(
-                lambda *args, name=node_name: self.on_delete_node(name)
-            )
-            context_menu.exec(self.mapToGlobal(pos))
+            # same menu as on the schematic
+            node_items = self.parent.schematic.node_items
+            schematic_node = node_items.get(item.name)
+            if schematic_node is not None:
+                targets = [item]
+                if item.isSelected():
+                    targets = [
+                        i for i in self.selectedItems() if isinstance(i, TreeWidgetNode)
+                    ]
+                menu = schematic_node.create_context_menu(
+                    [node_items[i.name] for i in targets if i.name in node_items]
+                )
+                menu.exec(self.mapToGlobal(pos))
         if isinstance(item, TreeWidgetTable):
             table_name = item.name
             context_menu = ContextualMenu()
