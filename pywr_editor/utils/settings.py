@@ -39,6 +39,7 @@ class Settings:
     default_save_results = True
     python_modules_key = "python/modules"
 
+    console_python_key = "console/python"
     def __init__(self, json_file: str | None = None):
         """
         Initialises the class.
@@ -320,6 +321,24 @@ class Settings:
         self.instance.setValue(self.python_modules_key, list(modules))
 
     @property
+    @property
+    def console_python(self) -> str:
+        """
+        The Python interpreter running the console kernel.
+        :return: The path to the interpreter. Empty to use the editor's own Python.
+        """
+        return str(self.instance.value(self.console_python_key, defaultValue="") or "")
+
+    def save_console_python(self, path: str) -> None:
+        """
+        Saves the Python interpreter running the console kernel.
+        :param path: The path to the interpreter. Empty to use the editor's Python.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.console_python_key, path.strip())
+
     def are_minimap_hidden(self) -> bool:
         """
         Whether the schematic minimap (overview) should be hidden.

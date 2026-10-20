@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
+from pywr_editor.console import ConsolePanel
 from pywr_editor.dialogs import (
     AboutButton,
     EdgeSlotsDialog,
@@ -173,6 +174,12 @@ class MainWindow(QMainWindow):
         # adding the dock shows it: keep it hidden until a node is shown
         self.node_data_panel.hide()
 
+        # Console (IPython kernel to run the model and read the results). The kernel
+        # starts the first time the panel is shown
+        self.console_panel = ConsolePanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.console_panel)
+        self.console_panel.hide()
+
         # Actions
         self.undo_stack = QUndoStack(self)
         self.app_actions = Actions(window=self)
@@ -222,6 +229,7 @@ class MainWindow(QMainWindow):
             return
 
         self.timer.stop()
+        self.console_panel.shutdown()
 
         # check if the run worker is still running
         try:
@@ -767,6 +775,16 @@ class MainWindow(QMainWindow):
         results_panel = run.add_panel("Results")
         results_panel.add_button(self.app_actions.get("run-results"))
         results_panel.add_button(self.app_actions.get("run-inspector"))
+
+        toggle_console_action = self.console_panel.toggleViewAction()
+        toggle_console_action.setText("Console")
+        toggle_console_action.setIcon(QIcon(":/toolbar/run"))
+        toggle_console_action.setToolTip(
+            "Show or hide the dockable IPython console to run the model and look at "
+            "the results interactively"
+        )
+        console_panel = run.add_panel("Console")
+        console_panel.add_button(toggle_console_action)
 
         # View tab
         schematic_tab = self.toolbar.add_tab("Schematic")
