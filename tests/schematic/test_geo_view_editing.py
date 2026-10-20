@@ -389,3 +389,72 @@ class TestSetGeoView:
         assert window.editor_settings.is_geo_view_enabled is False
         assert action.isChecked() is False
         window.is_model_running = False
+
+
+def test_polygon_footprint(qtbot, tmp_path):
+    """
+    A node whose geographic position is a GeoJSON polygon is placed at the polygon
+    centroid, shows the polygon on the map, and moving it translates the polygon.
+    """
+    with open(BASE_MODEL) as fp:
+        first = json.load(fp)["nodes"][0]
+    name = first["name"]
+    cx, cy = first["position"]["geographic"]
+    ring = [
+        [cx - 0.1, cy - 0.1, 0.0],
+        [cx + 0.1, cy - 0.1, 0.0],
+        [cx + 0.1, cy + 0.1, 0.0],
+        [cx - 0.1, cy + 0.1, 0.0],
+        [cx - 0.1, cy - 0.1, 0.0],
+    ]
+    polygon = {"type": "Polygon", "coordinates": [ring]}
+    path = model_with(tmp_path, geographic={name: polygon})
+    window, schematic = open_window(qtbot, path)
+
+    assert geographic(window, name) == pytest.approx([cx, cy])
+    assert name in schematic.node_footprints.items
+    assert schematic.node_footprints.items[name].isVisible()
+
+    schematic.set_node_hidden(name, True)
+    assert not schematic.node_footprints.items[name].isVisible()
+    schematic.set_node_hidden(name, False)
+
+    move(window, schematic, name, 20, 0)
+    stored = window.model_config.nodes.config(name, as_dict=False).raw_geographic
+    assert isinstance(stored, dict)
+    new = geographic(window, name)
+    assert new[0] > cx
+    assert stored["coordinates"][0][0][0] == pytest.approx(new[0] - 0.1)
+
+    window.undo_stack.undo()
+    assert geographic(window, name) == pytest.approx([cx, cy])
+    window.editor_settings.instance.clear()
+
+
+def test_polygon_footprint_is_clickable(qtbot, tmp_path):
+    """Clicking the polygon of a node selects the node."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    with open(BASE_MODEL) as fp:
+        first = json.load(fp)["nodes"][0]
+    name = first["name"]
+    cx, cy = first["position"]["geographic"]
+    d = 0.3
+    ring = [[cx - d, cy - d], [cx + d, cy - d], [cx + d, cy + d], [cx - d, cy + d]]
+    path = model_with(
+        tmp_path, geographic={name: {"type": "Polygon", "coordinates": [ring]}}
+    )
+    window, schematic = open_window(qtbot, path)
+    window.show()
+    footprint = schematic.node_footprints.items[name]
+    node = schematic.node_items[name]
+    # a point inside the polygon, away from the node symbol
+    rect = footprint.sceneBoundingRect()
+    point = rect.topLeft() + (rect.bottomRight() - rect.topLeft()) * 0.1
+    view_pos = schematic.mapFromScene(point)
+    assert footprint in schematic.items(view_pos)
+    assert not node.isSelected()
+    QTest.mouseClick(schematic.viewport(), Qt.LeftButton, pos=view_pos)
+    assert node.isSelected()
+    window.editor_settings.instance.clear()

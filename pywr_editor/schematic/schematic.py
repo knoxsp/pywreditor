@@ -59,9 +59,12 @@ from pywr_editor.schematic import (
     SchematicNode,
     SchematicRectangle,
     SchematicText,
+    SetNodeStyleCommand,
+    SetNodeTypeStyleCommand,
     get_scaling_factor,
     units_to_factor,
 )
+from pywr_editor.model.constants import UNCHANGED
 from pywr_editor.style import Color, stylesheet_dict_to_str
 from pywr_editor.toolbar import LibraryPanel
 from pywr_editor.utils import Logging
@@ -76,7 +79,9 @@ from .map import (
     ATTRIBUTION_URL,
     MAX_ZOOM,
     GeoTransform,
+    FootprintItem,
     GisOverlay,
+    NodeFootprints,
     Projector,
     TileLayer,
     count_outside_area_of_use,
@@ -149,6 +154,8 @@ class Schematic(QGraphicsView):
             str, SchematicText | SchematicRectangle | SchematicArrow
         ] = {}
         self.hidden_node_types: set[str] = set(self.editor_settings.hidden_node_types)
+        self.hidden_nodes: set[str] = set(self.editor_settings.hidden_nodes)
+        """ Names of the nodes individually hidden by the user """
         self.logger = Logging().logger(self.__class__.__name__)
         # lazily built (see geo_projector) - most models never use the geographic
         # view, so building the CRS transformer on every schematic load would be
@@ -250,6 +257,7 @@ class Schematic(QGraphicsView):
         # the OSM basemap and its attribution, which must be visible with the tiles
         self.tile_layer = TileLayer(self)
         self.gis_overlay = GisOverlay(self)
+        self.node_footprints = NodeFootprints(self)
         self.tile_layer.basemap_visible = bool(
             self.model_config.map_config.get("show_basemap", True)
         )
@@ -436,6 +444,7 @@ class Schematic(QGraphicsView):
         self.minimap.refresh()
         self.tile_layer.refresh()
         self.gis_overlay.refresh()
+        self.node_footprints.refresh()
 
         if self.init is True:
             self.init = False
@@ -448,6 +457,7 @@ class Schematic(QGraphicsView):
         # the scene deletes its items: the tiles must be removed first
         self.tile_layer.clear()
         self.gis_overlay.clear()
+        self.node_footprints.clear()
         self.scene.clear()
         self.add_scene_decorations()
         self.node_items = {}
@@ -468,7 +478,7 @@ class Schematic(QGraphicsView):
         node_obj = SchematicNode(
             node_props=node_props, view=self, position_override=position_override
         )
-        if node_obj.model_node.type in self.hidden_node_types:
+        if self.is_node_hidden(node_obj):
             node_obj.setVisible(False)
         self.scene.addItem(node_obj)
         self.node_items[node_obj.name] = node_obj
@@ -502,6 +512,9 @@ class Schematic(QGraphicsView):
         self.model_config.nodes.delete(node_name)
         del self.node_items[node_name]
         self.scene.removeItem(node_item)
+        if node_name in self.hidden_nodes:
+            self.hidden_nodes.discard(node_name)
+            self.editor_settings.save_hidden_nodes(sorted(self.hidden_nodes))
 
         return deleted_edges
 
@@ -779,7 +792,7 @@ class Schematic(QGraphicsView):
         messages = []
         if not self.model_config.has_valid_geographic_crs:
             messages.append(
-                f"The map CRS '{self.model_config.map_config.get('crs')}' is not "
+                f"The map CRS '{self.model_config.stored_geographic_crs}' is not "
                 f"valid, {self.model_config.geographic_crs} is used instead"
             )
 
@@ -1494,8 +1507,158 @@ class Schematic(QGraphicsView):
 
         for node in self.node_items.values():
             if node.model_node.type == node_type:
-                node.setVisible(not hidden)
+                node.setVisible(not self.is_node_hidden(node))
 
+        self.refresh_edge_visibility()
+        self.node_footprints.sync_visibility()
+
+        self.editor_settings.save_hidden_node_types(list(self.hidden_node_types))
+
+    def is_node_hidden(self, node: SchematicNode) -> bool:
+        """
+        Checks whether a node is hidden, either individually or through its type.
+        :param node: The schematic node.
+        :return: True if the node must not be shown.
+        """
+        return (
+            node.name in self.hidden_nodes
+            or node.model_node.type in self.hidden_node_types
+        )
+
+    def set_node_hidden(self, node_name: str, hidden: bool) -> None:
+        """
+        Hides or shows a single node on the schematic. The setting is stored.
+        :param node_name: The node name.
+        :param hidden: True to hide the node, False to show it.
+        :return: None
+        """
+        self.set_nodes_hidden([node_name], hidden)
+
+    def set_nodes_hidden(self, node_names: list[str], hidden: bool) -> None:
+        """
+        Hides or shows several nodes on the schematic. The setting is stored.
+        :param node_names: The node names.
+        :param hidden: True to hide the nodes, False to show them.
+        :return: None
+        """
+        for node_name in node_names:
+            if hidden:
+                self.hidden_nodes.add(node_name)
+            else:
+                self.hidden_nodes.discard(node_name)
+
+            node = self.node_items.get(node_name)
+            if node is not None:
+                if hidden:
+                    node.setSelected(False)
+                node.setVisible(not self.is_node_hidden(node))
+
+        self.refresh_edge_visibility()
+        self.node_footprints.sync_visibility()
+        self.minimap.refresh()
+        self.editor_settings.save_hidden_nodes(sorted(self.hidden_nodes))
+
+    def set_nodes_style(
+        self,
+        node_names: list[str],
+        color: str | None | object = UNCHANGED,
+        size: float | None | object = UNCHANGED,
+    ) -> None:
+        """
+        Sets the colour and size of one or more nodes. This overrides the style of
+        the node type. The change can be undone.
+        :param node_names: The node names.
+        :param color: The colour name. None removes the colour, UNCHANGED keeps it.
+        :param size: The size factor. None removes the size, UNCHANGED keeps it.
+        :return: None
+        """
+        if len(node_names) == 0:
+            return
+        self.app.undo_stack.push(SetNodeStyleCommand(self, node_names, color, size))
+
+    def show_node_style_dialog(self, node_names: list[str]) -> None:
+        """
+        Opens the modal to change the colour and size of the nodes. This overrides
+        the style of their node type.
+        :param node_names: The node names.
+        :return: None
+        """
+        from pywr_editor.dialogs.node_style_dialog import NodeStyleDialog
+
+        first = self.node_items[node_names[0]]
+        single = len(node_names) == 1
+        dialog = NodeStyleDialog(
+            title="Node colour and size",
+            description=(
+                f'Style of "{node_names[0]}". Overrides the style of its node type.'
+                if single
+                else f"Style of {len(node_names)} nodes. Overrides the style of "
+                "their node type."
+            ),
+            default_label="Use node type style",
+            color=first.model_node.node_color if single else None,
+            size=first.model_node.node_size if single else None,
+            parent=self.app,
+        )
+        if dialog.exec():
+            self.set_nodes_style(node_names, color=dialog.color, size=dialog.size)
+
+    def show_node_type_style_dialog(self, node_type: str, label: str) -> None:
+        """
+        Opens the modal to change the colour and size of a node type.
+        :param node_type: The node type.
+        :param label: The name of the type shown to the user.
+        :return: None
+        """
+        from pywr_editor.dialogs.node_style_dialog import NodeStyleDialog
+
+        style = self.model_config.node_type_style(node_type)
+        dialog = NodeStyleDialog(
+            title="Node type colour and size",
+            description=(
+                f'Style of all the "{label}" nodes. Colour and size set on a '
+                "node take priority."
+            ),
+            default_label="Default",
+            color=style["color"],
+            size=style["size"],
+            parent=self.app,
+        )
+        if dialog.exec():
+            self.set_node_type_style(node_type, color=dialog.color, size=dialog.size)
+
+    def set_nodes_color(self, node_names: list[str], color: str | None) -> None:
+        """
+        Sets (or removes) the colour of one or more nodes. The change can be undone.
+        :param node_names: The node names.
+        :param color: The colour name. None removes the colour.
+        :return: None
+        """
+        self.set_nodes_style(node_names, color=color)
+
+    def set_node_type_style(
+        self,
+        node_type: str,
+        color: str | None | object = UNCHANGED,
+        size: float | None | object = UNCHANGED,
+    ) -> None:
+        """
+        Sets the colour and size of all the nodes of a type, unless the nodes have
+        their own style. The change can be undone.
+        :param node_type: The node type.
+        :param color: The colour name. None removes the colour, UNCHANGED keeps it.
+        :param size: The size factor. None removes the size, UNCHANGED keeps it.
+        :return: None
+        """
+        self.app.undo_stack.push(
+            SetNodeTypeStyleCommand(self, node_type, color, size)
+        )
+
+    def refresh_edge_visibility(self) -> None:
+        """
+        Hides the edges when either of the nodes they connect is hidden.
+        :return: None
+        """
         for item in self.items():
             if (
                 isinstance(item, Edge)
@@ -1503,8 +1666,6 @@ class Schematic(QGraphicsView):
                 and item.target is not None
             ):
                 item.setVisible(item.source.isVisible() and item.target.isVisible())
-
-        self.editor_settings.save_hidden_node_types(list(self.hidden_node_types))
 
     @Slot()
     def export_current_view(self) -> None:
@@ -1744,6 +1905,14 @@ class Schematic(QGraphicsView):
                 node = next(
                     (item for item in items if isinstance(item, SchematicNode)), None
                 )
+                from_footprint = node is None
+                if node is None:
+                    # a click on the polygon of a node acts on the node
+                    footprint = next(
+                        (item for item in items if isinstance(item, FootprintItem)),
+                        None,
+                    )
+                    node = footprint.node if footprint is not None else None
 
                 if (
                     node is not None
@@ -1755,11 +1924,22 @@ class Schematic(QGraphicsView):
                     event.accept()
                     return
 
+                if (
+                    from_footprint
+                    and node is not None
+                    and not self.connecting_node_props.enabled
+                ):
+                    # the polygon of a node that is locked or already selected
+                    self.de_select_all_items()
+                    node.setSelected(True)
+                    event.accept()
+                    return
+
                 # check that no selectable item was selected and canvas can be
                 # dragged
                 is_selectable = map(
                     lambda item: isinstance(
-                        item, (SchematicNode, AbstractSchematicShape)
+                        item, (SchematicNode, AbstractSchematicShape, FootprintItem)
                     ),
                     items,
                 )

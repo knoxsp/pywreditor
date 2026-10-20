@@ -22,6 +22,7 @@ class Settings:
     geo_view_key = "schematic/geo_view"
     map_notice_key = "schematic/map_notice_shown"
     hidden_node_types_key = "schematic/hidden_node_types"
+    hidden_nodes_key = "schematic/hidden_nodes"
     zoom_level_key = "schematic/zoom_level"
     schematic_center_key = "schematic/schematic_center"
     reverse_zoom_key = "schematic/reverse_zoom"
@@ -38,8 +39,8 @@ class Settings:
     default_solver = "glpk-edge"
     default_save_results = True
     python_modules_key = "python/modules"
-
     console_python_key = "console/python"
+
     def __init__(self, json_file: str | None = None):
         """
         Initialises the class.
@@ -321,7 +322,6 @@ class Settings:
         self.instance.setValue(self.python_modules_key, list(modules))
 
     @property
-    @property
     def console_python(self) -> str:
         """
         The Python interpreter running the console kernel.
@@ -339,6 +339,7 @@ class Settings:
             return
         self.instance.setValue(self.console_python_key, path.strip())
 
+    @property
     def are_minimap_hidden(self) -> bool:
         """
         Whether the schematic minimap (overview) should be hidden.
@@ -425,6 +426,31 @@ class Settings:
         if self.app_name is None:
             return
         self.instance.setValue(self.hidden_node_types_key, json.dumps(node_types))
+
+    @property
+    def hidden_nodes(self) -> list[str]:
+        """
+        Returns the names of the individual nodes hidden on the schematic.
+        :return: The list of node names. Empty if none are hidden.
+        """
+        raw_value = self.instance.value(self.hidden_nodes_key, defaultValue="[]")
+        try:
+            names = json.loads(raw_value)
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(names, list):
+            return []
+        return names
+
+    def save_hidden_nodes(self, names: list[str]) -> None:
+        """
+        Stores the names of the individual nodes hidden on the schematic.
+        :param names: The list of node names to store.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.hidden_nodes_key, json.dumps(names))
 
     @property
     def zoom_level(self) -> float:

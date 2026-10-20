@@ -24,6 +24,9 @@ from pywr_editor.model import (
     Shapes,
     Tables,
 )
+from pywr_editor.model.constants import UNCHANGED
+from pywr_editor.model.node_config import valid_node_size
+from pywr_editor.style import Color
 
 
 class ModelConfig(QObject):
@@ -591,6 +594,71 @@ class ModelConfig(QObject):
         except pyproj.exceptions.CRSError:
             return False
 
+    def node_type_style(self, node_type: str | None) -> dict:
+        """
+        Gets the style stored for a node type. The nodes use it unless they have
+        their own colour or size.
+        :param node_type: The node type.
+        :return: A dictionary with the "color" and "size" keys. The value is None
+        when not set.
+        """
+        styles = self.editor_config.get(Constants.NODE_TYPES_KEY.value)
+        style = styles.get(node_type) if isinstance(styles, dict) else None
+        if not isinstance(style, dict):
+            style = {}
+        color = style.get("color")
+        return {
+            "color": color if isinstance(color, str) and color in Color.colors else None,
+            "size": valid_node_size(style.get("size")),
+        }
+
+    def set_node_type_style(
+        self,
+        node_type: str,
+        color: str | None | object = UNCHANGED,
+        size: float | None | object = UNCHANGED,
+    ) -> None:
+        """
+        Sets or removes the style of a node type.
+        :param node_type: The node type.
+        :param color: The colour name. None removes it, UNCHANGED keeps it.
+        :param size: The scale factor. None removes it, UNCHANGED keeps it.
+        :return: None
+        """
+        key = Constants.NODE_TYPES_KEY.value
+        if not isinstance(self.editor_config.get(key), dict):
+            self.editor_config[key] = {}
+        styles = self.editor_config[key]
+        style = dict(styles.get(node_type) or {})
+        for name, value in (("color", color), ("size", size)):
+            if value is UNCHANGED:
+                continue
+            if value is None:
+                style.pop(name, None)
+            else:
+                style[name] = value
+        if style:
+            styles[node_type] = style
+        else:
+            styles.pop(node_type, None)
+        if not styles:
+            del self.editor_config[key]
+        self.has_changed()
+
+    @property
+    def stored_geographic_crs(self) -> object | None:
+        """
+        Gets the CRS stored in the model, even if it is not valid. The CRS is read
+        from the "crs" key of the model metadata. Models saved by older versions
+        of the editor keep it in the map settings, which is used when the metadata
+        does not have it.
+        :return: The stored value, None if the model does not have one.
+        """
+        metadata = self.json.get("metadata")
+        if isinstance(metadata, dict) and metadata.get("crs") is not None:
+            return metadata["crs"]
+        return self.map_config.get("crs")
+
     @property
     def geographic_crs(self) -> str:
         """
@@ -599,7 +667,7 @@ class ModelConfig(QObject):
         :return: The CRS from the model config file as an EPSG string (e.g.
         "EPSG:4326"). If not available or invalid, the default CRS is returned.
         """
-        crs = self.map_config.get("crs")
+        crs = self.stored_geographic_crs
         if self._is_valid_crs(crs):
             return crs
         return Constants.DEFAULT_GEOGRAPHIC_CRS.value
@@ -610,16 +678,23 @@ class ModelConfig(QObject):
         Whether the stored CRS is missing (the default applies) or valid.
         :return: False if the model stores an invalid CRS, True otherwise.
         """
-        crs = self.map_config.get("crs")
+        crs = self.stored_geographic_crs
         return crs is None or self._is_valid_crs(crs)
 
     def update_geographic_crs(self, crs: str) -> None:
         """
-        Sets the CRS to use to interpret the nodes' "geographic" coordinates.
+        Sets the CRS to use to interpret the nodes' "geographic" coordinates. This
+        is stored in the "crs" key of the model metadata. A CRS stored by older
+        versions in the map settings is removed.
         :param crs: The CRS as an EPSG string (e.g. "EPSG:4326").
         :return: None
         """
-        self.writable_map_config["crs"] = crs
+        if not isinstance(self.json.get("metadata"), dict):
+            self.json["metadata"] = {}
+        self.json["metadata"]["crs"] = crs
+        map_dict = self.editor_config.get(Constants.MAP_KEY.value)
+        if isinstance(map_dict, dict):
+            map_dict.pop("crs", None)
         self.has_changed()
 
     def normalize_file_path(self, file: str | None) -> str | None:

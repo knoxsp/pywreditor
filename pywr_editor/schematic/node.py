@@ -2,9 +2,10 @@ from typing import TYPE_CHECKING, Any, Literal, Sequence, TypedDict, Union
 
 import PySide6
 import qtawesome as qta
-from PySide6.QtCore import QPointF, QSize, QUuid, Slot
-from PySide6.QtGui import QAction, QFont, QPainterPath
+from PySide6.QtCore import QPointF, QRectF, QSize, QUuid, Qt, Slot
+from PySide6.QtGui import QAction, QBrush, QColor, QFont, QIcon, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QGraphicsEllipseItem,
     QGraphicsItem,
     QGraphicsItemGroup,
     QGraphicsTextItem,
@@ -45,6 +46,19 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
     """ The outline width of the bounding rectangle """
     disabled_node_opacity: float = 0.3
     """ The opacity of the nodes when they are disabled """
+    color_ring_radius: float = 17
+    """ The radius of the ring drawn around a node with a colour """
+    color_choices: list[str] = [
+        "red",
+        "orange",
+        "amber",
+        "green",
+        "teal",
+        "blue",
+        "violet",
+        "pink",
+    ]
+    """ The colours offered in the context menu """
 
     def __init__(
         self,
@@ -110,6 +124,9 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         else:
             self.node = GrayCircle(parent=self)
 
+        # colour ring
+        self.color_ring: QGraphicsEllipseItem | None = None
+
         # label
         self.label = SchematicLabel(
             parent=self,
@@ -122,8 +139,75 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         self.addToGroup(self.node)
         self.addToGroup(self.label)
 
+        self.apply_style()
+
         # store the position after drawing the item
         self.prev_position = self.scenePos().toTuple()
+
+    @property
+    def style_color(self) -> str | None:
+        """
+        The colour name of the node: its own, otherwise the one of its type.
+        :return: The colour name, None if there is not one.
+        """
+        if self.model_node.node_color is not None:
+            return self.model_node.node_color
+        return self.view.model_config.node_type_style(self.model_node.type)["color"]
+
+    @property
+    def style_size(self) -> float:
+        """
+        The scale factor of the node symbol: its own, otherwise the one of its type.
+        :return: The factor. This is 1 by default.
+        """
+        if self.model_node.node_size is not None:
+            return self.model_node.node_size
+        type_size = self.view.model_config.node_type_style(self.model_node.type)[
+            "size"
+        ]
+        return type_size if type_size is not None else 1.0
+
+    def apply_style(self) -> None:
+        """
+        Applies the colour and size of the node (or of its type). The colour is a
+        ring drawn around the node, behind its symbol, which works for any node
+        shape. The size scales the symbol.
+        :return: None
+        """
+        self.prepareGeometryChange()
+        size = self.style_size
+        self.node.setScale(size)
+        self.label.setY(self.label.node_bottom_edge * size / 2)
+
+        if self.color_ring is not None:
+            self.removeFromGroup(self.color_ring)
+            self.color_ring.setParentItem(None)
+            if self.color_ring.scene() is not None:
+                self.color_ring.scene().removeItem(self.color_ring)
+            self.color_ring = None
+
+        color = self.style_color
+        if color is not None and color in Color.colors:
+            r = self.color_ring_radius * size
+            # the parent must be set first, otherwise addToGroup() maps the ring
+            # from the scene origin and it is drawn away from the node
+            ring = QGraphicsEllipseItem(QRectF(-r, -r, 2 * r, 2 * r), self)
+            ring.setPen(QPen(Color(color, 500).qcolor, 3))
+            fill = QColor(Color(color, 200).qcolor)
+            fill.setAlpha(150)
+            ring.setBrush(QBrush(fill))
+            ring.setZValue(-1)
+            self.color_ring = ring
+            self.addToGroup(ring)
+        self.update()
+        # edges and the footprint polygon follow the style (not available yet
+        # while the schematic is being drawn)
+        if self.name in self.view.node_items:
+            for edge in self.edges:
+                edge.adjust()
+            footprints = getattr(self.view, "node_footprints", None)
+            if footprints is not None:
+                footprints.update(self.name)
 
     def boundingRect(self) -> PySide6.QtCore.QRectF:
         """
@@ -133,6 +217,10 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :return: The rectangle.
         """
         rect = self.node.mapRectToParent(self.node.boundingRect())
+        if self.color_ring is not None:
+            rect = rect.united(
+                self.color_ring.mapRectToParent(self.color_ring.boundingRect())
+            )
         if self.label.isVisible():
             rect = rect.united(self.label.mapRectToParent(self.label.boundingRect()))
 
@@ -251,6 +339,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
                 node_name=self.name, position=geographic
             )
             self.prev_geographic = geographic
+            self.view.node_footprints.update(self.name)
             self.view.update_geo_view_banner()
         else:
             self.view.app.model_config.nodes.set_position(
@@ -383,24 +472,57 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         self, event: PySide6.QtWidgets.QGraphicsSceneContextMenuEvent
     ) -> None:
         """
-        Creates the context menu.
+        Opens the context menu.
         :param event: The event being triggered.
         :return: None
         """
         if self.view.app.is_model_running or self.view.connecting_node_props.enabled:
             return
 
-        self.view.de_select_all_items()
-        self.setSelected(True)
+        # keep a multiple selection when right-clicking one of its nodes
+        selected = self.view.selected_nodes
+        if self not in selected or len(selected) < 2:
+            self.view.de_select_all_items()
+            self.setSelected(True)
+            selected = [self]
+        self.create_context_menu(selected).exec(event.screenPos())
 
+    def create_context_menu(
+        self, targets: list["SchematicNode"] | None = None
+    ) -> ContextualMenu:
+        """
+        Creates the node context menu. The same menu is used on the schematic and
+        in the components tree.
+        :param targets: The nodes the menu acts on, when several nodes are selected.
+        Only the actions that make sense for many nodes (colour and hide/show) are
+        available then. Defaults to this node only.
+        :return: The menu.
+        """
+        if targets is None or self not in targets:
+            targets = [self]
         context_menu = ContextualMenu()
         # menu title
-        label = self.name
+        label = self.name if len(targets) == 1 else f"{len(targets)} nodes"
         max_size = 20
         if len(label) > max_size:
             label = f"{label[0:max_size]}..."
         context_menu.set_title(label)
         icon_color = Color("gray", 500).qcolor
+
+        if len(targets) > 1:
+            names = [node.name for node in targets]
+            # show the nodes if all of them are hidden, hide them otherwise
+            hide = not all(name in self.view.hidden_nodes for name in names)
+            hide_action = context_menu.addAction(
+                qta.icon("msc.eye-closed" if hide else "msc.eye", color=icon_color),
+                "Hide nodes" if hide else "Show nodes on schematic",
+            )
+            # noinspection PyUnresolvedReferences
+            hide_action.triggered.connect(
+                lambda *args: self.view.set_nodes_hidden(names, hide)
+            )
+            self.add_style_action(context_menu, names)
+            return context_menu
 
         # edit node action
         edit_node_action = context_menu.addAction(
@@ -423,6 +545,21 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         delete_node_action.triggered.connect(self.on_delete_item)
         self.view.addAction(delete_node_action)
 
+        # hide/show action
+        hidden = self.name in self.view.hidden_nodes
+        hide_action = context_menu.addAction(
+            qta.icon("msc.eye" if hidden else "msc.eye-closed", color=icon_color),
+            "Show node on schematic" if hidden else "Hide node",
+        )
+        # noinspection PyUnresolvedReferences
+        hide_action.triggered.connect(
+            lambda *args, name=self.name, hide=not hidden: self.view.set_node_hidden(
+                name, hide
+            )
+        )
+
+        self.add_style_action(context_menu, [self.name])
+
         # locate action
         locate_action = context_menu.addAction(
             qta.icon("msc.list-tree", color=icon_color),
@@ -436,8 +573,8 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
             )
         )
 
-        # connect/disconnect edges - skip virtual nodes
-        if not self.model_node.is_virtual:
+        # connect/disconnect edges - skip virtual nodes and hidden nodes
+        if not self.model_node.is_virtual and self.isVisible():
             context_menu.addSeparator()
             connect_action = context_menu.addAction(
                 qta.icon("msc.arrow-both", color=icon_color), "Connect to..."
@@ -452,7 +589,21 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
                 edge_disconnect_submenu = context_menu.addMenu("Disconnect from")
                 self.add_delete_edge_actions(edge_disconnect_submenu)
 
-        context_menu.exec(event.screenPos())
+        return context_menu
+
+    def add_style_action(self, menu: ContextualMenu, names: list[str]) -> None:
+        """
+        Adds the action to open the dialog to change the colour and size of nodes.
+        :param menu: The menu.
+        :param names: The names of the nodes to style.
+        :return: None
+        """
+        action = menu.addAction(
+            qta.icon("msc.symbol-color", color=Color("gray", 500).qcolor),
+            "Colour and size...",
+        )
+        # noinspection PyUnresolvedReferences
+        action.triggered.connect(lambda *args: self.view.show_node_style_dialog(names))
 
     @Slot()
     def on_clone_node(self) -> None:

@@ -1,6 +1,20 @@
 from enum import Enum
 
 
+class _Unchanged:
+    def __repr__(self) -> str:
+        return "UNCHANGED"
+
+
+UNCHANGED = _Unchanged()
+""" Value used to leave a style property as it is, as opposed to None, which removes
+it """
+
+MIN_NODE_SIZE = 0.25
+MAX_NODE_SIZE = 5.0
+""" The limits of the node size scale factor """
+
+
 class Constants(Enum):
     EDITOR_CONFIG_KEY = "pywr_editor"
     """ key in JSON containing the editor's settings """
@@ -10,6 +24,12 @@ class Constants(Enum):
     """ key defying where to store the node's position """
     NODE_STYLE_KEY = "node_style"
     """ key defying where to store the style describing the node's style """
+    NODE_COLOR_KEY = "node_color"
+    """ key defying where to store the colour highlighting the node on the schematic """
+    NODE_SIZE_KEY = "node_size"
+    """ key defying where to store the scale factor of the node symbol """
+    NODE_TYPES_KEY = "node_types"
+    """ key in editor's setting dictionary where to store the style of the node types """
     EDGE_COLOR_KEY = "edge_color"
     """ key defying where to store the style describing the edge colour """
     CUSTOM_NODE_GROUP_NAME = "Custom"

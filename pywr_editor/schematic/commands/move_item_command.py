@@ -65,6 +65,7 @@ class MoveItemCommand(QUndoCommand):
             self.model_config.nodes.set_geographic_position(
                 node_name=name, position=position
             )
+            self.schematic.node_footprints.update(name)
         else:
             self.model_config.nodes.set_position(node_name=name, position=position)
 

@@ -9,6 +9,10 @@ from .commands.connect_node_command import ConnectNodeCommand
 from .commands.disconnect_node_command import DisconnectNodeCommand
 from .commands.layout_nodes_command import LayoutNodesCommand
 from .commands.move_item_command import MoveItemCommand
+from .commands.set_node_style_command import (
+    SetNodeStyleCommand,
+    SetNodeTypeStyleCommand,
+)
 from .commands.resize_shape_command import ResizeShapeCommand
 from .abstract_schematic_item import AbstractSchematicItem
 from .node import SchematicNode, SchematicLabel
