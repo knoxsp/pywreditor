@@ -54,9 +54,11 @@ class Settings:
             self.instance.setValue("file", self.json_file)
             self.app_name = hashlib.md5(self.json_file.encode()).hexdigest()
 
+        self.window_state_version = 3
+        """ The version of the layout of the docked panels. The saved layout is
+        ignored when it was stored by a version with different panels """
         self.store_geometry_widget = [
             "toolbar",
-            "splitter",
             "components_tree",
             "schematic",
         ]
@@ -89,7 +91,7 @@ class Settings:
         qsettings = self.instance
 
         qsettings.setValue("window/geometry", window.saveGeometry())
-        qsettings.setValue("window/state", window.saveState())
+        qsettings.setValue("window/state", window.saveState(self.window_state_version))
         for widget in self.store_geometry_widget:
             w = getattr(window, widget)
             qsettings.setValue(f"{widget}/geometry", w.saveGeometry())
@@ -108,7 +110,9 @@ class Settings:
         qsettings = self.instance
 
         window.restoreGeometry(qsettings.value("window/geometry"))
-        window.restoreState(qsettings.value("window/state"))
+        window.restoreState(
+            qsettings.value("window/state"), self.window_state_version
+        )
         for widget in self.store_geometry_widget:
             w = getattr(window, widget)
             w.restoreGeometry(qsettings.value(f"{widget}/geometry"))

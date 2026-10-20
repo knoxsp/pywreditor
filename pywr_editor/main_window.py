@@ -7,7 +7,12 @@ from typing import Literal
 import PySide6
 from PySide6.QtCore import QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QIcon, QKeySequence, Qt, QUndoStack
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
+from PySide6.QtWidgets import (
+    QDockWidget,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+)
 
 from pywr_editor.dialogs import (
     AboutButton,
@@ -39,7 +44,7 @@ from pywr_editor.toolbar import (
     ToolbarWidget,
 )
 from pywr_editor.toolbar.run_controls.timestepper import TimeStepperWidget
-from pywr_editor.tree import ComponentsTree
+from pywr_editor.tree import ComponentsPanel, ComponentsTree
 from pywr_editor.utils import (
     Action,
     Actions,
@@ -62,7 +67,6 @@ class MainWindow(QMainWindow):
     """ Signal emitted when the model is saved """
     store_geometry_widget: list[str] = [
         "toolbar",
-        "splitter",
         "components_tree",
         "schematic",
     ]
@@ -128,23 +132,46 @@ class MainWindow(QMainWindow):
         self.jump_list = self.setup_jump_list()
 
         # layout
-        self.splitter = QSplitter()
-        self.splitter.setOpaqueResize(True)
-        self.splitter.setStretchFactor(0, 100)
-        self.splitter.addWidget(self.components_tree)
-        self.splitter.addWidget(self.schematic)
+        self.components_panel = ComponentsPanel(self.components_tree)
+        # the components are in a dock, so that the node panels can be docked above
+        # or below them
+        self.components_dock = QDockWidget("Components", self)
+        self.components_dock.setObjectName("components_dock")
+        self.components_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        )
+        self.components_dock.setWidget(self.components_panel)
 
         # window
         self.set_window_title()
         self.resize(1000, 900)
         self.setAutoFillBackground(True)
         self.setPalette(Qt.GlobalColor.white)
-        self.setDockNestingEnabled(False)
-        self.setCentralWidget(self.splitter)
+        # nesting lets docked panels share the height or the width of an area
+        self.setDockNestingEnabled(True)
+        self.setCentralWidget(self.schematic)
 
-        # Node data panel (dockable/undockable, shown on node double-click)
+        # the left and right docks take the full height of the window, and the
+        # panels in them can share it
+        for corner, area in (
+            (Qt.Corner.TopLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
+            (Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
+            (Qt.Corner.TopRightCorner, Qt.DockWidgetArea.RightDockWidgetArea),
+            (Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea),
+        ):
+            self.setCorner(corner, area)
+
+        # Node data panel (dockable/undockable, shown on node double-click). By
+        # default it is on the right, and it can be dragged to any side, above or
+        # below the other panels
         self.node_data_panel = NodeDataPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.components_dock)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.node_data_panel)
+        self.resizeDocks([self.components_dock], [320], Qt.Orientation.Horizontal)
+        self.resizeDocks([self.node_data_panel], [380], Qt.Orientation.Horizontal)
+        # adding the dock shows it: keep it hidden until a node is shown
+        self.node_data_panel.hide()
 
         # Actions
         self.undo_stack = QUndoStack(self)
@@ -169,6 +196,8 @@ class MainWindow(QMainWindow):
 
         # Show the window
         self.editor_settings.restore_window_attributes(self)
+        # the restored window state can show the panel, but there is no node to show
+        self.node_data_panel.hide()
         self.show()
 
         # Draw the widgets
@@ -757,7 +786,7 @@ class MainWindow(QMainWindow):
         )
 
         toggle_node_data_action = self.node_data_panel.toggleViewAction()
-        toggle_node_data_action.setText("Hide node data")
+        toggle_node_data_action.setText("Node data")
         toggle_node_data_action.setIcon(QIcon(":/toolbar/edit-node"))
         toggle_node_data_action.setToolTip(
             "Show or hide the dockable panel with the data of the node currently "

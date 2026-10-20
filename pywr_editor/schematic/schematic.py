@@ -282,7 +282,7 @@ class Schematic(QGraphicsView):
         self.overlay_layout.setRowStretch(0, 1)
         self.overlay_layout.setRowStretch(1, 0)
         self.tile_layer.active_changed.connect(self.attribution.setVisible)
-        self.tile_layer.active_changed.connect(lambda *_: self.minimap.reposition())
+        self.tile_layer.active_changed.connect(self.minimap.reposition)
         self.tile_layer.active_changed.connect(self.show_map_notice)
 
     @Slot(bool)
@@ -2063,6 +2063,9 @@ class Schematic(QGraphicsView):
         items_count = len(selected_items)
         if items_count == 1:
             item = selected_items[0]
+            # a single click shows the node in the node data panel, if it is visible
+            if not item.model_node.is_virtual:
+                self.app.node_data_panel.follow_node(item.name)
             # add and delete edge
             if not selected_items[0].model_node.is_virtual:
                 # if there are no connected nodes, keep the button disabled

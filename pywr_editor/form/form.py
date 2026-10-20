@@ -313,7 +313,24 @@ class Form(QScrollArea):
         :return: The field instance or None if it does not exist.
         """
         # noinspection PyTypeChecker
-        return self.findChild(FormField, name)
+        return self.find_child(FormField, name)
+
+    def find_child(self, child_type: type, name: str) -> QWidget | None:
+        """
+        Finds a child widget by type and name. The sections can be shown outside of
+        the form (e.g. in separate panels), where findChild() on the form would not
+        find them, so they are searched as well.
+        :param child_type: The widget class.
+        :param name: The object name.
+        :return: The widget or None if it does not exist.
+        """
+        widget = self.findChild(child_type, name)
+        if widget is None:
+            for section in self.sections.values():
+                widget = section.findChild(child_type, name)
+                if widget is not None:
+                    break
+        return widget
 
     def register_after_render_action(self, action: Callable) -> None:
         """
@@ -359,7 +376,7 @@ class Form(QScrollArea):
             field.clear_message("warning")
 
         # noinspection PyUnresolvedReferences
-        self.findChild(QLabel, f"{name}_label").setVisible(show)
+        self.find_child(QLabel, f"{name}_label").setVisible(show)
 
     @staticmethod
     def _get_field_label(field_dict: dict) -> str:

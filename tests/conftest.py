@@ -1,11 +1,29 @@
+import shutil
 import time
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QSettings
 
 from pywr_editor.schematic.map import TileCache, TileFetcher
 from pywr_editor.utils import Settings
 from tests.fake_network import FakeNetwork
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_editor_settings(tmp_path_factory):
+    """
+    Stores the editor settings in a temporary folder for the whole test session, so
+    the tests never add their models to the real "recent files" list or leave
+    per-model settings files in the user's configuration folder.
+    """
+    root = str(tmp_path_factory.mktemp("qsettings"))
+    for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+        for scope in (QSettings.Scope.UserScope, QSettings.Scope.SystemScope):
+            QSettings.setPath(fmt, scope, root)
+    yield root
+    # pytest keeps the last few base temporary folders: remove the settings now
+    shutil.rmtree(root, ignore_errors=True)
 
 
 def clean_env(model_file: str) -> None:

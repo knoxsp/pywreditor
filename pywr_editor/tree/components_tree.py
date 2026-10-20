@@ -44,6 +44,7 @@ class ComponentsTree(QTreeWidget):
         self.items: dict[str, QTreeWidgetItem] = {}
         self.expanded_state = ExpandedItemStates()
         self.init: bool = True
+        self.filter_text = ""
         # add the context menu
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         # noinspection PyUnresolvedReferences
@@ -98,15 +99,105 @@ class ComponentsTree(QTreeWidget):
         """
         self.clear()
         self.draw()
+        self._restore_expanded_state()
+        # the tree is rebuilt, so the search has to be applied again
+        if self.filter_text:
+            self.filter_items(self.filter_text)
 
+    def _restore_expanded_state(self) -> None:
+        """
+        Collapses the tree and expands the items whose state was stored. These are
+        node's and parameter's names that are unique.
+        :return: None
+        """
         self.collapseAll()
-        # expand items by name whose state was stored. These are node's and
-        # parameter's names that are unique
         for name in self.expanded_state.get_all():
             targets = self.findItems(name, Qt.MatchExactly | Qt.MatchRecursive, 0)
             for target in targets:
                 if self.expanded_state.is_state_stored(target):
                     target.setExpanded(True)
+
+    @staticmethod
+    def _is_component(item: QTreeWidgetItem) -> bool:
+        """
+        Whether the item is a node, parameter, recorder or table. Its children
+        are the properties of the component.
+        """
+        return isinstance(
+            item,
+            (TreeWidgetNode, TreeWidgetParameterName, TreeWidgetRecorderName, TreeWidgetTable),
+        )
+
+    @staticmethod
+    def _item_matches(item: QTreeWidgetItem, text: str) -> bool:
+        return text in item.text(0).lower() or text in item.text(1).lower()
+
+    def filter_items(self, text: str) -> int:
+        """
+        Shows only the items matching the text (case-insensitive) in their name or
+        value, together with their parents. The properties of a node, parameter,
+        recorder or table are not searched, but they are shown with the component
+        when it matches. The groups with matches are expanded; the expanded state
+        stored by the user is restored when the filter is cleared.
+        :param text: The text to search. An empty text shows all the items.
+        :return: The number of matching components.
+        """
+        text = text.strip().lower()
+        self.filter_text = text
+        matches = 0
+
+        # expanding items must not be stored as a choice of the user
+        self.blockSignals(True)
+        try:
+            if not text:
+                self._set_hidden_recursive(self.invisibleRootItem(), False)
+                self._restore_expanded_state()
+                return 0
+
+            def visit(item: QTreeWidgetItem, show_all: bool) -> bool:
+                """Shows or hides the item and returns whether it is visible."""
+                nonlocal matches
+                if show_all:
+                    item.setHidden(False)
+                    self._set_hidden_recursive(item, False)
+                    return True
+
+                own = self._item_matches(item, text)
+                if self._is_component(item):
+                    # the properties are shown with the component, not searched
+                    matches += own
+                    item.setHidden(not own)
+                    if own:
+                        self._set_hidden_recursive(item, False)
+                        item.setExpanded(False)
+                    return own
+
+                if item.childCount() == 0:
+                    matches += own
+                    item.setHidden(not own)
+                    return own
+
+                # a group: a matching name shows everything inside it
+                visible = False
+                for i in range(item.childCount()):
+                    visible = visit(item.child(i), own) or visible
+                item.setHidden(not (own or visible))
+                if own or visible:
+                    item.setExpanded(True)
+                return own or visible
+
+            root = self.invisibleRootItem()
+            for i in range(root.childCount()):
+                visit(root.child(i), False)
+        finally:
+            self.blockSignals(False)
+        return matches
+
+    def _set_hidden_recursive(self, item: QTreeWidgetItem, hidden: bool) -> None:
+        for i in range(item.childCount()):
+            child = item.child(i)
+            child.setHidden(hidden)
+            self._set_hidden_recursive(child, hidden)
 
     def _populate_nodes(self) -> None:
         """
