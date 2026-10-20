@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QFrame
 
@@ -18,6 +18,10 @@ class SchematicMinimap(QFrame):
     """ the width and height of the minimap """
     margin = 10
     """ the distance from the schematic border """
+    rebuild_delay = 250
+    """ Milliseconds to wait before rebuilding the geometry after the scene changed.
+    The scene changes very often (e.g. every time a map tile loads) and the rebuild
+    is expensive on large models, so the changes are grouped """
 
     def __init__(self, schematic: "Schematic"):
         """
@@ -43,6 +47,10 @@ class SchematicMinimap(QFrame):
 
         # the cached geometry is rebuilt when the scene changes; the red rectangle
         # follows the view
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(self.rebuild_delay)
+        self._timer.timeout.connect(self.update)
         schematic.scene.changed.connect(self.mark_dirty)
         schematic.horizontalScrollBar().valueChanged.connect(self.update)
         schematic.verticalScrollBar().valueChanged.connect(self.update)
@@ -53,12 +61,15 @@ class SchematicMinimap(QFrame):
     def mark_dirty(self, *args) -> None:
         """
         Flags that the schematic items changed, so that the geometry is rebuilt the
-        next time the minimap is drawn.
+        next time the minimap is drawn. The rebuild is delayed, so that many changes
+        in a row (and the ones that do not affect the nodes, like the loading of the
+        map tiles) trigger one rebuild only. The minimap keeps showing the previous
+        geometry in the meantime.
         :return: None
         """
         self._dirty = True
-        if self.isVisible():
-            self.update()
+        if self.isVisible() and not self._timer.isActive():
+            self._timer.start()
 
     def refresh(self) -> None:
         """
@@ -67,6 +78,7 @@ class SchematicMinimap(QFrame):
         :return: None
         """
         self._dirty = True
+        self._timer.stop()
         self.setVisible(
             len(self.schematic.node_items) > 0
             and not self.schematic.editor_settings.are_minimap_hidden
@@ -74,7 +86,7 @@ class SchematicMinimap(QFrame):
         self.reposition()
         self.update()
 
-    def reposition(self) -> None:
+    def reposition(self, *args) -> None:
         """
         Puts the minimap in the bottom-right corner of the view, above the map
         attribution and the legend, when they are shown on that side.
@@ -98,18 +110,18 @@ class SchematicMinimap(QFrame):
     # geometry ---------------------------------------------------------------------
     def _rebuild(self) -> None:
         nodes = self.schematic.node_items
-        self._nodes = [
-            item.sceneBoundingRect().center()
-            for item in nodes.values()
-            if item.isVisible()
-        ]
+        # the node position is the centre of its symbol. This is much cheaper than the
+        # bounding rectangle, which is computed in Python
+        self._nodes = [item.scenePos() for item in nodes.values() if item.isVisible()]
+        # every edge is stored by its source and target nodes
+        edges: dict[int, Edge] = {}
+        for item in nodes.values():
+            for edge in item.edges:
+                edges[id(edge)] = edge
         self._edges = [
-            QLineF(
-                edge.source.sceneBoundingRect().center(),
-                edge.target.sceneBoundingRect().center(),
-            )
-            for edge in self.schematic.scene.items()
-            if isinstance(edge, Edge) and edge.isVisible()
+            QLineF(edge.source.scenePos(), edge.target.scenePos())
+            for edge in edges.values()
+            if edge.isVisible()
         ]
         # the scene rect is much larger than the content (to let users pan freely),
         # so the content is measured from the items
@@ -169,7 +181,7 @@ class SchematicMinimap(QFrame):
 
     # painting -----------------------------------------------------------------------
     def paintEvent(self, event) -> None:
-        if self._dirty:
+        if self._dirty and not self._timer.isActive():
             self._rebuild()
         view = self.view_rect()
         self._fit(view)
