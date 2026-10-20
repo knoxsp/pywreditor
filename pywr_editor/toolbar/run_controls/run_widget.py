@@ -5,9 +5,12 @@ import pandas as pd
 from PySide6.QtCore import QThread, Signal, Slot
 from PySide6.QtGui import QAction, QIcon, Qt
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPlainTextEdit,
     QProgressBar,
     QSizePolicy,
     QVBoxLayout,
@@ -425,22 +428,34 @@ class RunWidget(QWidget):
         """
         self.reset_progress()
 
-        message = QMessageBox()
-        message.setWindowTitle("Model error")
-        message.setIcon(QMessageBox.Icon.Critical)
-        message.setText(
-            "An exception occurred while running the pywr model. "
-            + "The complete stack trace has been reported below. "
-        )
-        message.setDetailedText(exception)
-        message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # a resizable dialog is used instead of a QMessageBox, which cannot be resized
+        dialog = QDialog(self.app)
+        dialog.setWindowTitle("Model error")
+        dialog.setSizeGripEnabled(True)
+        dialog.resize(900, 600)
 
-        # open the exception message box
-        for button in message.buttons():
-            if message.buttonRole(button) == QMessageBox.ButtonRole.ActionRole:
-                button.click()
-                break
-        message.exec()
+        label = QLabel(
+            "An exception occurred while running the pywr model. "
+            + "The complete stack trace has been reported below."
+        )
+        label.setWordWrap(True)
+
+        trace = QPlainTextEdit(exception)
+        trace.setReadOnly(True)
+        trace.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        font = trace.font()
+        font.setFamily("monospace")
+        font.setStyleHint(font.StyleHint.Monospace)
+        trace.setFont(font)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(dialog.accept)
+
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label)
+        layout.addWidget(trace, 1)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     @Slot()
     def run_to_date_reached(self) -> None:
