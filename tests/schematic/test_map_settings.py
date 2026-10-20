@@ -192,7 +192,7 @@ class TestCrsPersistence:
         assert window.isVisible()
 
         window.model_config.save()
-        assert json.loads(path.read_text())["pywr_editor"]["map"]["crs"] == "EPSG:27700"
+        assert json.loads(path.read_text())["metadata"]["crs"] == "EPSG:27700"
         window.prompt_unsaved_changes = False
         window.model_config.reset_change_flag()
         window.close()

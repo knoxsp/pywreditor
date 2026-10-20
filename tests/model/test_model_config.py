@@ -117,7 +117,25 @@ class TestModelConfig:
 
         # the section is created when a setting is changed
         model.update_geographic_crs("EPSG:27700")
-        assert model.editor_config[Constants.MAP_KEY.value]["crs"] == "EPSG:27700"
+        assert model.json["metadata"]["crs"] == "EPSG:27700"
+        assert "crs" not in model.editor_config.get(Constants.MAP_KEY.value, {})
+
+    def test_crs_in_metadata(self):
+        """
+        Tests that the CRS is read from the metadata, which takes priority over the
+        CRS stored in the map settings by older versions, and that updating it
+        removes the old key.
+        """
+        model = self.model("model_2.json")
+        model.editor_config[Constants.MAP_KEY.value] = {"crs": "EPSG:3857"}
+        assert model.geographic_crs == "EPSG:3857"
+
+        model.json["metadata"]["crs"] = "EPSG:27700"
+        assert model.geographic_crs == "EPSG:27700"
+
+        model.update_geographic_crs("EPSG:4326")
+        assert model.json["metadata"]["crs"] == "EPSG:4326"
+        assert "crs" not in model.editor_config[Constants.MAP_KEY.value]
 
     def test_invalid_geographic_crs(self):
         """

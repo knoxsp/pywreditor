@@ -110,7 +110,7 @@ class MapSettings(QWidget):
         user can fix it.
         :return: The CRS.
         """
-        crs = self.model_config.map_config.get("crs")
+        crs = self.model_config.stored_geographic_crs
         return crs if isinstance(crs, str) else self.model_config.geographic_crs
 
     @Slot(bool)
@@ -156,7 +156,7 @@ class MapSettings(QWidget):
             return
 
         self.crs_field.setText(text)
-        if text != self.model_config.map_config.get("crs") or (
+        if text != self.model_config.stored_geographic_crs or (
             not self.model_config.has_valid_geographic_crs
         ):
             self.model_config.update_geographic_crs(text)
