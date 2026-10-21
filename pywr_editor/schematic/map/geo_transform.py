@@ -56,7 +56,7 @@ class GeoTransform:
     would be thousands of kilometres away from the schematic bounds. Instead, the
     transform is fitted to the nodes, so that the geographic view is displayed at a
     scale comparable to the schematic view. The y axis is flipped to match Qt's y-down
-    convention (mirroring how Schematic.to_px() flips the pywr y axis).
+    convention.
     """
 
     centre_merc: tuple[float, float]

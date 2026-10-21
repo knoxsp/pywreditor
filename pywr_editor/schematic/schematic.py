@@ -100,8 +100,6 @@ class Schematic(QGraphicsView):
     pan_margin: int = 50_000
     """ extra space, on each side of the schematic bounds, that can be panned to -
     this is what makes the canvas feel unbounded rather than just large """
-    pywr_bounds: tuple[int] = (-100, 100)
-    """ bounds used in the pixels conversion """
     max_view_size_delta: int = 50
     """ max step increment to use when resizing the schematic """
     schematic_move_event = Signal(QPointF)
@@ -396,21 +394,11 @@ class Schematic(QGraphicsView):
                 self.add_node(node_props=node_props, position_override=position)
                 continue
 
-            node_position = node_config.position
-            # position is not available
-            if node_position is None:
-                # use pywr position if available
-                pywr_position = node_config.pywr_position
-                if pywr_position is not None:
-                    node_position = self.to_px(pywr_position)
-                else:
-                    node_position = [
-                        self.schematic_width / 2,
-                        self.schematic_height / 2,
-                    ]
-                # set the new position and update the node dictionary
+            # position is not available: place the node in the centre
+            if node_config.position is None:
                 node_props = self.model_config.nodes.set_position(
-                    node_index=node_index, position=node_position
+                    node_index=node_index,
+                    position=[self.schematic_width / 2, self.schematic_height / 2],
                 )
 
             # draw the node
@@ -472,7 +460,7 @@ class Schematic(QGraphicsView):
         Add a new graphical node to the schematic.
         :param node_props: The dictionary with the node properties.
         :param position_override: The [x, y] scene position to use instead of the
-        node's stored editor_position. Used by the geographic view. Optional.
+        node's stored schematic position. Used by the geographic view. Optional.
         :return: The graphical node instance.
         """
         node_obj = SchematicNode(
@@ -596,28 +584,6 @@ class Schematic(QGraphicsView):
         button.hide()
         self.abort_node_connection_button = button
 
-    def to_px(self, point: Sequence[float]) -> list[float]:
-        """
-        Transforms the point from the pywr coordinates to the schematic coordinates
-        (i.e. pixels).
-        :param point: The point to transform.
-        :return: The transformed coordinates.
-        """
-        point_px = []
-        px_sizes = [self.schematic_width, self.schematic_height]
-        pywr_bound_size = self.pywr_bounds[1] - self.pywr_bounds[0]
-
-        sign = [1, -1]
-        for i, point_coordinate in enumerate(point):
-            x_ratio = pywr_bound_size / px_sizes[i]
-            point_px.append(
-                round(
-                    -(self.pywr_bounds[0] - sign[i] * point_coordinate) / x_ratio,
-                    4,
-                )
-            )
-        return point_px
-
     @property
     def geo_projector(self) -> Projector:
         """
@@ -707,8 +673,7 @@ class Schematic(QGraphicsView):
         """
         Transforms a node's geographic coordinates to scene coordinates, via Web
         Mercator. The transform is fitted to the extent of the nodes (see
-        GeoTransform), so one scene unit is not a fixed distance. As with to_px(),
-        the current view zoom (see scale_view()) provides the on-screen magnification.
+        GeoTransform), so one scene unit is not a fixed distance. The current view zoom (see scale_view()) provides the on-screen magnification.
         :param lonlat: The [longitude, latitude] pair, in the model's configured
         geographic CRS.
         :return: The transformed [x, y] scene coordinates. The centre of the

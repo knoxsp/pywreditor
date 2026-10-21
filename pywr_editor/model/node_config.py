@@ -107,20 +107,6 @@ class NodeConfig(ComponentConfig):
         return valid_node_size(position.get(Constants.NODE_SIZE_KEY.value))
 
     @property
-    def pywr_position(self) -> list[float] | None:
-        """
-        Return the node position.
-        :return: The node position if available, None otherwise.
-        """
-        if (
-            "position" in self.props
-            and "schematic" in self.props["position"]
-            and isinstance(self.props["position"]["schematic"], list)
-        ):
-            return self.props["position"]["schematic"]
-        return None
-
-    @property
     def raw_geographic(self) -> list | dict | None:
         """
         Return the stored geographic value as it is in the model: an [x, y] list

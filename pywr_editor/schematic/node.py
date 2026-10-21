@@ -71,9 +71,9 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :param node_props: The node properties from the model dictionary.
         :param view: The view where to draw the item.
         :param position_override: The [x, y] scene position to use instead of the
-        node's stored editor_position. Used by the geographic view, which plots
+        node's stored schematic position. Used by the geographic view, which plots
         nodes by their geographic position without touching their stored
-        editor_position. Optional.
+        schematic position. Optional.
         :return None
         """
         AbstractSchematicItem.__init__(self, view)

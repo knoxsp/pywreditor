@@ -59,7 +59,7 @@ class Nodes:
         node_index: int | None = None,
     ) -> dict:
         """
-        Set or update the editor position of a node identified by its name or index.
+        Set or update the schematic position of a node identified by its name or index.
         :param position: The position to set as list.
         :param node_name: The name of the node.
         :param node_index: The index of the node.
@@ -73,14 +73,14 @@ class Nodes:
         if node_name is not None:
             node_index = self.find_node_index_by_name(node_name)
 
-        editor_position_key = Constants.POSITION_KEY.value
+        schematic_key = Constants.POSITION_KEY.value
         if "position" in self.model.json["nodes"][node_index]:
             self.model.json["nodes"][node_index]["position"][
-                editor_position_key
+                schematic_key
             ] = position
         else:
             self.model.json["nodes"][node_index]["position"] = {
-                editor_position_key: position
+                schematic_key: position
             }
 
         self.model.has_changed()
@@ -128,34 +128,6 @@ class Nodes:
         :return: None
         """
         self.set_node_style(node_name, color=color)
-
-    def set_pywr_position(
-        self,
-        position: list[float],
-        node_name: str | None = None,
-        node_index: int | None = None,
-    ) -> None:
-        """
-        Set or update the pywr position of a node.
-        :param position: The position to set as list.
-        :param node_name: The name of the node.
-        :param node_index: The index of the node.
-        :return: None
-        """
-        if node_name is None and node_index is None:
-            raise ValueError(
-                "You must provide a node name or index to update its position"
-            )
-
-        if node_name is not None:
-            node_index = self.find_node_index_by_name(node_name)
-
-        if "position" in self.model.json["nodes"][node_index]:
-            self.model.json["nodes"][node_index]["position"]["schematic"] = position
-        else:
-            self.model.json["nodes"][node_index]["position"] = {"schematic": position}
-
-        self.model.has_changed()
 
     def set_geographic_position(
         self,
@@ -314,8 +286,6 @@ class Nodes:
         new_node_dict = {"position": {}}
 
         # preserve the positions and the color key
-        if node_obj.pywr_position is not None:
-            new_node_dict["position"]["schematic"] = node_obj.pywr_position
         if node_obj.position is not None:
             new_node_dict["position"][Constants.POSITION_KEY.value] = node_obj.position
         if node_obj.raw_geographic is not None:

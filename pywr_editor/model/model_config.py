@@ -296,6 +296,8 @@ class ModelConfig(QObject):
             ] = []
             self.has_changed()
 
+        self.migrate_legacy_positions()
+
         # note: the "map" key is only added when a map setting is changed (see
         # writable_map_config), as practically every existing model file predates it
 
@@ -310,6 +312,25 @@ class ModelConfig(QObject):
                 self.json["metadata"][key], str
             ):
                 self.json["metadata"][key] = value
+
+    def migrate_legacy_positions(self) -> None:
+        """
+        Moves the schematic position stored by previous versions of the editor in the
+        "editor_position" key to the "schematic" key defined by the pywr
+        specification. A legacy value replaces any existing "schematic" value, as it
+        is the position displayed by the editor.
+        :return: None
+        """
+        legacy_key = Constants.LEGACY_POSITION_KEY.value
+        key = Constants.POSITION_KEY.value
+        for node in self.json.get("nodes", []):
+            position = node.get("position") if isinstance(node, dict) else None
+            if not isinstance(position, dict) or legacy_key not in position:
+                continue
+            legacy_value = position.pop(legacy_key)
+            if isinstance(legacy_value, (list, tuple)) and len(legacy_value) == 2:
+                position[key] = legacy_value
+            self.has_changed()
 
     def is_valid(self) -> bool:
         """

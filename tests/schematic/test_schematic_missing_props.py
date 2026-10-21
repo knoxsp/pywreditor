@@ -35,7 +35,7 @@ class TestMissingSchematicProps:
         Tests that nodes with missing positions are assigned the default position.
         """
         schematic = window.schematic
-        # node with missing editor_position key
+        # node with missing schematic key
         assert schematic.node_items["Link1"].scenePos().toTuple() == (
             window.schematic.schematic_width / 2,
             window.schematic.schematic_height / 2,
@@ -47,7 +47,7 @@ class TestMissingSchematicProps:
             window.schematic.schematic_height / 2,
         )
 
-        # node with empty editor_position list
+        # node with empty schematic list
         assert schematic.node_items["Link3"].scenePos().toTuple() == (
             window.schematic.schematic_width / 2,
             window.schematic.schematic_height / 2,

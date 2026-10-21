@@ -27,6 +27,9 @@ new and less tested than the Windows one
 
 ### Changed
 
+- The schematic position of a node is stored in the `schematic` key of its `position`, as defined by the pywr
+specification, instead of the editor-only `editor_position` key. Models using `editor_position` are migrated when loaded.
+The schematic position is no longer converted from pywr coordinates and is shown as stored
 - Model errors are shown in a resizable dialog with a monospace stack trace
 - The Value column of the components tree fills the width of the panel
 - Schematic zoom is anchored on the cursor and the canvas is unbounded

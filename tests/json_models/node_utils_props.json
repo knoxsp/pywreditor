@@ -3,7 +3,7 @@
     "name": "Test node",
     "type": "link",
     "position": {
-      "editor_position": [
+      "schematic": [
         100,
         400
       ]
@@ -13,7 +13,7 @@
     "name": "Test node",
     "type": "link",
     "position": {
-      "editor_position": [
+      "schematic": [
         5,
         400
       ]
@@ -23,7 +23,7 @@
     "name": "Test node",
     "type": "link",
     "position": {
-      "editor_position": [
+      "schematic": [
         50,
         -6
       ]
@@ -33,7 +33,7 @@
     "name": "Test node",
     "type": "link",
     "position": {
-      "editor_position": [
+      "schematic": [
         1895,
         600
       ]
@@ -43,7 +43,7 @@
     "name": "Test node",
     "type": "link",
     "position": {
-      "editor_position": [
+      "schematic": [
         50,
         1440
       ]

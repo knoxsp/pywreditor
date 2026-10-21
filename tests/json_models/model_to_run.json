@@ -12,7 +12,7 @@
   "nodes": [
     {
       "name": "Input", "type": "Input", "position": {
-      "editor_position": [
+      "schematic": [
         434.18168,
         417.18473
       ]
@@ -20,7 +20,7 @@
     },
     {
       "name": "Output", "type": "Output", "position": {
-      "editor_position": [
+      "schematic": [
         304.18168,
         170.18473
       ]
