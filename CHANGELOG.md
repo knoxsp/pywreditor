@@ -18,6 +18,11 @@ legend context menus. The changes can be undone
 legend placement options
 - A dockable node data panel, opened by double-clicking a node, to edit the node configuration. The components tree
 is dockable too, and nodes in it can be searched and selected with Ctrl/Shift to be selected together on the schematic
+- A Validate model button in the Model tab. It lists the structural problems found by the bundled pywr-v1-schema,
+the references to missing nodes, parameters, tables and scenarios, missing files and orphaned components, with
+the location of each problem (double-click to go to the component). The Check with Pywr button loads and sets up the
+model with the Python paths, imports and solver of a run, without stepping it. A run does not start when the model
+refers to components that do not exist
 - A Copy file path button in the Model tab, and the window title shows the parent folder of the model file, to tell
 apart files with the same name
 - A table data editor
@@ -29,6 +34,7 @@ new and less tested than the Windows one
 
 ### Changed
 
+- Finding the orphaned parameters and recorders is much faster on large models
 - The schematic position of a node is stored in the `schematic` key of its `position`, as defined by the pywr
 specification, instead of the editor-only `editor_position` key. Models using `editor_position` are migrated when loaded.
 The schematic position is no longer converted from pywr coordinates and is shown as stored

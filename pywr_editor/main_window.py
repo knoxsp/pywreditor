@@ -26,6 +26,7 @@ from pywr_editor.dialogs import (
     MetadataDialog,
     NodeDataPanel,
     ParametersDialog,
+    ValidationDialog,
     RecordersDialog,
     ScenariosDialog,
     SearchDialog,
@@ -213,6 +214,7 @@ class MainWindow(QMainWindow):
 
         # handle schematic status during a model ru
         self.is_model_running = False
+        self.validation_dialog: ValidationDialog | None = None
         self.run_widget.run_status_changed.connect(self.on_model_run)
 
     def closeEvent(self, event: PySide6.QtGui.QCloseEvent) -> None:
@@ -393,6 +395,17 @@ class MainWindow(QMainWindow):
             )
         )
 
+        self.app_actions.add(
+            Action(
+                key="validate-model",
+                name="Validate model",
+                icon=":/toolbar/find-orphaned-parameters",
+                tooltip="Check the model structure, the references between components "
+                + "and\nthe external files, and check that pywr can load the model",
+                shortcut=QKeySequence("Ctrl+Shift+V"),
+                connection=self.open_validation_dialog,
+            )
+        )
         self.app_actions.add(
             Action(
                 key="find-orphaned-nodes",
@@ -752,6 +765,9 @@ class MainWindow(QMainWindow):
 
         validation_panel = model_tab.add_panel("Validation", layout="vertical")
         validation_panel.add_button(
+            self.app_actions.get("validate-model"), is_large=False
+        )
+        validation_panel.add_button(
             self.app_actions.get("find-orphaned-nodes"), is_large=False
         )
         validation_panel.add_button(
@@ -1108,6 +1124,47 @@ class MainWindow(QMainWindow):
         dialog.show()
 
     @Slot()
+    def open_validation_dialog(self) -> None:
+        """
+        Opens the dialog showing the model validation results.
+        :return: None
+        """
+        if self.validation_dialog is not None and self.validation_dialog.isVisible():
+            self.validation_dialog.validate()
+            self.validation_dialog.raise_()
+            return
+
+        dialog = ValidationDialog(parent=self)
+        dialog.component_requested.connect(self.show_component)
+        self.validation_dialog = dialog
+        dialog.show()
+
+    @Slot(str, str)
+    def show_component(self, kind: str, name: str) -> None:
+        """
+        Shows a component in the schematic or in its dialog.
+        :param kind: The component kind: node, parameter, recorder, table or scenario.
+        :param name: The component name.
+        :return: None
+        """
+        if kind == "node":
+            self.schematic.scene.clearSelection()
+            self.schematic.select_node_by_name(name)
+            return
+
+        dialogs = {
+            "parameter": ParametersDialog,
+            "recorder": RecordersDialog,
+            "table": TablesDialog,
+        }
+        if kind in dialogs:
+            dialogs[kind](
+                model=self.model_config, selected_name=name, parent=self
+            ).show()
+        elif kind == "scenario":
+            self.open_scenarios_dialog()
+
+    @Slot()
     def open_gis_layers_dialog(self) -> None:
         """
         Opens the dialog to manage the GIS layers shown on the schematic.
@@ -1225,6 +1282,7 @@ class MainWindow(QMainWindow):
             "edit-tables",
             "edit-parameters",
             "edit-recorders",
+            "validate-model",
             "find-orphaned-nodes",
             "find-orphaned-parameters",
             "toggle-geo-view",

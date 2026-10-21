@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 
 
@@ -45,6 +46,26 @@ class JsonUtils:
             occurrences=output[0],
             paths=[a.replace("root/", "") for a in output[1]],
         )
+
+    def count_strings(self) -> Counter:
+        """
+        Counts how many times each string appears in all nested dictionary keys and
+        values, as find_str() does when match_key is not set. This walks the
+        dictionary once, which is faster than calling find_str() for many strings.
+        :return: A Counter with the strings as keys.
+        """
+        counter = Counter()
+        stack = [self.d]
+        while stack:
+            item = stack.pop()
+            if isinstance(item, dict):
+                counter.update(k for k in item if isinstance(k, str))
+                stack.extend(item.values())
+            elif isinstance(item, list):
+                stack.extend(item)
+            elif isinstance(item, str):
+                counter[item] += 1
+        return counter
 
     def _find_str_in_dict_match_key(
         self,

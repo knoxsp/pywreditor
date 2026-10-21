@@ -52,6 +52,52 @@ def add_python_paths(paths: list[str]) -> list[str]:
     return added
 
 
+def apply_solver(model_dict: dict, solver: str | None) -> dict:
+    """
+    Sets the solver in the model dictionary if the model does not set its own.
+    :param model_dict: The model dictionary.
+    :param solver: The solver name (e.g. "glpk-edge").
+    :return: The dictionary to load. This is a copy if the solver is set, as the
+    dictionary is owned by the editor.
+    """
+    if solver and "solver" not in model_dict:
+        return {**model_dict, "solver": {"name": solver}}
+    return model_dict
+
+
+def load_pywr_model(
+    model_dict: dict,
+    model_file: str,
+    python_paths: list[str] | None = None,
+    python_modules: list[str] | None = None,
+    logger=None,
+) -> Model:
+    """
+    Loads the model with pywr. This is used to run the model and to check that it
+    loads before running it.
+    :param model_dict: The model dictionary, with the solver already set.
+    :param model_file: The absolute path to the model file, used by pywr to resolve
+    relative files.
+    :param python_paths: Folders or virtual environments to add to the Python
+    search path so that custom components can be imported.
+    :param python_modules: Modules imported before the model is loaded, so that
+    the custom components they define are registered with Pywr.
+    :param logger: The logger.
+    :return: The pywr model. Any exception is raised.
+    """
+    added = add_python_paths(python_paths or [])
+    if added and logger:
+        logger.debug(f"Added to the Python path: {added}")
+    for module in python_modules or []:
+        # accept a file name such as "parameters.py"
+        module = module.strip().removesuffix(".py")
+        if logger:
+            logger.debug(f"Importing module {module}")
+        importlib.import_module(module)
+    # noinspection PyArgumentList
+    return Model.load(data=model_dict, path=model_file)
+
+
 class RunMode(Enum):
     STEP = 0
     """ Run Model.step() """
@@ -141,9 +187,7 @@ class PywrWorker(QObject):
         self.results_dir = results_dir
         self._run_failed = False
         self._last_index: int | None = None
-        if solver and "solver" not in model_dict:
-            # do not change the dictionary owned by the editor
-            model_dict = {**model_dict, "solver": {"name": solver}}
+        model_dict = apply_solver(model_dict, solver)
 
         self.mode: RunMode | None = None
         self.model_config = model_dict
@@ -167,17 +211,12 @@ class PywrWorker(QObject):
         try:
             self.logger.debug(f"Loading model. Using pywr-{pywr.__version__}")
             self.status_update.emit("Loading model")
-            added = add_python_paths(self.python_paths)
-            if added:
-                self.logger.debug(f"Added to the Python path: {added}")
-            for module in self.python_modules:
-                # accept a file name such as "parameters.py"
-                module = module.strip().removesuffix(".py")
-                self.logger.debug(f"Importing module {module}")
-                importlib.import_module(module)
-            # noinspection PyArgumentList
-            self.pywr_model: Model = Model.load(
-                data=self.model_config, path=self.model_file
+            self.pywr_model: Model = load_pywr_model(
+                self.model_config,
+                self.model_file,
+                self.python_paths,
+                self.python_modules,
+                self.logger,
             )
             # noinspection PyUnresolvedReferences
             last_index = len(self.pywr_model.timestepper) - 1
