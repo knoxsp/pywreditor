@@ -6,7 +6,7 @@ from typing import Literal
 
 import PySide6
 from PySide6.QtCore import QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QIcon, QKeySequence, Qt, QUndoStack
+from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, Qt, QUndoStack
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
@@ -282,6 +282,15 @@ class MainWindow(QMainWindow):
                 tooltip="Reload the JSON file if it was externally edited",
                 connection=self.reload_model_file,
                 button_separator=True,
+            )
+        )
+        self.app_actions.add(
+            Action(
+                key="copy-file-path",
+                name="Copy\n file path",
+                icon=":/toolbar/open",
+                tooltip="Copy the full path of the model file to the clipboard",
+                connection=self.copy_file_path,
             )
         )
         self.app_actions.add(
@@ -720,6 +729,10 @@ class MainWindow(QMainWindow):
         file_panel.add_button(self.app_actions.get("save-model"))
         self.app_actions.get("save-model").setDisabled(True)
         file_panel.add_button(self.app_actions.get("reload-model"))
+        file_panel.add_button(self.app_actions.get("copy-file-path"))
+        self.app_actions.get("copy-file-path").setDisabled(
+            not self.model_config.json_file
+        )
         file_panel.add_button(self.app_actions.get("search-in-model"))
         file_panel.add_button(self.app_actions.get("open-json-reader"))
 
@@ -897,13 +910,38 @@ class MainWindow(QMainWindow):
 
         return jump_list
 
+    def model_path_abs(self) -> str:
+        """
+        Returns the absolute path of the model file.
+        :return: The path, or an empty string for a model without a file.
+        """
+        json_file = self.model_config.json_file
+        return os.path.abspath(json_file) if json_file else ""
+
+    @Slot()
+    def copy_file_path(self) -> None:
+        """
+        Copies the full path of the model file to the clipboard.
+        :return: None
+        """
+        path = self.model_path_abs()
+        if not path:
+            return
+        QGuiApplication.clipboard().setText(path)
+        self.statusBar().showMessage(f"Copied to clipboard: {path}", 5000)
+
     def set_window_title(self) -> None:
         """
         Sets the window title.
         :return: None
         """
         if self.model_config.json_file:
-            title = f"{self.model_config.title} - {self.model_config.file.file_name}"
+            # show the parent folder to tell apart files with the same name
+            folder = os.path.basename(os.path.dirname(self.model_path_abs()))
+            title = (
+                f"{self.model_config.title} - {self.model_config.file.file_name}"
+                + (f" ({folder})" if folder else "")
+            )
         else:
             title = "New empty model"
         self.setWindowTitle(title)
@@ -987,6 +1025,7 @@ class MainWindow(QMainWindow):
                 model_file = files[0]
                 self.model_file = model_file
                 self.model_config.json_file = model_file
+                self.app_actions.get("copy-file-path").setEnabled(True)
                 self.save_model()
                 self.undo_stack.setClean()
             else:
