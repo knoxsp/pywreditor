@@ -18,6 +18,8 @@ legend context menus. The changes can be undone
 legend placement options
 - A dockable node data panel, opened by double-clicking a node, to edit the node configuration. The components tree
 is dockable too, and nodes in it can be searched and selected with Ctrl/Shift to be selected together on the schematic
+- A Copy file path button in the Model tab, and the window title shows the parent folder of the model file, to tell
+apart files with the same name
 - A table data editor
 - A dockable IPython console to run the model and read the results. The Python paths and modules, the solver and
 whether to save results can be configured, and the schematic can be laid out automatically
