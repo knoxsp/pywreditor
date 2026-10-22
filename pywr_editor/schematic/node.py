@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict, Union
 
 import PySide6
 import qtawesome as qta
-from PySide6.QtCore import QSize, QUuid, Slot
+from PySide6.QtCore import QPointF, QSize, QUuid, Slot
 from PySide6.QtGui import QAction, QFont, QPainterPath
 from PySide6.QtWidgets import (
     QGraphicsItem,
@@ -193,7 +193,14 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :param value: The value.
         :return: The itemChange event.
         """
-        if change == QGraphicsItemGroup.ItemPositionHasChanged:
+        if change == QGraphicsItemGroup.ItemPositionChange:
+            if self.view.editor_settings.is_snap_to_grid_enabled:
+                grid_size = max(self.view.editor_settings.grid_size, 1)
+                value = QPointF(
+                    round(value.x() / grid_size) * grid_size,
+                    round(value.y() / grid_size) * grid_size,
+                )
+        elif change == QGraphicsItemGroup.ItemPositionHasChanged:
             for edge in self.edges:
                 edge.adjust()
         elif change == QGraphicsItemGroup.ItemSelectedHasChanged:
@@ -330,11 +337,11 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
 
     def mouseDoubleClickEvent(self, event) -> None:
         """
-        Edit node on double-click.
+        Shows the node data in the dockable node data panel on double-click.
         :param event: The event that triggered this.
         :return: None.
         """
-        self.on_edit_node()
+        self.on_show_node_data()
 
     def contextMenuEvent(
         self, event: PySide6.QtWidgets.QGraphicsSceneContextMenuEvent
@@ -467,6 +474,14 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
             parent=self.view.app,
         )
         dialog.show()
+
+    @Slot()
+    def on_show_node_data(self) -> None:
+        """
+        Shows the node configuration in the dockable node data panel.
+        :return: None
+        """
+        self.view.app.node_data_panel.show_node(self.name)
 
 
 class SchematicLabel(QGraphicsTextItem):
