@@ -27,6 +27,7 @@ from pywr_editor.model import ModelConfig
 from pywr_editor.schematic import Schematic, get_scaling_factor
 from pywr_editor.style import AppStylesheet, Theme
 from pywr_editor.toolbar import (
+    AppearanceSettings,
     GridSettings,
     ModelNavigationSettings,
     RunWidget,
@@ -511,16 +512,6 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
-                key="toggle-dark-mode",
-                name="Dark mode",
-                icon="",  # TODO: needs a theme-aware icon
-                tooltip="Switch between the light and dark theme",
-                is_checked=Theme.is_dark(),
-                connection=self.toggle_dark_mode,
-            )
-        )
-        self.app_actions.add(
-            Action(
                 key="toggle-arrows",
                 name="Hide arrows",
                 icon=":toolbar/toggle-schematic-arrows",
@@ -651,11 +642,6 @@ class MainWindow(QMainWindow):
             self.app_actions.get("find-orphaned-parameters"), is_large=False
         )
 
-        appearance_panel = model_tab.add_panel("Appearance", layout="vertical")
-        appearance_panel.add_button(
-            self.app_actions.get("toggle-dark-mode"), is_large=False
-        )
-
         # Operation tab
         operation_tab = self.toolbar.add_tab("Operations")
         nodes_panel = operation_tab.add_panel("Undo", layout="vertical")
@@ -727,6 +713,8 @@ class MainWindow(QMainWindow):
         navigation_panel.add_widget(ModelNavigationSettings(self))
         grid_panel = settings_tab.add_panel("Schematic -> Grid")
         grid_panel.add_widget(GridSettings(self))
+        appearance_panel = settings_tab.add_panel("Application -> Appearance")
+        appearance_panel.add_widget(AppearanceSettings(self))
 
     def add_status_bar(self) -> None:
         """
@@ -965,16 +953,15 @@ class MainWindow(QMainWindow):
         """
         self.statusBar().showMessage(message)
 
-    @Slot(bool)
-    def toggle_dark_mode(self, checked: bool) -> None:
+    @Slot(str)
+    def set_theme(self, preference: str) -> None:
         """
-        Switches between the light and dark theme and saves the choice.
-        :param checked: Whether the dark mode is enabled.
+        Changes the theme and saves the choice.
+        :param preference: "light", "dark" or "system".
         :return: None
         """
-        theme = "dark" if checked else "light"
-        self.editor_settings.save_theme(theme)
-        Theme.apply_mode(theme)
+        self.editor_settings.save_theme(preference)
+        Theme.apply_preference(preference)
 
     @Slot(str, str, str)
     def on_alert_info_message(

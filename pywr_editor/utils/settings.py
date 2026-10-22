@@ -71,20 +71,21 @@ class Settings:
     @property
     def theme(self) -> str:
         """
-        Returns the saved theme. This is not connected to the model file.
-        :return: "dark" or "light". Light is the default.
+        Returns the saved theme preference. This is not connected to the model file.
+        :return: "light", "dark" or "system". System is the default.
         """
-        value = self.global_instance.value(self.theme_key, defaultValue="light")
-        return "dark" if value == "dark" else "light"
+        value = self.global_instance.value(self.theme_key, defaultValue="system")
+        return value if value in ("light", "dark", "system") else "system"
 
     def save_theme(self, theme: str) -> None:
         """
-        Saves the theme. This is not connected to the model file.
-        :param theme: "dark" or "light".
+        Saves the theme preference. This is not connected to the model file.
+        :param theme: "light", "dark" or "system". Any other value is saved as
+        system.
         :return: None
         """
         self.global_instance.setValue(
-            self.theme_key, "dark" if theme == "dark" else "light"
+            self.theme_key, theme if theme in ("light", "dark", "system") else "system"
         )
 
     def save_window_attributes(self, window: "MainWindow") -> None:

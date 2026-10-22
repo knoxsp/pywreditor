@@ -20,7 +20,8 @@ def app() -> None:
      * --create_new: force the editor to open an empty model.
      * --browse: open the editor with the file browser.
      * --log: enable logging.
-     * --theme: "light" or "dark". This overrides the saved theme for this session.
+     * --theme: "light", "dark" or "system". This overrides the saved theme for
+       this session.
      * --log_to_file: when supplied with --log, the editor activity is logged to a file
     :return: None
     """
@@ -32,7 +33,7 @@ def app() -> None:
     argument_parser.add_argument("--create_new", action=BooleanOptionalAction)
     argument_parser.add_argument("--browse", action=BooleanOptionalAction)
     argument_parser.add_argument("--log", action=BooleanOptionalAction)
-    argument_parser.add_argument("--theme", choices=["light", "dark"])
+    argument_parser.add_argument("--theme", choices=["light", "dark", "system"])
 
     # register taskbar icon for Windows
     try:
@@ -51,7 +52,7 @@ def app() -> None:
     # do not inherit the desktop palette: the stylesheets need a known theme.
     # The theme is applied before any widget is created as stylesheets are built
     # when widgets are initialised
-    Theme.set_mode(options.theme or Settings().theme)
+    Theme.set_preference(options.theme or Settings().theme)
     editor.setStyle("Fusion")
     editor.setPalette(Theme.palette())
 

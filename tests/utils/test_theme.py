@@ -11,8 +11,10 @@ def reset_theme():
     """
     Restores the light theme after each test.
     """
+    Theme.preference = "light"
     Theme.apply_mode("light")
     yield
+    Theme.preference = "light"
     Theme.apply_mode("light")
 
 
@@ -61,6 +63,8 @@ class TestTheme:
             settings.save_theme("dark")
             assert settings.theme == "dark"
             settings.save_theme("nonsense")
+            assert settings.theme == "system"
+            settings.save_theme("light")
             assert settings.theme == "light"
         finally:
             settings.save_theme(previous)
@@ -141,3 +145,38 @@ class TestLiveTheme:
         Theme.on_change(widget, lambda w: calls.append("b"))
         Theme.apply_mode("dark")
         assert calls == ["a", "b"]
+
+
+class TestThemePreference:
+    @pytest.mark.parametrize(
+        ("preference", "system", "expected"),
+        [
+            ("light", "dark", "light"),
+            ("dark", "light", "dark"),
+            ("system", "dark", "dark"),
+            ("system", "light", "light"),
+            ("nonsense", "dark", "light"),
+        ],
+    )
+    def test_resolve(self, monkeypatch, preference, system, expected):
+        monkeypatch.setattr(Theme, "system_mode", classmethod(lambda cls: system))
+        assert Theme.resolve(preference) == expected
+
+    def test_system_preference_follows_the_desktop(self, qtbot, monkeypatch):
+        scheme = {"mode": "dark"}
+        monkeypatch.setattr(
+            Theme, "system_mode", classmethod(lambda cls: scheme["mode"])
+        )
+        Theme.apply_preference("system")
+        assert Theme.is_dark()
+
+        # the desktop changes
+        scheme["mode"] = "light"
+        Theme._on_system_changed()
+        assert not Theme.is_dark()
+
+        # a fixed preference ignores the desktop
+        Theme.apply_preference("dark")
+        scheme["mode"] = "light"
+        Theme._on_system_changed()
+        assert Theme.is_dark()

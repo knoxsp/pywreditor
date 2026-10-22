@@ -3,11 +3,12 @@ from contextlib import contextmanager
 from typing import Callable, Iterator, Literal
 
 import shiboken6
-from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
 ThemeMode = Literal["light", "dark"]
+ThemePreference = Literal["light", "dark", "system"]
 
 # the dark theme mirrors the Tailwind shade scale used by Color: a light shade is
 # replaced with the opposite shade (e.g. 100 becomes 800) so that text, borders
@@ -57,6 +58,12 @@ class Theme:
     mode: ThemeMode = "light"
     """ The active theme """
 
+    preference: ThemePreference = "light"
+    """ The theme chosen by the user. With "system", the theme follows the colour
+    scheme of the desktop """
+
+    _is_following_system: bool = False
+
     tokens: dict[str, tuple[str, str]] = {
         # token: (light colour, dark colour)
         "base": ("#FFFFFF", "#111827"),
@@ -76,6 +83,71 @@ class Theme:
         :return: None
         """
         cls.mode = "dark" if mode == "dark" else "light"
+
+    @classmethod
+    def system_mode(cls) -> ThemeMode:
+        """
+        Returns the colour scheme of the desktop.
+        :return: "dark" if the desktop uses a dark colour scheme, "light" otherwise
+        (also when the scheme is unknown).
+        """
+        app = QGuiApplication.instance()
+        if app is not None and app.styleHints().colorScheme() == Qt.ColorScheme.Dark:
+            return "dark"
+        return "light"
+
+    @classmethod
+    def resolve(cls, preference: ThemePreference | str) -> ThemeMode:
+        """
+        Converts the user preference to the theme to show.
+        :param preference: "light", "dark" or "system".
+        :return: "light" or "dark".
+        """
+        if preference == "system":
+            return cls.system_mode()
+        return "dark" if preference == "dark" else "light"
+
+    @classmethod
+    def set_preference(cls, preference: ThemePreference | str) -> None:
+        """
+        Sets the theme preference before the widgets are created. Use
+        apply_preference() once the application is running.
+        :param preference: "light", "dark" or "system". Any other value is light.
+        :return: None
+        """
+        cls.preference = (
+            preference if preference in ("light", "dark", "system") else "light"
+        )
+        cls.set_mode(cls.resolve(cls.preference))
+        cls._follow_system()
+
+    @classmethod
+    def apply_preference(cls, preference: ThemePreference | str) -> None:
+        """
+        Changes the theme preference of the running application.
+        :param preference: "light", "dark" or "system".
+        :return: None
+        """
+        cls.set_preference(preference)
+        cls.apply_mode(cls.mode)
+
+    @classmethod
+    def _follow_system(cls) -> None:
+        # connect once. The slot checks the preference, as the connection cannot be
+        # removed when the preference changes
+        app = QGuiApplication.instance()
+        if cls._is_following_system or app is None:
+            return
+        app.styleHints().colorSchemeChanged.connect(cls._on_system_changed)
+        cls._is_following_system = True
+
+    @classmethod
+    @Slot()
+    def _on_system_changed(cls, *_) -> None:
+        if cls.preference == "system":
+            resolved = cls.system_mode()
+            if resolved != cls.mode:
+                cls.apply_mode(resolved)
 
     @classmethod
     def apply_mode(cls, mode: ThemeMode | str) -> None:
