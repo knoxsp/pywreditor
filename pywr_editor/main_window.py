@@ -6,7 +6,7 @@ from typing import Literal
 
 import PySide6
 from PySide6.QtCore import QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QColor, QKeySequence, QUndoStack
+from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, Qt, QUndoStack
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
 
 from pywr_editor.dialogs import (
@@ -15,6 +15,7 @@ from pywr_editor.dialogs import (
     IncludesDialog,
     JsonCodeViewer,
     MetadataDialog,
+    NodeDataPanel,
     ParametersDialog,
     RecordersDialog,
     ScenariosDialog,
@@ -25,7 +26,13 @@ from pywr_editor.dialogs import (
 from pywr_editor.model import ModelConfig
 from pywr_editor.schematic import Schematic, get_scaling_factor
 from pywr_editor.style import AppStylesheet, Theme
-from pywr_editor.toolbar import RunWidget, SchematicItemsLibrary, ToolbarWidget
+from pywr_editor.toolbar import (
+    GridSettings,
+    ModelNavigationSettings,
+    RunWidget,
+    SchematicItemsLibrary,
+    ToolbarWidget,
+)
 from pywr_editor.toolbar.run_controls.timestepper import TimeStepperWidget
 from pywr_editor.tree import ComponentsTree
 from pywr_editor.utils import (
@@ -130,6 +137,10 @@ class MainWindow(QMainWindow):
         Theme.on_change(self, lambda w: w.setPalette(QColor(Theme.color("window"))))
         self.setDockNestingEnabled(False)
         self.setCentralWidget(self.splitter)
+
+        # Node data panel (dockable/undockable, shown on node double-click)
+        self.node_data_panel = NodeDataPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.node_data_panel)
 
         # Actions
         self.undo_stack = QUndoStack(self)
@@ -520,6 +531,16 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="toggle-legend",
+                name="Hide legend",
+                icon=":toolbar/toggle-schematic-legend",
+                tooltip="Hide or show the node type legend on the schematic",
+                is_checked=self.editor_settings.are_legend_hidden,
+                connection=self.schematic.toggle_legend,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="center",
                 name="Centre",
                 icon=":toolbar/centre-schematic",
@@ -675,7 +696,17 @@ class MainWindow(QMainWindow):
         display_panel = schematic_tab.add_panel("Display", layout="vertical")
         display_panel.add_button(self.app_actions.get("toggle-labels"), is_large=False)
         display_panel.add_button(self.app_actions.get("toggle-arrows"), is_large=False)
+        display_panel.add_button(self.app_actions.get("toggle-legend"), is_large=False)
         display_panel.add_button(self.app_actions.get("center"), is_large=False)
+
+        toggle_node_data_action = self.node_data_panel.toggleViewAction()
+        toggle_node_data_action.setText("Hide node data")
+        toggle_node_data_action.setIcon(QIcon(":/toolbar/edit-node"))
+        toggle_node_data_action.setToolTip(
+            "Show or hide the dockable panel with the data of the node currently "
+            "selected on the schematic"
+        )
+        display_panel.add_button(toggle_node_data_action, is_large=False)
 
         size_panel = schematic_tab.add_panel("Size")
         size_panel.add_button(self.app_actions.get("increase-width"))
@@ -689,6 +720,13 @@ class MainWindow(QMainWindow):
         misc_panel.add_button(
             self.app_actions.get("export-current-view"), is_large=False
         )
+
+        # Settings tab
+        settings_tab = self.toolbar.add_tab("Settings")
+        navigation_panel = settings_tab.add_panel("Model -> Navigation")
+        navigation_panel.add_widget(ModelNavigationSettings(self))
+        grid_panel = settings_tab.add_panel("Schematic -> Grid")
+        grid_panel.add_widget(GridSettings(self))
 
     def add_status_bar(self) -> None:
         """

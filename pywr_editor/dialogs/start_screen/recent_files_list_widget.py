@@ -2,9 +2,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import PySide6
-from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtCore import QRect, QSize, Qt, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (
+    QApplication,
     QListWidget,
     QListWidgetItem,
     QSizePolicy,
@@ -220,12 +221,9 @@ class RecentFileListWidget(QListWidget):
         Browses for a new file and load it in the editor.
         :return: None
         """
-        from pywr_editor.main_window import MainWindow
-
         file = browse_files()
         if file:
-            self.parent().dialog.close()
-            MainWindow(file)
+            self.close_dialog_and_open_file(file)
 
     def open_file(self, file: QListWidgetItem | str | None) -> None:
         """
@@ -233,12 +231,51 @@ class RecentFileListWidget(QListWidget):
         :param file: The file to open or the clicked list item.
         :return: None
         """
-        from pywr_editor.main_window import MainWindow
-
         if isinstance(file, QListWidgetItem):
             file = file.data(ListViewDelegate.full_file_role)
-            self.parent().dialog.close()
-            MainWindow(file)
+            self.close_dialog_and_open_file(file)
+
+    def close_dialog_and_open_file(self, file: str) -> None:
+        """
+        Closes the start screen dialog and opens the main window on the next
+        event loop iteration.
+        :param file: The file to open.
+        :return: None
+        """
+        # closing the dialog immediately would destroy it (and this widget)
+        # while Qt is still processing the mouse event that triggered this
+        # slot, which can crash the application - the new window is opened on
+        # the next event loop iteration instead.
+        # Closing the dialog also leaves no window open until then: Qt's
+        # default quitOnLastWindowClosed would otherwise quit the application
+        # before the new window gets a chance to open, so it is disabled for
+        # this brief gap and restored once the new window is shown.
+        app = QApplication.instance()
+        app.setQuitOnLastWindowClosed(False)
+        self.parent().dialog.close()
+        QTimer.singleShot(0, lambda: self.open_main_window(file, app))
+
+    @staticmethod
+    def open_main_window(
+        file: str, app: PySide6.QtWidgets.QApplication | None = None
+    ) -> None:
+        """
+        Opens the main window on the provided file.
+        :param file: The file to open.
+        :param app: The application instance, whose quitOnLastWindowClosed
+        property is restored once the window is open. Optional.
+        :return: None
+        """
+        from pywr_editor.main_window import MainWindow
+
+        # keep a reference on the class - without it, nothing holds onto this
+        # window once this method returns, so it (and, being the only window
+        # left, the whole application) could be garbage collected and closed
+        # almost immediately. Same pattern as MainWindow.start_screen.
+        MainWindow.current_window = MainWindow(file)
+
+        if app is not None:
+            app.setQuitOnLastWindowClosed(True)
 
     def add_no_item_description(self) -> None:
         """

@@ -25,17 +25,19 @@ class TestInitialWrongPosition:
 
     def get_warning_message(self) -> None:
         """
-        Saves the text in the warning message.
+        Saves the text in the warning message, if one was shown.
         :return: None
         """
         widget = QApplication.activeModalWidget()
-        self.dialog_text = widget.text()
-        widget.close()
+        if widget is not None:
+            self.dialog_text = widget.text()
+            widget.close()
 
     def test_node_outside_left_edge(self, qtbot, window):
         """
-        Tests that if a node is initially outside the schematic canvas, the node is
-        moved to the correct position and the user is warned about the change.
+        Tests that the canvas is unbounded: a node initially positioned outside the
+        schematic bounds keeps its stored position (it is not snapped back onto the
+        canvas) and no warning is shown to the user.
         """
         schematic = window.schematic
 
@@ -47,8 +49,7 @@ class TestInitialWrongPosition:
                 schematic.schematic_height,
             ],
         )
-        assert item_utils.is_outside_left_edge is False
-        assert item.sceneBoundingRect().left() == 0.0
+        assert item_utils.is_outside_left_edge is True
 
         item = schematic.node_items["Output"]
         item_utils = SchematicItemUtils(
@@ -58,7 +59,7 @@ class TestInitialWrongPosition:
                 schematic.schematic_height,
             ],
         )
+        assert item_utils.is_outside_bottom_edge is True
 
-        assert item_utils.is_outside_left_edge is False
-        assert item.sceneBoundingRect().bottom() == schematic.schematic_height
-        assert "2 items were outside" in self.dialog_text
+        # no warning is shown, since the canvas has no hard bounds to enforce
+        assert self.dialog_text is None

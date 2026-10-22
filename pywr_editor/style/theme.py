@@ -104,7 +104,8 @@ class Theme:
                     function(widget)
 
         for widget in app.allWidgets():
-            widget.update()
+            # some widgets (QHeaderView) override update() with another signature
+            QWidget.update(widget)
         cls.signals.changed.emit()
 
     @classmethod
