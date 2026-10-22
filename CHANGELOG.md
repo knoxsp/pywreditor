@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 All issue numbers are relative to <https://github.com/pywr-editor/editor>
 
+## Unreleased
+
+### Added
+
+- The editor can run on Linux and macOS. The unit tests run on Windows, Linux and macOS, and the release workflow
+builds the Windows installer and zip file, a Linux archive and a macOS disk image. The Linux and macOS builds are
+new and less tested than the Windows one
+
+### Changed
+
+- "Export to Excel" writes an `.xlsx` file with `openpyxl` and opens it with the default application instead of
+using Excel via COM. It no longer requires Microsoft Excel and works on all platforms. The Excel buttons are
+displayed on all platforms
+- Files and URLs are opened with `QDesktopServices` instead of `os.startfile`
+- The Windows jump list is only used on Windows. Other platforms use a no-op implementation
+- `pywin32` is only installed on Windows, and `scipy` and `openpyxl` are now explicit requirements. The `build.py`
+script calls `pyside6-rcc` instead of `pyside6-rcc.exe`
+
+### Fixed
+
+- Errors logged with `traceback.print_exc()` showed "None" in the log message. When exporting an annual profile to
+Excel this also raised a `TypeError` that hid the error dialog. `traceback.format_exc()` is now used
+- The model run worker forced a garbage collection from its own thread, which could crash the editor when Qt objects
+were destroyed outside the GUI thread
+- Actions without a connected slot are no longer connected, as PySide6 6.11 and later reject `None`
+
 ## v2.1.1 - 2025-12-16
 
 ### Fixed

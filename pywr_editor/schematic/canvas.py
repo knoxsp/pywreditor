@@ -1,6 +1,5 @@
 import PySide6
 from PySide6.QtCore import QRectF
-from PySide6.QtGui import QPen, Qt
 from PySide6.QtWidgets import QGraphicsDropShadowEffect, QGraphicsItem
 
 from pywr_editor.style import Color
@@ -9,7 +8,10 @@ from pywr_editor.style import Color
 class SchematicCanvas(QGraphicsItem):
     def __init__(self, width: float, height: float):
         """
-        Initialises the schematic canvas. This is a rectangle wrapping all the shapes.
+        Initialises the schematic canvas. This draws an outline, wrapping all the
+        shapes, that marks the schematic bounds. The background fill is handled
+        separately by the view (see Schematic.add_scene_decorations) so that it
+        always fills the viewport instead of zooming/panning with this outline.
         :param width: The schematic width.
         :param height: THe schematic height.
         :return None
@@ -21,7 +23,7 @@ class SchematicCanvas(QGraphicsItem):
         self.height = height
         # drop shadow - this slows down painting when zoomed
         # self.setGraphicsEffect(self.shadow)
-        # always draw the schematic as background
+        # always draw the schematic bounds behind the nodes/edges
         self.setZValue(-1)
         # speed up rendering performance
         self.setCacheMode(QGraphicsItem.ItemCoordinateCache)
@@ -41,15 +43,16 @@ class SchematicCanvas(QGraphicsItem):
         widget: PySide6.QtWidgets.QWidget | None = ...,
     ) -> None:
         """
-        Draws the canvas as a rectangle wrapping all the shapes.
+        Draws nothing: the canvas is unbounded, so there is no outline or fill to
+        mark the schematic bounds. This item is kept only so that schematic.py's
+        size tracking (update_size) and run-mode dimming (set_run_mode) keep
+        working against a real item.
         :param painter: The painter instance.
         :param option: The option.
         :param widget: The widget.
         :return: None
         """
-        painter.setPen(QPen(Color("gray", 400).hex))
-        painter.setBrush(Qt.GlobalColor.white)
-        painter.drawRoundedRect(self.boundingRect(), 8, 8)
+        pass
 
     @property
     def shadow(self) -> QGraphicsDropShadowEffect:

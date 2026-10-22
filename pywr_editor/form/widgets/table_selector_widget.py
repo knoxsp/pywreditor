@@ -373,7 +373,7 @@ class TableSelectorWidget(FormWidget):
                 except Exception:
                     self.logger.debug(
                         "Cannot parse the file due to Exception: "
-                        + f"{traceback.print_exc()}"
+                        + f"{traceback.format_exc()}"
                     )
                     self.table_parse_error = True
         else:
@@ -412,7 +412,7 @@ class TableSelectorWidget(FormWidget):
             file = os.path.normpath(file)
             os.startfile(file)
         except Exception:
-            self.logger.debug(f"Cannot open the file because: {traceback.print_exc()}")
+            self.logger.debug(f"Cannot open the file because: {traceback.format_exc()}")
             QMessageBox().critical(
                 self,
                 "Cannot open the file",

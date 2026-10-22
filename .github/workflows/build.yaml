@@ -4,16 +4,16 @@ on:
     tags:
     - '*'
 jobs:
-  Windows-release:
+  Windows-build:
     runs-on: windows-latest
     steps:
       - name: Python Setup
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           architecture: x64
       - name: Checkout Source
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
@@ -25,26 +25,113 @@ jobs:
       - name: Zip Windows bin folder
         run: |
           & "C:\Program Files\7-Zip\7z.exe" a "Windows_binary.zip" "./dist/main/*"
-      - name: Upload binary ZIP file
-        uses: actions/upload-artifact@v3
-        with:
-          name: pywr_editor
-          path: Windows_binary.zip
       - name: Create installer
         run: |
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows_setup.iss
-      - name: Upload installer
-        uses: actions/upload-artifact@v3
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
         with:
-          name: pywr_editor
-          path: Output
+          name: pywr_editor_windows
+          path: |
+            Windows_binary.zip
+            Output/Pywr_editor_installer.exe
+
+  Linux-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Python Setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Checkout Source
+        uses: actions/checkout@v4
+      - name: Install system libraries
+        # libraries required by the Qt platform plugins
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 \
+            libdbus-1-3 libfontconfig1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-render-util0 libxcb-shape0
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Freeze editor
+        run: |
+          pyinstaller main.spec --noconfirm
+      - name: Smoke test the frozen editor
+        # the editor must still be running when the timeout expires (exit code 124)
+        run: |
+          code=0
+          QT_QPA_PLATFORM=offscreen timeout 20 "dist/main/Pywr Editor" tests/json_models/model_1.json || code=$?
+          test "$code" -eq 124
+      - name: Create archive
+        run: |
+          mv dist/main dist/pywr_editor
+          tar -czf Pywr_editor_linux.tar.gz -C dist pywr_editor
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: pywr_editor_linux
+          path: Pywr_editor_linux.tar.gz
+
+  macOS-build:
+    runs-on: macos-latest
+    steps:
+      - name: Python Setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Checkout Source
+        uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Freeze editor
+        run: |
+          pyinstaller main.spec --noconfirm
+      - name: Smoke test the frozen editor
+        # the editor must still be running when the timeout expires (exit code 124)
+        run: |
+          code=0
+          QT_QPA_PLATFORM=offscreen perl -e 'alarm 20; exec @ARGV' "dist/Pywr Editor.app/Contents/MacOS/Pywr Editor" tests/json_models/model_1.json || code=$?
+          # perl alarm terminates the process with SIGALRM (128 + 14)
+          test "$code" -eq 142
+      - name: Create disk image
+        # the app is not signed or notarised: users must allow it in the system
+        # settings the first time they run it
+        run: |
+          hdiutil create -volname "Pywr Editor" -srcfolder "dist/Pywr Editor.app" \
+            -ov -format UDZO Pywr_editor_macos.dmg
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: pywr_editor_macos
+          path: Pywr_editor_macos.dmg
+
+  Release:
+    needs: [Windows-build, Linux-build, macOS-build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
       - name: Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           # approve release manually
           draft: true
           body_path: CHANGELOG.md
           files: |
-            ./Output/Pywr_editor_installer.exe
-            ./Windows_binary.zip
+            release/Output/Pywr_editor_installer.exe
+            release/Windows_binary.zip
+            release/Pywr_editor_linux.tar.gz
+            release/Pywr_editor_macos.dmg

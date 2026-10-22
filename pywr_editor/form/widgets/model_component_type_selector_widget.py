@@ -1,4 +1,3 @@
-import os
 from typing import TYPE_CHECKING, Literal, Union
 
 import qtawesome as qta
@@ -10,7 +9,7 @@ import pywr_editor.dialogs
 import pywr_editor.model
 from pywr_editor.form import FormField, FormSection, FormWidget
 from pywr_editor.model import ParameterConfig, RecorderConfig
-from pywr_editor.utils import Logging
+from pywr_editor.utils import Logging, open_external
 from pywr_editor.widgets import ComboBox, PushIconButton
 
 if TYPE_CHECKING:
@@ -311,7 +310,7 @@ class ModelComponentTypeSelectorWidget(FormWidget):
         # noinspection PyTypeChecker
         url = self.doc_button.property("url")
         if url is not None:
-            os.startfile(url)
+            open_external(url)
 
     def get_value(self) -> str:
         """

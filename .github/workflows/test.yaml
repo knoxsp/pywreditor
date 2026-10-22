@@ -9,19 +9,42 @@ on:
       - develop
       - main
 jobs:
-  Test-On-Windows:
-    runs-on: windows-latest
-    timeout-minutes: 15
+  Test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      # run all the platforms even if one fails
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          # the Pywr and PyTables wheels are not verified on macOS yet
+          - os: macos-latest
+            experimental: true
+    # do not fail the workflow for experimental platforms
+    continue-on-error: ${{ matrix.experimental == true }}
+    defaults:
+      run:
+        shell: bash
     steps:
-#      - name: Collect Workflow Telemetry
-#        uses: runforesight/workflow-telemetry-action@v1
+      - name: Checkout Source
+        uses: actions/checkout@v4
       - name: Python Setup
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          architecture: x64
-      - name: Checkout Source
-        uses: actions/checkout@v3
+          cache: pip
+      - name: Run Qt without a display
+        # Windows runners provide a desktop session
+        if: runner.os != 'Windows'
+        run: echo "QT_QPA_PLATFORM=offscreen" >> "$GITHUB_ENV"
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        # libraries required by the Qt platform plugins
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
@@ -31,5 +54,5 @@ jobs:
         # run tests separately to prevent the pipeline from failing
         # when too many dialog instances are run
         run: |
-          pytest -s .\tests\ --ignore=.\tests\widgets_dataframe
-          pytest -s .\tests\widgets_dataframe
+          pytest -s tests/ --ignore=tests/widgets_dataframe
+          pytest -s tests/widgets_dataframe

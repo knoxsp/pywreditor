@@ -243,7 +243,7 @@ class CheckSumWidget(AbstractStringComboBoxWidget):
             except Exception:
                 self.logger.debug(
                     "Cannot calculate the file hash due to Exception: "
-                    + f"{traceback.print_exc()}"
+                    + f"{traceback.format_exc()}"
                 )
                 QMessageBox.critical(
                     self,

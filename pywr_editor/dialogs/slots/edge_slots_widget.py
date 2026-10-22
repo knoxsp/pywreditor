@@ -109,7 +109,9 @@ class EdgeSlotsWidget(FormWidget):
                 self.dialog.model_config.nodes.update(new_node_dict)
                 self.logger.debug(f"New node config is: '{new_node_dict}")
             except Exception:
-                self.logger.debug(f"Renaming skipped because: '{traceback.print_exc()}")
+                self.logger.debug(
+                    f"Renaming skipped because: '{traceback.format_exc()}"
+                )
                 pass
 
         # update tree and status bar

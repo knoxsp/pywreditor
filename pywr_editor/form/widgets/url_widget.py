@@ -11,6 +11,7 @@ from pywr_editor.form import FormField, FormWidget, Validation
 from pywr_editor.utils import (
     Logging,
     get_signal_sender,
+    open_external,
     reset_pandas_index_names,
     set_table_index,
 )
@@ -300,9 +301,9 @@ class UrlWidget(FormWidget):
             # ensure that the path is properly encoded
             file = os.path.normpath(self.full_file)
             self.logger.debug(f"Opening file {file}")
-            os.startfile(file)
+            open_external(file)
         except Exception:
-            self.logger.debug(f"Failed to open because: {traceback.print_exc()}")
+            self.logger.debug(f"Failed to open because: {traceback.format_exc()}")
             QMessageBox().critical(
                 self,
                 "Cannot open the file",
@@ -466,7 +467,7 @@ class UrlWidget(FormWidget):
                     raise ValueError
             except Exception:
                 self.logger.debug(
-                    f"Cannot parse the file due to Exception: {traceback.print_exc()}"
+                    f"Cannot parse the file due to Exception: {traceback.format_exc()}"
                 )
                 self.table_parse_error = True
         else:

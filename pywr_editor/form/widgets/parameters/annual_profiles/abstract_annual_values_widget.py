@@ -3,13 +3,12 @@ from typing import TYPE_CHECKING
 
 import PySide6
 import qtawesome as qta
-from PySide6.QtAxContainer import QAxObject
 from PySide6.QtCore import QCoreApplication, Qt, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QStyledItemDelegate, QVBoxLayout
 
 from pywr_editor.form import FormWidget, ProfilePlotDialog
-from pywr_editor.utils import Logging, is_windows
+from pywr_editor.utils import Logging, export_to_excel
 from pywr_editor.widgets import DoubleSpinBox, PushIconButton, TableView
 
 if TYPE_CHECKING:
@@ -77,27 +76,26 @@ class AbstractAnnualValuesWidget(FormWidget):
         button_layout.addWidget(self.plot_button)
         button_layout.addStretch()
 
-        if is_windows():
-            self.paste_button = PushIconButton(
-                icon=qta.icon("msc.reply"), label="Paste from Excel", small=True
-            )
-            self.paste_button.setToolTip(
-                "Paste data copied from a column from an Excel spreadsheet"
-            )
-            # noinspection PyUnresolvedReferences
-            self.paste_button.clicked.connect(self.paste_from_excel)
+        self.paste_button = PushIconButton(
+            icon=qta.icon("msc.reply"), label="Paste from Excel", small=True
+        )
+        self.paste_button.setToolTip(
+            "Paste data copied from a column from an Excel spreadsheet"
+        )
+        # noinspection PyUnresolvedReferences
+        self.paste_button.clicked.connect(self.paste_from_excel)
 
-            self.export_button = PushIconButton(
-                icon=qta.icon("msc.export"), label="Export to Excel", small=True
-            )
-            self.export_button.setToolTip(
-                "Create an Excel spreadsheet containing the data from the table above"
-            )
-            # noinspection PyUnresolvedReferences
-            self.export_button.clicked.connect(self.export_to_excel)
+        self.export_button = PushIconButton(
+            icon=qta.icon("msc.export"), label="Export to Excel", small=True
+        )
+        self.export_button.setToolTip(
+            "Create an Excel spreadsheet containing the data from the table above"
+        )
+        # noinspection PyUnresolvedReferences
+        self.export_button.clicked.connect(self.export_to_excel)
 
-            button_layout.addWidget(self.paste_button)
-            button_layout.addWidget(self.export_button)
+        button_layout.addWidget(self.paste_button)
+        button_layout.addWidget(self.export_button)
 
         # Set layout
         layout = QVBoxLayout(self)
@@ -248,46 +246,26 @@ class AbstractAnnualValuesWidget(FormWidget):
         self.table.setFocus()
         QCoreApplication.processEvents()
 
-        # add the workbook
         # noinspection PyBroadException
         try:
-            excel = QAxObject("Excel.Application", self)
-            work_books = excel.querySubObject("WorkBooks")
-            work_books.dynamicCall("Add")
-            work_book = excel.querySubObject("ActiveWorkBook")
-
-            # rename the sheet
-            work_sheets = work_book.querySubObject("Sheets")
-            first_sheet = work_sheets.querySubObject("Item(int)", 1)
-
             param_name = self.form.find_field("name")
-            if param_name is not None and param_name != "":
-                first_sheet.setProperty("Name", param_name.value())
-
-            # header
-            cell = first_sheet.querySubObject("Cells(int, int)", 1, 1)
-            cell.setProperty("Value", self.model.label)
-            cell = first_sheet.querySubObject("Cells(int, int)", 1, 2)
-            cell.setProperty("Value", "Value")
-
-            # values
-            for row in range(0, self.model.rowCount()):
-                for col in range(0, self.model.columnCount()):
-                    index = self.model.index(row, col)
-                    cell = first_sheet.querySubObject(
-                        "Cells(int, int)", row + 2, col + 1
-                    )
-                    cell.setProperty(
-                        "Value",
-                        self.model.data(index, Qt.ItemDataRole.DisplayRole),
-                    )
-
-            # show Excel
-            excel.dynamicCall("SetVisible(bool)", True)
+            export_to_excel(
+                header=[self.model.label, "Value"],
+                rows=[
+                    [
+                        self.model.data(
+                            self.model.index(row, col), Qt.ItemDataRole.DisplayRole
+                        )
+                        for col in range(0, self.model.columnCount())
+                    ]
+                    for row in range(0, self.model.rowCount())
+                ],
+                sheet_name=param_name.value() if param_name is not None else None,
+            )
         except Exception:
             self.logger.debug(
                 "An error occurred while exporting data to Excel: "
-                + traceback.print_exc()
+                + traceback.format_exc()
             )
             QMessageBox.critical(
                 self,

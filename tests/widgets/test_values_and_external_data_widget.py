@@ -1,3 +1,4 @@
+import os
 from functools import partial
 from pathlib import Path
 
@@ -326,7 +327,7 @@ class TestDialogParameterValuesAndExternalDataWidget:
         "value",
         [
             {
-                "url": "files\\table.csv",
+                "url": os.path.join("files", "table.csv"),
                 "index_col": ["Column 1"],
                 "column": "Column 3",
             },

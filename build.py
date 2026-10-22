@@ -1,4 +1,4 @@
-import os
+import subprocess
 from pathlib import Path
 
 import PyInstaller.__main__
@@ -31,7 +31,7 @@ def editor_assets():
     assets_path = Path(__file__).parent / "pywr_editor" / "assets"
     qrc_file = assets_path / "assets.qrc"
     py_file = assets_path.parent / "style" / "assets.py"
-    os.system(f'pyside6-rcc.exe "{qrc_file}" -o "{py_file}"')
+    subprocess.run(["pyside6-rcc", str(qrc_file), "-o", str(py_file)], check=True)
 
     typer.secho(f">> Generated {py_file}", fg=typer.colors.GREEN, bold=True)
 
@@ -58,7 +58,7 @@ def pywr_assets():
 
     qrc_file = Path(__file__).parent / "pywr_editor" / "assets" / "pywr_resources.qrc"
     py_file = Path(__file__).parent / "pywr_editor" / "model" / "pywr_resources.py"
-    os.system(f'pyside6-rcc.exe "{qrc_file}" -o "{py_file}"')
+    subprocess.run(["pyside6-rcc", str(qrc_file), "-o", str(py_file)], check=True)
 
     typer.secho(f">> Generated {py_file}", fg=typer.colors.GREEN, bold=True)
 

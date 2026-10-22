@@ -1,3 +1,4 @@
+import os
 from functools import partial
 from pathlib import Path
 
@@ -96,7 +97,7 @@ class TestTablesIncludes:
             qtbot.mouseClick(dialog.save_button, Qt.MouseButton.LeftButton)
 
             # convert to relative - all files are stored in files folder
-            all_files = [f"files\\{Path(f).name}" for f in all_files]
+            all_files = [os.path.join("files", Path(f).name) for f in all_files]
             # this is excluded from the original list
             all_files.insert(0, "model_2.json")
 

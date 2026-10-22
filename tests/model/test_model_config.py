@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -199,7 +200,7 @@ class TestModelConfig:
             (
                 Path(__file__).parent.parent / "a.csv",
                 False,
-                "..\\a.csv",
+                os.path.join("..", "a.csv"),
             ),
             # relative paths are not changed
             (

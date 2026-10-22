@@ -1,32 +1,58 @@
 # -*- mode: python ; coding: utf-8 -*-
+import re
 import shutil
+import sys
 from pathlib import Path
 
 import pywr
 import tables
-from win32com.propsys import propsys
+from PyInstaller.utils.hooks import copy_metadata
 
 block_cipher = None
 
-win32_module_path = Path(propsys.__file__).parent
+# the version in pywr_editor/__init__.py
+pywr_editor_version = re.search(
+    r'__version__ = "(.+?)"', Path("pywr_editor/__init__.py").read_text()
+).group(1)
+
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+APP_NAME = "Pywr Editor"
+ICONS = Path("pywr_editor/assets/ico")
+
 pywr_dist = list(Path(pywr.__file__).parent.parent.glob("pywr-*"))[0]
+
+# Windows-only files: the jump list relies on pywin32 and PyInstaller does not
+# collect these files on its own
+binaries = []
+if IS_WINDOWS:
+    from win32com.propsys import propsys
+
+    win32_module_path = Path(propsys.__file__).parent
+    binaries = [
+        (win32_module_path / "propsys.pyd", "win32com/propsys"),
+        (win32_module_path / "pscon.py", "win32com/propsys"),
+        (Path(tables.__file__).parent / "libblosc2.dll", "tables"),
+    ]
+
+# PyInstaller does not copy the pywr dist info folder when it is in the data
+# attribute. On Windows this is copied after the build (see below). Elsewhere, use the
+# PyInstaller hook so the folder ends up in the build (and in the macOS app bundle)
+metadata = [] if IS_WINDOWS else copy_metadata("pywr")
 
 a = Analysis(
     ["main.py"],
-    binaries=[
-        (win32_module_path / "propsys.pyd", "win32com\propsys"),
-        (win32_module_path / "pscon.py", "win32com\propsys"),
-        (Path(tables.__file__).parent / "libblosc2.dll", "tables"),
-    ],
+    binaries=binaries,
     datas=[
         ("LEGAL NOTICES.md", "."),
-        ("pywr_editor/assets/ico/Pywr Editor.ico", "."),
+        (str(ICONS / "Pywr Editor.ico"), "."),
         # Pywr hidden imports are not copied. Copy the full package content
         (Path(pywr.__file__).parent, "pywr"),
         # pywr __init__.py relies on the dist info folder to set __version__.
         # This must be manually copied
         # (pywr_dist.as_posix(), pywr_dist.name),
-    ],
+    ]
+    + metadata,
     hiddenimports=[
         "json",
         "pandas",
@@ -38,7 +64,6 @@ a = Analysis(
         "pkg_resources",
         "platformdirs",
         "PySide6.QtSvg",
-        "PySide6.QtAxContainer",
         "PySide6.QtSvgWidgets",
         "inspector_dialog",
         "matplotlib",
@@ -61,8 +86,9 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="Pywr Editor",
-    icon="pywr_editor/assets/ico/Pywr Editor.ico",
+    name=APP_NAME,
+    # the icon is only used by Windows. The macOS icon is set in the bundle
+    icon=str(ICONS / "Pywr Editor.ico") if IS_WINDOWS else None,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -86,8 +112,28 @@ coll = COLLECT(
     name="main",
 )
 
+if IS_MACOS:
+    app = BUNDLE(
+        coll,
+        name=f"{APP_NAME}.app",
+        icon=str(ICONS / "Pywr Editor.icns"),
+        bundle_identifier="io.github.pywr-editor",
+        info_plist={
+            "CFBundleDisplayName": APP_NAME,
+            "CFBundleShortVersionString": pywr_editor_version,
+            "NSHighResolutionCapable": True,
+            # let the app open JSON files from the Finder
+            "CFBundleDocumentTypes": [
+                {
+                    "CFBundleTypeName": "JSON file",
+                    "CFBundleTypeRole": "Editor",
+                    "LSItemContentTypes": ["public.json"],
+                    "LSHandlerRank": "Alternate",
+                }
+            ],
+        },
+    )
+
 # PyInstaller does not want to copy the following files/folder in the data attr
-shutil.copytree(pywr_dist.as_posix(), f"./dist/main/{pywr_dist.name}")
-#shutil.copyfile(
-#    Path(tables.__file__).parent / "libblosc2.dll", "./dist/main/tables/libblosc2.dll"
-#)
+if IS_WINDOWS:
+    shutil.copytree(pywr_dist.as_posix(), f"./dist/main/{pywr_dist.name}")
