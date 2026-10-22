@@ -7,7 +7,7 @@ from pathlib import Path
 import pyproj
 import pywr
 import tables
-from PyInstaller.utils.hooks import copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 block_cipher = None
 
@@ -54,7 +54,12 @@ a = Analysis(
         # (pywr_dist.as_posix(), pywr_dist.name),
         # pyproj's PROJ datum/grid data is not picked up automatically
         (pyproj.datadir.get_data_dir(), "pyproj/proj_dir/share/proj"),
+        # the pywr-v1-schema JSON Schema documents used to validate a model
+        ("pywr_editor/model/schemas", "pywr_editor/model/schemas"),
     ]
+    # jsonschema loads the JSON Schema meta-schemas from these packages
+    + collect_data_files("jsonschema")
+    + collect_data_files("jsonschema_specifications")
     + metadata,
     hiddenimports=[
         "json",

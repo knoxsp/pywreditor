@@ -6,7 +6,7 @@ from typing import Literal
 
 import PySide6
 from PySide6.QtCore import QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QIcon, QKeySequence, Qt, QUndoStack
+from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, Qt, QUndoStack
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
@@ -26,6 +26,7 @@ from pywr_editor.dialogs import (
     MetadataDialog,
     NodeDataPanel,
     ParametersDialog,
+    ValidationDialog,
     RecordersDialog,
     ScenariosDialog,
     SearchDialog,
@@ -213,6 +214,7 @@ class MainWindow(QMainWindow):
 
         # handle schematic status during a model ru
         self.is_model_running = False
+        self.validation_dialog: ValidationDialog | None = None
         self.run_widget.run_status_changed.connect(self.on_model_run)
 
     def closeEvent(self, event: PySide6.QtGui.QCloseEvent) -> None:
@@ -282,6 +284,15 @@ class MainWindow(QMainWindow):
                 tooltip="Reload the JSON file if it was externally edited",
                 connection=self.reload_model_file,
                 button_separator=True,
+            )
+        )
+        self.app_actions.add(
+            Action(
+                key="copy-file-path",
+                name="Copy\n file path",
+                icon=":/toolbar/open",
+                tooltip="Copy the full path of the model file to the clipboard",
+                connection=self.copy_file_path,
             )
         )
         self.app_actions.add(
@@ -384,6 +395,17 @@ class MainWindow(QMainWindow):
             )
         )
 
+        self.app_actions.add(
+            Action(
+                key="validate-model",
+                name="Validate model",
+                icon=":/toolbar/find-orphaned-parameters",
+                tooltip="Check the model structure, the references between components "
+                + "and\nthe external files, and check that pywr can load the model",
+                shortcut=QKeySequence("Ctrl+Shift+V"),
+                connection=self.open_validation_dialog,
+            )
+        )
         self.app_actions.add(
             Action(
                 key="find-orphaned-nodes",
@@ -720,6 +742,10 @@ class MainWindow(QMainWindow):
         file_panel.add_button(self.app_actions.get("save-model"))
         self.app_actions.get("save-model").setDisabled(True)
         file_panel.add_button(self.app_actions.get("reload-model"))
+        file_panel.add_button(self.app_actions.get("copy-file-path"))
+        self.app_actions.get("copy-file-path").setDisabled(
+            not self.model_config.json_file
+        )
         file_panel.add_button(self.app_actions.get("search-in-model"))
         file_panel.add_button(self.app_actions.get("open-json-reader"))
 
@@ -738,6 +764,9 @@ class MainWindow(QMainWindow):
         settings_panel.add_button(self.app_actions.get("edit-recorders"))
 
         validation_panel = model_tab.add_panel("Validation", layout="vertical")
+        validation_panel.add_button(
+            self.app_actions.get("validate-model"), is_large=False
+        )
         validation_panel.add_button(
             self.app_actions.get("find-orphaned-nodes"), is_large=False
         )
@@ -897,13 +926,38 @@ class MainWindow(QMainWindow):
 
         return jump_list
 
+    def model_path_abs(self) -> str:
+        """
+        Returns the absolute path of the model file.
+        :return: The path, or an empty string for a model without a file.
+        """
+        json_file = self.model_config.json_file
+        return os.path.abspath(json_file) if json_file else ""
+
+    @Slot()
+    def copy_file_path(self) -> None:
+        """
+        Copies the full path of the model file to the clipboard.
+        :return: None
+        """
+        path = self.model_path_abs()
+        if not path:
+            return
+        QGuiApplication.clipboard().setText(path)
+        self.statusBar().showMessage(f"Copied to clipboard: {path}", 5000)
+
     def set_window_title(self) -> None:
         """
         Sets the window title.
         :return: None
         """
         if self.model_config.json_file:
-            title = f"{self.model_config.title} - {self.model_config.file.file_name}"
+            # show the parent folder to tell apart files with the same name
+            folder = os.path.basename(os.path.dirname(self.model_path_abs()))
+            title = (
+                f"{self.model_config.title} - {self.model_config.file.file_name}"
+                + (f" ({folder})" if folder else "")
+            )
         else:
             title = "New empty model"
         self.setWindowTitle(title)
@@ -987,6 +1041,7 @@ class MainWindow(QMainWindow):
                 model_file = files[0]
                 self.model_file = model_file
                 self.model_config.json_file = model_file
+                self.app_actions.get("copy-file-path").setEnabled(True)
                 self.save_model()
                 self.undo_stack.setClean()
             else:
@@ -1067,6 +1122,47 @@ class MainWindow(QMainWindow):
         """
         dialog = TablesDialog(model=self.model_config, parent=self)
         dialog.show()
+
+    @Slot()
+    def open_validation_dialog(self) -> None:
+        """
+        Opens the dialog showing the model validation results.
+        :return: None
+        """
+        if self.validation_dialog is not None and self.validation_dialog.isVisible():
+            self.validation_dialog.validate()
+            self.validation_dialog.raise_()
+            return
+
+        dialog = ValidationDialog(parent=self)
+        dialog.component_requested.connect(self.show_component)
+        self.validation_dialog = dialog
+        dialog.show()
+
+    @Slot(str, str)
+    def show_component(self, kind: str, name: str) -> None:
+        """
+        Shows a component in the schematic or in its dialog.
+        :param kind: The component kind: node, parameter, recorder, table or scenario.
+        :param name: The component name.
+        :return: None
+        """
+        if kind == "node":
+            self.schematic.scene.clearSelection()
+            self.schematic.select_node_by_name(name)
+            return
+
+        dialogs = {
+            "parameter": ParametersDialog,
+            "recorder": RecordersDialog,
+            "table": TablesDialog,
+        }
+        if kind in dialogs:
+            dialogs[kind](
+                model=self.model_config, selected_name=name, parent=self
+            ).show()
+        elif kind == "scenario":
+            self.open_scenarios_dialog()
 
     @Slot()
     def open_gis_layers_dialog(self) -> None:
@@ -1186,6 +1282,7 @@ class MainWindow(QMainWindow):
             "edit-tables",
             "edit-parameters",
             "edit-recorders",
+            "validate-model",
             "find-orphaned-nodes",
             "find-orphaned-parameters",
             "toggle-geo-view",

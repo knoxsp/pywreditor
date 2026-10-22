@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from pywr_editor.dialogs import InspectorDialog
-from pywr_editor.model import PywrProgress, PywrWorker
+from pywr_editor.model import PywrProgress, PywrWorker, validate_model
 from pywr_editor.model.results import resolve_output_dir
 from pywr_editor.style import Color, stylesheet_dict_to_str
 from pywr_editor.toolbar.small_button import ToolbarSmallButton
@@ -150,6 +150,9 @@ class RunWidget(QWidget):
             return
 
         if not self.validate_timestepper():
+            return False
+
+        if not self.confirm_validation():
             return False
 
         self.logger.debug("Starting a new worker")
@@ -493,6 +496,39 @@ class RunWidget(QWidget):
             model_config=self.model_config, pywr_model=self.worker.pywr_model
         )
         dialog.show()
+
+    def confirm_validation(self) -> bool:
+        """
+        Checks the model before it is run. Only the editor checks run here, as the
+        schema validation is slow on large models and does not tell if pywr can load
+        the model. Warnings do not stop the run. The errors are references to missing
+        components, which pywr fails to load.
+        :return: Whether the run can start.
+        """
+        errors = [
+            d
+            for d in validate_model(self.model_config, include_orphans=False)
+            if d.severity == "error"
+        ]
+        if not errors:
+            return True
+
+        self.logger.debug(f"Validation found {len(errors)} error(s)")
+        box = QMessageBox(self.app)
+        box.setWindowTitle("Model validation")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText(f"The model cannot be run because it has {len(errors)} error(s).")
+        shown = "\n".join(f"- {d.message}" for d in errors[:5])
+        more = f"\n... and {len(errors) - 5} more" if len(errors) > 5 else ""
+        box.setInformativeText(shown + more)
+        show = box.addButton("Show problems", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(show)
+        box.exec()
+
+        if box.clickedButton() is show:
+            self.app.open_validation_dialog()
+        return False
 
     def validate_timestepper(self) -> bool:
         """

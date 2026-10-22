@@ -20,8 +20,12 @@ class Constants(Enum):
     """ key in JSON containing the editor's settings """
     SHAPES_KEY = "shapes"
     """ key in editor's setting dictionary where to locate the shapes  """
-    POSITION_KEY = "editor_position"
-    """ key defying where to store the node's position """
+    POSITION_KEY = "schematic"
+    """ key in the node's "position" dictionary where to store the schematic position
+    (in schematic pixels). This is the key defined by the pywr specification """
+    LEGACY_POSITION_KEY = "editor_position"
+    """ key used by previous versions of the editor to store the schematic position.
+    It is migrated to POSITION_KEY when a model is loaded """
     NODE_STYLE_KEY = "node_style"
     """ key defying where to store the style describing the node's style """
     NODE_COLOR_KEY = "node_color"

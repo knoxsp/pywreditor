@@ -14,7 +14,7 @@
       "name": "Link",
       "type": "Link",
       "position": {
-        "editor_position": [
+        "schematic": [
           -10,
           50
         ]
@@ -24,7 +24,7 @@
       "name": "Output",
       "type": "Output",
       "position": {
-        "editor_position": [
+        "schematic": [
           100,
           450
         ]

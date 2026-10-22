@@ -1,6 +1,7 @@
 from .includes.includes_dialog import IncludesDialog
 from .results.results_dialog import ResultsDialog
 from .python_paths_dialog import PythonPathsDialog
+from .validation.validation_dialog import ValidationDialog
 from .json_viewer.json_code_viewer import JsonCodeViewer
 from .metadata.metadata_dialog import MetadataDialog
 from .tables.tables_dialog import TablesDialog
