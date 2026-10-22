@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pywr_editor.model import Constants, DictMatches, JsonUtils, NodeConfig
+from pywr_editor.model.constants import UNCHANGED
 
 if TYPE_CHECKING:
     from pywr_editor.model import ModelConfig
@@ -58,7 +59,7 @@ class Nodes:
         node_index: int | None = None,
     ) -> dict:
         """
-        Set or update the editor position of a node identified by its name or index.
+        Set or update the schematic position of a node identified by its name or index.
         :param position: The position to set as list.
         :param node_name: The name of the node.
         :param node_index: The index of the node.
@@ -72,28 +73,72 @@ class Nodes:
         if node_name is not None:
             node_index = self.find_node_index_by_name(node_name)
 
-        editor_position_key = Constants.POSITION_KEY.value
+        schematic_key = Constants.POSITION_KEY.value
         if "position" in self.model.json["nodes"][node_index]:
             self.model.json["nodes"][node_index]["position"][
-                editor_position_key
+                schematic_key
             ] = position
         else:
             self.model.json["nodes"][node_index]["position"] = {
-                editor_position_key: position
+                schematic_key: position
             }
 
         self.model.has_changed()
         return self.model.json["nodes"][node_index]
 
-    def set_pywr_position(
+    def set_node_style(
         self,
-        position: list[float],
+        node_name: str,
+        color: str | None | object = UNCHANGED,
+        size: float | None | object = UNCHANGED,
+    ) -> None:
+        """
+        Sets or removes the colour and the size highlighting a node on the schematic.
+        :param node_name: The name of the node.
+        :param color: The colour name. None removes the colour, UNCHANGED keeps it.
+        :param size: The scale factor of the node symbol. None removes the size,
+        UNCHANGED keeps it.
+        :return: None
+        """
+        node_index = self.find_node_index_by_name(node_name)
+        node_dict = self.model.json["nodes"][node_index]
+        for key, value in (
+            (Constants.NODE_COLOR_KEY.value, color),
+            (Constants.NODE_SIZE_KEY.value, size),
+        ):
+            if value is UNCHANGED:
+                continue
+            if value is None:
+                position = node_dict.get("position")
+                if isinstance(position, dict):
+                    position.pop(key, None)
+            else:
+                if not isinstance(node_dict.get("position"), dict):
+                    node_dict["position"] = {}
+                node_dict["position"][key] = value
+        if node_dict.get("position") == {}:
+            del node_dict["position"]
+        self.model.has_changed()
+
+    def set_node_color(self, node_name: str, color: str | None) -> None:
+        """
+        Sets or removes the colour highlighting a node on the schematic.
+        :param node_name: The name of the node.
+        :param color: The colour name. None removes the colour.
+        :return: None
+        """
+        self.set_node_style(node_name, color=color)
+
+    def set_geographic_position(
+        self,
+        position: list[float] | None,
         node_name: str | None = None,
         node_index: int | None = None,
     ) -> None:
         """
-        Set or update the pywr position of a node.
-        :param position: The position to set as list.
+        Set, update or remove the geographic position of a node.
+        :param position: The [x, y] position to set, in the map CRS (e.g.
+        [longitude, latitude] for EPSG:4326). None removes the position.
         :param node_name: The name of the node.
         :param node_index: The index of the node.
         :return: None
@@ -106,12 +151,44 @@ class Nodes:
         if node_name is not None:
             node_index = self.find_node_index_by_name(node_name)
 
-        if "position" in self.model.json["nodes"][node_index]:
-            self.model.json["nodes"][node_index]["position"]["schematic"] = position
+        geographic_key = Constants.GEOGRAPHIC_KEY.value
+        node_dict = self.model.json["nodes"][node_index]
+        if position is None:
+            if isinstance(node_dict.get("position"), dict):
+                node_dict["position"].pop(geographic_key, None)
+        elif isinstance(node_dict.get("position"), dict):
+            current = node_dict["position"].get(geographic_key)
+            if isinstance(current, dict):
+                # a polygon or point geometry: translate it to keep its shape
+                self._translate_geometry(current, position)
+            else:
+                node_dict["position"][geographic_key] = position
         else:
-            self.model.json["nodes"][node_index]["position"] = {"schematic": position}
+            node_dict["position"] = {geographic_key: position}
 
         self.model.has_changed()
+
+    def _translate_geometry(self, geometry: dict, position: list[float]) -> None:
+        """
+        Moves a GeoJSON geometry so that its centroid is at the position.
+        :param geometry: The geometry dictionary (modified in place).
+        :param position: The new [x, y] centroid.
+        :return: None
+        """
+        centroid = NodeConfig({"position": {"geographic": geometry}}).geographic_position
+        if centroid is None:
+            return
+        dx, dy = position[0] - centroid[0], position[1] - centroid[1]
+
+        def shift(coords):
+            if coords and isinstance(coords[0], (int, float)):
+                coords[0] += dx
+                coords[1] += dy
+            else:
+                for c in coords:
+                    shift(c)
+
+        shift(geometry.get("coordinates", []))
 
     def find_node_index_by_name(self, node_name: str) -> int | None:
         """
@@ -209,10 +286,17 @@ class Nodes:
         new_node_dict = {"position": {}}
 
         # preserve the positions and the color key
-        if node_obj.pywr_position is not None:
-            new_node_dict["position"]["schematic"] = node_obj.pywr_position
         if node_obj.position is not None:
             new_node_dict["position"][Constants.POSITION_KEY.value] = node_obj.position
+        if node_obj.raw_geographic is not None:
+            new_node_dict["position"][
+                Constants.GEOGRAPHIC_KEY.value
+            ] = node_obj.raw_geographic
+        for style_key in (Constants.NODE_COLOR_KEY.value, Constants.NODE_SIZE_KEY.value):
+            if style_key in node_obj.props.get("position", {}):
+                new_node_dict["position"][style_key] = node_obj.props["position"][
+                    style_key
+                ]
         if "color" in node_obj.props:
             new_node_dict["color"] = node_obj.props["color"]
 

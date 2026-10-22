@@ -1,4 +1,7 @@
 from .includes.includes_dialog import IncludesDialog
+from .results.results_dialog import ResultsDialog
+from .python_paths_dialog import PythonPathsDialog
+from .validation.validation_dialog import ValidationDialog
 from .json_viewer.json_code_viewer import JsonCodeViewer
 from .metadata.metadata_dialog import MetadataDialog
 from .tables.tables_dialog import TablesDialog
@@ -15,6 +18,9 @@ from .scenarios.scenarios_dialog import ScenariosDialog
 from .about_dialog.about_button import AboutButton
 from .run_inspector.inspector_tree import InspectorTree
 from .run_inspector.inspector_dialog import InspectorDialog
+
+# this imports the schematic, which needs the inspector classes above
+from .gis_layers.gis_layers_dialog import GisLayersDialog
 
 # section classes for node dialog
 from .node.sections.abstract_node_section import AbstractNodeSection

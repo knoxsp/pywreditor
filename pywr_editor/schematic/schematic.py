@@ -1,4 +1,5 @@
 import inspect
+import math
 from typing import TYPE_CHECKING, Literal, Sequence, Union
 
 import PySide6
@@ -16,18 +17,21 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QFrame,
     QGraphicsItem,
     QGraphicsScene,
     QGraphicsView,
     QGridLayout,
+    QLabel,
     QPushButton,
 )
 
 from pywr_editor.dialogs import InspectorTree
 from pywr_editor.model import (
     BaseShape,
+    Constants,
     Edges,
     LineArrowShape,
     ModelConfig,
@@ -36,6 +40,11 @@ from pywr_editor.model import (
     TextShape,
 )
 from pywr_editor.node_shapes import get_node_icon_classes
+from pywr_editor.schematic.layout import (
+    force_directed_layout,
+    infer_positions,
+    snap_to_grid,
+)
 from pywr_editor.schematic import (
     AbstractSchematicItem,
     AbstractSchematicShape,
@@ -43,22 +52,43 @@ from pywr_editor.schematic import (
     AddShapeCommand,
     ConnectNodeCommand,
     DeleteItemCommand,
+    LayoutNodesCommand,
     MoveItemCommand,
     SchematicArrow,
     SchematicBBoxUtils,
     SchematicNode,
     SchematicRectangle,
     SchematicText,
+    SetNodeStyleCommand,
+    SetNodeTypeStyleCommand,
     get_scaling_factor,
     units_to_factor,
 )
+from pywr_editor.model.constants import UNCHANGED
 from pywr_editor.style import Color, stylesheet_dict_to_str
 from pywr_editor.toolbar import LibraryPanel
+from pywr_editor.utils import Logging
 
 from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
 from .legend import NodeTypeGroup, SchematicLegend
+from .minimap import SchematicMinimap
+from .map import (
+    ATTRIBUTION,
+    ATTRIBUTION_URL,
+    MAX_ZOOM,
+    GeoTransform,
+    FootprintItem,
+    GisOverlay,
+    NodeFootprints,
+    Projector,
+    TileLayer,
+    count_outside_area_of_use,
+    europe_extent_merc,
+    is_map_item,
+    looks_like_degrees,
+)
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -70,13 +100,15 @@ class Schematic(QGraphicsView):
     pan_margin: int = 50_000
     """ extra space, on each side of the schematic bounds, that can be panned to -
     this is what makes the canvas feel unbounded rather than just large """
-    pywr_bounds: tuple[int] = (-100, 100)
-    """ bounds used in the pixels conversion """
     max_view_size_delta: int = 50
     """ max step increment to use when resizing the schematic """
     schematic_move_event = Signal(QPointF)
     """ event emitted when schematic is moved """
     connect_node_event = Signal(SchematicNode)
+    gis_layers_changed = Signal()
+    """ Emitted when the GIS layers of the model were changed and drawn again """
+    geo_view_changed = Signal(bool)
+    """ Emitted after the schematic switched to (True) or from (False) the geographic view """
     """ event emitted when a node is being connected to another """
     min_zoom = get_scaling_factor("zoom-out", 3)
     """ min zoom factor"""
@@ -104,6 +136,7 @@ class Schematic(QGraphicsView):
 
         # state for pressing on an unselected node (see mousePressEvent) - this
         # pans the schematic instead of selecting/dragging the node straight away
+        self._middle_pan_pos: QPoint | None = None
         self._node_press_target: Union["SchematicNode", None] = None
         self._node_press_last_pos: QPoint | None = None
         self._node_press_moved = False
@@ -119,9 +152,21 @@ class Schematic(QGraphicsView):
             str, SchematicText | SchematicRectangle | SchematicArrow
         ] = {}
         self.hidden_node_types: set[str] = set(self.editor_settings.hidden_node_types)
+        self.hidden_nodes: set[str] = set(self.editor_settings.hidden_nodes)
+        """ Names of the nodes individually hidden by the user """
+        self.logger = Logging().logger(self.__class__.__name__)
+        # lazily built (see geo_projector) - most models never use the geographic
+        # view, so building the CRS transformer on every schematic load would be
+        # wasted work
+        self._geo_projector: Projector | None = None
+        self._geo_transform: GeoTransform | None = None
+        # view transform and centre to restore when leaving the geographic view
+        self._schematic_view_state: tuple[QtGui.QTransform, QPointF] | None = None
 
         self.schematic_move_event.connect(self.on_schematic_move)
         self.connect_node_event.connect(self.on_connect_node_end)
+        # every control of the geographic view follows this signal
+        self.geo_view_changed.connect(self.sync_geo_view_action)
         self.node_classes = get_node_icon_classes()
 
         # behaviour
@@ -182,6 +227,88 @@ class Schematic(QGraphicsView):
         self.legend = SchematicLegend(self)
         self.overlay_layout.addWidget(self.legend, 0, 0, self.legend_alignment)
 
+        self.minimap = SchematicMinimap(self)
+
+        self.geo_view_banner = QLabel(self)
+        self.geo_view_banner.setObjectName("geo-view-banner")
+        self.geo_view_banner.setStyleSheet(
+            stylesheet_dict_to_str(
+                {
+                    "#geo-view-banner": {
+                        "background-color": f"rgba{str(Color('amber', 100).rgba(.9))}",
+                        "border": f"1px solid {Color('amber', 300).hex}",
+                        "border-radius": "4px",
+                        "color": Color("amber", 900).hex,
+                        "padding": "4px 10px",
+                    },
+                }
+            )
+        )
+        self.geo_view_banner.hide()
+        self.overlay_layout.addWidget(
+            self.geo_view_banner,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+        )
+
+        # the OSM basemap and its attribution, which must be visible with the tiles
+        self.tile_layer = TileLayer(self)
+        self.gis_overlay = GisOverlay(self)
+        self.node_footprints = NodeFootprints(self)
+        self.tile_layer.basemap_visible = bool(
+            self.model_config.map_config.get("show_basemap", True)
+        )
+        self.attribution = QLabel(
+            f'<a href="{ATTRIBUTION_URL}">{ATTRIBUTION}</a>', self
+        )
+        self.attribution.setObjectName("map-attribution")
+        self.attribution.setOpenExternalLinks(True)
+        self.attribution.setStyleSheet(
+            stylesheet_dict_to_str(
+                {
+                    "#map-attribution": {
+                        "background-color": f"rgba{str(Color('gray', 50).rgba(.8))}",
+                        "color": Color("gray", 600).hex,
+                        "font-size": "11px",
+                        "padding": "1px 4px",
+                    },
+                }
+            )
+        )
+        self.attribution.hide()
+        # the attribution is on its own row at the bottom, so that it never
+        # overlaps the legend
+        self.overlay_layout.addWidget(
+            self.attribution,
+            1,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+        )
+        self.overlay_layout.setRowStretch(0, 1)
+        self.overlay_layout.setRowStretch(1, 0)
+        self.tile_layer.active_changed.connect(self.attribution.setVisible)
+        self.tile_layer.active_changed.connect(self.minimap.reposition)
+        self.tile_layer.active_changed.connect(self.show_map_notice)
+
+    @Slot(bool)
+    def show_map_notice(self, active: bool) -> None:
+        """
+        Tells the user, the first time the map is shown, that the tiles are
+        downloaded from the internet, as this is the first network request the
+        editor makes.
+        :param active: Whether the map tiles are shown.
+        :return: None
+        """
+        if not active or self.editor_settings.is_map_notice_shown:
+            return
+        self.editor_settings.save_map_notice_shown()
+        self.app.statusBar().showMessage(
+            "The map tiles are downloaded from OpenStreetMap and stored on this "
+            "computer",
+            15000,
+        )
+
     def add_scene_decorations(self) -> None:
         """
         Adds the background to the scene. The canvas is unbounded: there is no
@@ -206,6 +333,9 @@ class Schematic(QGraphicsView):
         :return: None
         """
         super().drawBackground(painter, rect)
+        # every pan and zoom repaints the background: load the tiles for the
+        # new area (this does not change the scene while it is painted)
+        self.tile_layer.request_refresh()
 
         if not self.editor_settings.is_grid_shown:
             return
@@ -234,29 +364,47 @@ class Schematic(QGraphicsView):
         Draw the schematic.
         :return: None
         """
+        is_geo_view = self.editor_settings.is_geo_view_enabled
+        # the nodes that cannot be placed on the map are drawn at a default
+        # location, which is not saved unless the node is moved
+        default_geo_nodes = 0
+        geo_default_count = (
+            sum(
+                self.geo_point(node.geographic_position) is None
+                for node in map(
+                    self.model_config.nodes.node, self.model_config.nodes.get_all()
+                )
+            )
+            if is_geo_view
+            else 0
+        )
+        default_centre = self.geo_default_centre() if is_geo_view else None
+
         # draw the nodes
         for node_index, node_props in enumerate(self.model_config.nodes.get_all()):
             node_config = self.model_config.nodes.node(node_props)
-            node_position = node_config.position
 
-            # position is not available
-            if node_position is None:
-                # use pywr position if available
-                pywr_position = node_config.pywr_position
-                if pywr_position is not None:
-                    node_position = self.to_px(pywr_position)
-                else:
-                    node_position = [
-                        self.schematic_width / 2,
-                        self.schematic_height / 2,
-                    ]
-                # set the new position and update the node dictionary
+            if is_geo_view:
+                position = self.geo_to_scene(node_config.geographic_position)
+                if position is None:
+                    position = self.geo_default_position(
+                        default_centre, default_geo_nodes, geo_default_count
+                    )
+                    default_geo_nodes += 1
+                self.add_node(node_props=node_props, position_override=position)
+                continue
+
+            # position is not available: place the node in the centre
+            if node_config.position is None:
                 node_props = self.model_config.nodes.set_position(
-                    node_index=node_index, position=node_position
+                    node_index=node_index,
+                    position=[self.schematic_width / 2, self.schematic_height / 2],
                 )
 
             # draw the node
             self.add_node(node_props=node_props)
+
+        self.update_geo_view_banner()
 
         # draw the edges
         model_edges = Edges(self.model_config)
@@ -281,6 +429,10 @@ class Schematic(QGraphicsView):
             self.add_shape(shape_obj)
 
         self.legend.refresh()
+        self.minimap.refresh()
+        self.tile_layer.refresh()
+        self.gis_overlay.refresh()
+        self.node_footprints.refresh()
 
         if self.init is True:
             self.init = False
@@ -290,19 +442,31 @@ class Schematic(QGraphicsView):
         Reloads the scene and schematic.
         :return: None
         """
+        # the scene deletes its items: the tiles must be removed first
+        self.tile_layer.clear()
+        self.gis_overlay.clear()
+        self.node_footprints.clear()
         self.scene.clear()
         self.add_scene_decorations()
         self.node_items = {}
         self.draw()
 
-    def add_node(self, node_props: dict) -> SchematicNode:
+    def add_node(
+        self,
+        node_props: dict,
+        position_override: Sequence[float] | None = None,
+    ) -> SchematicNode:
         """
         Add a new graphical node to the schematic.
         :param node_props: The dictionary with the node properties.
+        :param position_override: The [x, y] scene position to use instead of the
+        node's stored schematic position. Used by the geographic view. Optional.
         :return: The graphical node instance.
         """
-        node_obj = SchematicNode(node_props=node_props, view=self)
-        if node_obj.model_node.type in self.hidden_node_types:
+        node_obj = SchematicNode(
+            node_props=node_props, view=self, position_override=position_override
+        )
+        if self.is_node_hidden(node_obj):
             node_obj.setVisible(False)
         self.scene.addItem(node_obj)
         self.node_items[node_obj.name] = node_obj
@@ -336,6 +500,9 @@ class Schematic(QGraphicsView):
         self.model_config.nodes.delete(node_name)
         del self.node_items[node_name]
         self.scene.removeItem(node_item)
+        if node_name in self.hidden_nodes:
+            self.hidden_nodes.discard(node_name)
+            self.editor_settings.save_hidden_nodes(sorted(self.hidden_nodes))
 
         return deleted_edges
 
@@ -417,27 +584,249 @@ class Schematic(QGraphicsView):
         button.hide()
         self.abort_node_connection_button = button
 
-    def to_px(self, point: Sequence[float]) -> list[float]:
+    @property
+    def geo_projector(self) -> Projector:
         """
-        Transforms the point from the pywr coordinates to the schematic coordinates
-        (i.e. pixels).
-        :param point: The point to transform.
-        :return: The transformed coordinates.
+        Returns the CRS projector used by the geographic view, building it the
+        first time it is needed (see to_geo_px()).
+        :return: The Projector instance.
         """
-        point_px = []
-        px_sizes = [self.schematic_width, self.schematic_height]
-        pywr_bound_size = self.pywr_bounds[1] - self.pywr_bounds[0]
+        if self._geo_projector is None:
+            self._geo_projector = Projector(self.model_config.geographic_crs)
+        return self._geo_projector
 
-        sign = [1, -1]
-        for i, point_coordinate in enumerate(point):
-            x_ratio = pywr_bound_size / px_sizes[i]
-            point_px.append(
-                round(
-                    -(self.pywr_bounds[0] - sign[i] * point_coordinate) / x_ratio,
-                    4,
-                )
+    @property
+    def geo_transform(self) -> GeoTransform:
+        """
+        Returns the transform between Web Mercator coordinates and scene
+        coordinates, fitted to the nodes with a geographic position (or to Europe
+        when there are none). It is built the first time it is needed and rebuilt
+        by rebuild_geo_projector().
+        :return: The GeoTransform instance.
+        """
+        if self._geo_transform is None:
+            merc_points = self.located_merc_points()
+            if len(merc_points) == 0:
+                merc_points = list(europe_extent_merc())
+            self._geo_transform = GeoTransform.fit(
+                merc_points, (self.schematic_width, self.schematic_height)
             )
-        return point_px
+        return self._geo_transform
+
+    def geo_point(self, position: Sequence[float] | None) -> tuple[float, float] | None:
+        """
+        Projects a node's geographic position to Web Mercator.
+        :param position: The [x, y] position in the model's geographic CRS.
+        :return: The Web Mercator (x, y) coordinates in metres, or None if the
+        position is missing or cannot be placed on the map.
+        """
+        if position is None:
+            return None
+        try:
+            point = self.geo_projector.lonlat_to_merc(position[0], position[1])
+        except Exception:
+            return None
+        return point if GeoTransform.is_finite(point) else None
+
+    def located_merc_points(self) -> list[tuple[float, float]]:
+        """
+        Returns the Web Mercator coordinates of the nodes that have a geographic
+        position that can be placed on the map.
+        :return: The list of (x, y) coordinates.
+        """
+        points = []
+        for node_props in self.model_config.nodes.get_all():
+            node_config = self.model_config.nodes.node(node_props)
+            point = self.geo_point(node_config.geographic_position)
+            if point is not None:
+                points.append(point)
+        return points
+
+    def geo_located_scene_points(self) -> list[tuple[float, float]]:
+        """
+        Returns the scene position of the nodes that have a geographic position that
+        can be placed on the map.
+        :return: The list of (x, y) scene coordinates.
+        """
+        points = []
+        for node_props in self.model_config.nodes.get_all():
+            node_config = self.model_config.nodes.node(node_props)
+            point = self.geo_to_scene(node_config.geographic_position)
+            if point is not None:
+                points.append((point[0], point[1]))
+        return points
+
+    def geo_to_scene(self, position: Sequence[float] | None) -> list[float] | None:
+        """
+        Transforms a node's geographic position to scene coordinates.
+        :param position: The [x, y] position in the model's geographic CRS.
+        :return: The [x, y] scene coordinates, or None if the position is missing
+        or cannot be placed on the map.
+        """
+        point = self.geo_point(position)
+        if point is None:
+            return None
+        scene_x, scene_y = self.geo_transform.merc_to_scene(*point)
+        return [round(scene_x, 4), round(scene_y, 4)]
+
+    def to_geo_px(self, lonlat: Sequence[float]) -> list[float]:
+        """
+        Transforms a node's geographic coordinates to scene coordinates, via Web
+        Mercator. The transform is fitted to the extent of the nodes (see
+        GeoTransform), so one scene unit is not a fixed distance. The current view zoom (see scale_view()) provides the on-screen magnification.
+        :param lonlat: The [longitude, latitude] pair, in the model's configured
+        geographic CRS.
+        :return: The transformed [x, y] scene coordinates. The centre of the
+        schematic if the position cannot be placed on the map.
+        """
+        position = self.geo_to_scene(lonlat)
+        if position is None:
+            return [self.schematic_width / 2, self.schematic_height / 2]
+        return position
+
+    def from_geo_px(self, x: float, y: float) -> list[float] | None:
+        """
+        Transforms scene coordinates in the geographic view to a geographic position
+        in the model's CRS. This is the inverse of geo_to_scene().
+        :param x: The scene x coordinate.
+        :param y: The scene y coordinate.
+        :return: The [x, y] position in the model's geographic CRS, or None if the
+        scene position is outside the map or cannot be converted.
+        """
+        merc = self.geo_transform.scene_to_merc(x, y)
+        if not GeoTransform.is_finite(merc):
+            return None
+        try:
+            position = self.geo_projector.merc_to_lonlat(*merc)
+        except Exception:
+            return None
+        if not all(math.isfinite(v) for v in position):
+            return None
+        return [round(position[0], 6), round(position[1], 6)]
+
+    def geo_default_centre(self) -> tuple[float, float]:
+        """
+        Returns the scene position where the nodes without a geographic position are
+        placed: the centre of the nodes that have one (not of the visible area, which
+        can be anywhere), or of the map if there are none.
+        :return: The (x, y) scene coordinates.
+        """
+        return self.geo_transform.centre_scene
+
+    @staticmethod
+    def geo_default_position(
+        centre: Sequence[float], index: int, total: int
+    ) -> list[float]:
+        """
+        Returns the default scene position of a node without a geographic position.
+        These nodes are laid on a grid around the centre, so they do not overlap.
+        :param centre: The (x, y) scene coordinates of the centre of the grid.
+        :param index: The index of the node among the nodes without a position.
+        :param total: The number of nodes without a position.
+        :return: The [x, y] scene position.
+        """
+        columns = max(math.ceil(math.sqrt(total)), 1)
+        rows = math.ceil(total / columns)
+        spacing = 80
+        return [
+            round(centre[0] + ((index % columns) - (columns - 1) / 2) * spacing, 4),
+            round(centre[1] + ((index // columns) - (rows - 1) / 2) * spacing, 4),
+        ]
+
+    def rebuild_geo_projector(self) -> None:
+        """
+        Rebuilds the CRS projector and the scene transform used by the geographic
+        view. Call this after the model's geographic CRS setting changes or before
+        the view is drawn in the geographic coordinate system.
+        :return: None
+        """
+        try:
+            self._geo_projector = Projector(self.model_config.geographic_crs)
+        except Exception:
+            self._geo_projector = Projector(Constants.DEFAULT_GEOGRAPHIC_CRS.value)
+        self._geo_transform = None
+
+    def geo_view_messages(self) -> list[str]:
+        """
+        Returns the warnings to show in the banner of the geographic view.
+        :return: The list of messages. Empty if there is nothing to warn about.
+        """
+        if not self.editor_settings.is_geo_view_enabled:
+            return []
+
+        messages = []
+        if not self.model_config.has_valid_geographic_crs:
+            messages.append(
+                f"The map CRS '{self.model_config.stored_geographic_crs}' is not "
+                f"valid, {self.model_config.geographic_crs} is used instead"
+            )
+
+        default_count = sum(
+            self.geo_point(self.model_config.nodes.node(props).geographic_position)
+            is None
+            for props in self.model_config.nodes.get_all()
+        )
+        if default_count > 0:
+            noun = "node has" if default_count == 1 else "nodes have"
+            messages.append(
+                f"{default_count} {noun} no geographic position - drag "
+                f"{'it' if default_count == 1 else 'them'} into place"
+            )
+
+        return messages + self.crs_warnings()
+
+    def crs_warnings(self) -> list[str]:
+        """
+        Returns the warnings about the nodes' geographic positions not fitting the
+        model's geographic CRS.
+        :return: The list of messages. Empty if the positions look right.
+        """
+        positions = [
+            node.geographic_position
+            for node in map(
+                self.model_config.nodes.node, self.model_config.nodes.get_all()
+            )
+            if node.geographic_position is not None
+        ]
+        crs = self.model_config.geographic_crs
+        messages = []
+        result = count_outside_area_of_use(crs, positions)
+        if result is not None and result[0] > 0:
+            messages.append(
+                f"{result[0]} of {result[1]} nodes are outside the area where "
+                f"{crs} is valid - check the CRS and the axis order"
+            )
+        if result is not None and result[0] == result[1] and result[1] > 0:
+            # nothing fits the CRS: look for one that fits all the positions
+            for candidate in ("EPSG:27700", "EPSG:4326", "EPSG:3857"):
+                if candidate == crs:
+                    continue
+                candidate_result = count_outside_area_of_use(candidate, positions)
+                if candidate_result is not None and candidate_result[0] == 0:
+                    messages.append(
+                        f"The positions fit {candidate}: set it as the CRS"
+                    )
+                    break
+        if looks_like_degrees(crs, positions):
+            messages.append(
+                "The positions look like longitudes and latitudes, but "
+                f"{crs} uses metres - check the CRS"
+            )
+        return messages
+
+    def update_geo_view_banner(self) -> None:
+        """
+        Shows the warnings of the geographic view in the banner, or hides it if
+        there are none.
+        :return: None
+        """
+        messages = self.geo_view_messages()
+        if len(messages) == 0:
+            self.geo_view_banner.hide()
+            return
+
+        self.geo_view_banner.setText("\n".join(messages))
+        self.geo_view_banner.show()
 
     @Slot()
     def increase_height(self) -> None:
@@ -561,6 +950,23 @@ class Schematic(QGraphicsView):
         """
         self.setTransform(QtGui.QTransform())
 
+    @property
+    def zoom_limits(self) -> tuple[float, float]:
+        """
+        Returns the minimum and maximum zoom of the view. The schematic limits are
+        too narrow for a map, as the geographic view must go from the whole world
+        to the most detailed tiles, so it uses the scales of these tile zoom levels.
+        :return: The (minimum, maximum) view scale.
+        """
+        if not self.editor_settings.is_geo_view_enabled:
+            return self.min_zoom, self.max_zoom
+
+        transform = self.geo_transform
+        return (
+            min(self.min_zoom, transform.scale_for_zoom(0)),
+            max(self.max_zoom, transform.scale_for_zoom(MAX_ZOOM)),
+        )
+
     def scale_view(self, f: float, anchor: QPoint | None = None) -> None:
         """
         Scales the view and handles the zoom buttons status.
@@ -573,27 +979,29 @@ class Schematic(QGraphicsView):
             aligned), so the zoom anchor is restored manually.
         :return: None
         """
-        self.scaling_factor = round(
-            self.transform().scale(f, f).mapRect(QRectF(0, 0, 1, 1)).width(), 4
-        )
+        new_scale = self.transform().scale(f, f).mapRect(QRectF(0, 0, 1, 1)).width()
+        self.scaling_factor = round(new_scale, 4)
 
+        # the limits are checked on the unrounded scale, as the geographic view
+        # can be zoomed out to scales smaller than the rounding precision
+        min_zoom, max_zoom = self.zoom_limits
         if self.scaling_factor is not None:
             # zoom out button
-            if self.scaling_factor <= self.min_zoom:
+            if new_scale <= min_zoom:
                 self.app.app_actions.get("zoom-out").setDisabled(True)
             else:
                 self.app.app_actions.get("zoom-out").setDisabled(False)
             # block scaling
-            if self.scaling_factor < self.min_zoom:
+            if new_scale < min_zoom:
                 return
 
-            if self.scaling_factor >= self.max_zoom:
+            if new_scale >= max_zoom:
                 # zoom in button
                 self.app.app_actions.get("zoom-in").setDisabled(True)
             else:
                 self.app.app_actions.get("zoom-in").setDisabled(False)
             # block scaling
-            if self.scaling_factor > self.max_zoom:
+            if new_scale > max_zoom:
                 return
 
             # zoom 100% button
@@ -611,6 +1019,7 @@ class Schematic(QGraphicsView):
         new_scene_pos = self.mapToScene(anchor)
         delta = new_scene_pos - old_scene_pos
         self.translate(delta.x(), delta.y())
+        self.tile_layer.request_refresh()
 
     @Slot(QPointF)
     def on_schematic_move(self, position: QPointF) -> None:
@@ -626,15 +1035,113 @@ class Schematic(QGraphicsView):
     def center_view_on(self, position: QPointF | None = None) -> None:
         """
         Centers the view on the provided position. If this is None, the schematic is
-        centered on the scene center.
+        centered on the nodes and shapes (or on the scene centre if there are none),
+        as the scene is much larger than the content.
         :param position: The position to center the schematic on. Optional.
         :return: None
         """
         if not position:  # can be also False when triggered from QAction
-            position = self.scene.sceneRect().center()
+            bbox = SchematicBBoxUtils(self.items()).min_max_bounding_box_coordinates
+            if bbox.min_x.value is None:
+                position = self.scene.sceneRect().center()
+            else:
+                position = QPointF(
+                    (bbox.min_x.value + bbox.max_x.value) / 2,
+                    (bbox.min_y.value + bbox.max_y.value) / 2,
+                )
         self.centerOn(position)
         # noinspection PyUnresolvedReferences
         self.schematic_move_event.emit(position)
+
+    @Slot()
+    def infer_geographic_positions(self) -> None:
+        """
+        Estimates the geographic position of the nodes that do not have one from the
+        position of the connected nodes (see infer_positions()) and saves it. The
+        nodes that already have a position are not changed. The change can be
+        undone.
+        :return: None
+        """
+        if not self.editor_settings.is_geo_view_enabled:
+            self.app.statusBar().showMessage(
+                "Switch to the geographic view to estimate the node positions", 5000
+            )
+            return
+        if getattr(self.app, "is_model_running", False):
+            return
+
+        names, known = [], {}
+        for node_props in self.model_config.nodes.get_all():
+            name = node_props["name"]
+            names.append(name)
+            point = self.geo_point(self.model_config.nodes.node(node_props).geographic_position)
+            if point is not None:
+                known[name] = point
+        missing = [name for name in names if name not in known]
+        if len(missing) == 0:
+            self.app.statusBar().showMessage("All the nodes have a position", 5000)
+            return
+
+        xs = [p[0] for p in known.values()] or [0.0]
+        ys = [p[1] for p in known.values()] or [0.0]
+        extent = max(max(xs) - min(xs), max(ys) - min(ys))
+        edges = [(edge[0], edge[1]) for edge in self.model_config.edges.get_all()]
+        inferred = infer_positions(known, names, edges, spread=extent / 150)
+        if len(inferred) == 0:
+            self.app.statusBar().showMessage(
+                "No node without a position is connected to a node with one", 8000
+            )
+            return
+
+        positions = {}
+        for name, (x, y) in inferred.items():
+            lon_lat = self.geo_projector.merc_to_lonlat(x, y)
+            positions[name] = [round(lon_lat[0], 6), round(lon_lat[1], 6)]
+        self.app.undo_stack.push(
+            LayoutNodesCommand(self, positions, geographic=True)
+        )
+        unplaced = len(missing) - len(positions)
+        self.app.statusBar().showMessage(
+            f"Estimated the position of {len(positions)} nodes"
+            + (f"; {unplaced} are not connected to a located node" if unplaced else ""),
+            8000,
+        )
+
+    @Slot()
+    def auto_layout(self) -> None:
+        """
+        Spreads the nodes with a force-directed layout, which pushes all the nodes
+        apart while keeping the connected ones close. The schematic positions are
+        changed (the geographic positions are not) and the change can be undone. When
+        snap-to-grid is enabled, the nodes are put on distinct grid points.
+        :return: None
+        """
+        if self.editor_settings.is_geo_view_enabled:
+            self.app.statusBar().showMessage(
+                "Switch to the schematic view to lay out the nodes", 5000
+            )
+            return
+        if getattr(self.app, "is_model_running", False):
+            return
+
+        names = [item.name for item in self.node_items.values()]
+        initial = {
+            name: (item.pos().x(), item.pos().y())
+            for name, item in self.node_items.items()
+        }
+        edges = [(edge[0], edge[1]) for edge in self.model_config.edges.get_all()]
+        snap = self.editor_settings.is_snap_to_grid_enabled
+        grid_size = max(self.editor_settings.grid_size, 1)
+        # keep the nodes a few cells apart so that snapping does not crowd them
+        spacing = max(90.0, 3.0 * grid_size) if snap else 90.0
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            positions = force_directed_layout(names, edges, initial, spacing=spacing)
+            if snap:
+                positions = snap_to_grid(positions, grid_size)
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.app.undo_stack.push(LayoutNodesCommand(self, positions))
 
     @Slot()
     def fit_view(self) -> None:
@@ -696,6 +1203,25 @@ class Schematic(QGraphicsView):
             not self.editor_settings.are_edge_arrows_hidden
         )
 
+    def set_minimap_visible(self, visible: bool) -> None:
+        """
+        Shows or hides the minimap and persists the choice.
+        :param visible: True to show the minimap, False to hide it.
+        :return: None
+        """
+        self.editor_settings.save_hide_minimap(not visible)
+        self.minimap.refresh()
+
+    def resizeEvent(self, event) -> None:
+        """
+        Keeps the minimap in the bottom-right corner of the view.
+        :param event: The resize event.
+        :return: None
+        """
+        super().resizeEvent(event)
+        if hasattr(self, "minimap"):
+            self.minimap.reposition()
+
     @Slot()
     def toggle_legend(self) -> None:
         """
@@ -703,6 +1229,124 @@ class Schematic(QGraphicsView):
         :return: None
         """
         self.legend.toggle()
+
+    @Slot()
+    def toggle_coordinate_system(self) -> None:
+        """
+        Switches the schematic between the schematic and the geographic
+        coordinate system.
+        :return: None
+        """
+        self.set_geo_view(not self.editor_settings.is_geo_view_enabled)
+
+    def set_geo_view(self, enable: bool) -> None:
+        """
+        Switches the schematic to the geographic or the schematic coordinate system,
+        and persists the choice once the schematic is drawn. Not undoable - this is
+        a display preference, like the legend/grid/label toggles. If the geographic
+        view cannot be drawn, the schematic view is kept.
+        :param enable: True to enable the geographic view, False for the schematic.
+        :return: None
+        """
+        was_enabled = self.editor_settings.is_geo_view_enabled
+        if enable == was_enabled:
+            # keep the controls in line when they were changed by the user
+            self.sync_geo_view_action()
+            return
+        if getattr(self.app, "is_model_running", False):
+            # redrawing the schematic would remove the run mode (locked nodes and
+            # the tooltips with the results)
+            self.sync_geo_view_action()
+            return
+
+        if enable:
+            # the geographic view is fitted to the nodes, which changes the zoom and
+            # the centre of the view. Remember them to restore the schematic view
+            self._schematic_view_state = (
+                QtGui.QTransform(self.transform()),
+                self.mapToScene(self.viewport().rect().center()),
+            )
+        # the drawing reads the setting
+        self.editor_settings.save_geo_view(enable)
+        try:
+            if enable:
+                self.rebuild_geo_projector()
+                # the nodes without a position are placed at the centre of the view
+                self.centerOn(*self.geo_transform.centre_scene)
+            self.reload()
+        except Exception as error:
+            self.logger.exception("Cannot switch the coordinate system")
+            self.editor_settings.save_geo_view(was_enabled)
+            self._schematic_view_state = None
+            self._geo_transform = None
+            self.reload()
+            self.sync_geo_view_action()
+            self.app.statusBar().showMessage(
+                f"Cannot draw the geographic view: {error}", 10000
+            )
+            return
+
+        if enable:
+            self.fit_geo_view()
+        elif self._schematic_view_state is not None:
+            transform, centre = self._schematic_view_state
+            self.setTransform(transform)
+            self.centerOn(centre)
+            self.scaling_factor = round(self.transform().m11(), 4)
+            self.editor_settings.save_zoom_level(self.scaling_factor)
+            self._schematic_view_state = None
+        self.geo_view_changed.emit(enable)
+
+    def sync_geo_view_action(self) -> None:
+        """
+        Updates the checked state of the toolbar action with the current setting.
+        Changing the state does not trigger the action.
+        :return: None
+        """
+        action = self.app.app_actions.get("toggle-geo-view")
+        if action is not None:
+            action.setChecked(self.editor_settings.is_geo_view_enabled)
+
+    def draw_safely(self) -> None:
+        """
+        Draws the schematic when the model is opened. If the geographic view, which
+        is restored from the previous session, cannot be drawn, the schematic view
+        is used so that the model can always be opened.
+        :return: None
+        """
+        try:
+            self.draw()
+        except Exception:
+            if not self.editor_settings.is_geo_view_enabled:
+                raise
+            self.logger.exception("Cannot draw the geographic view")
+            self.editor_settings.save_geo_view(False)
+            self.sync_geo_view_action()
+            self.reload()
+
+    def fit_geo_view(self) -> None:
+        """
+        Fits the geographic view to the nodes or, when no node has a geographic
+        position, to Europe.
+        :return: None
+        """
+        located = self.geo_located_scene_points()
+        if len(located) > 0:
+            # the nodes without a position (and the edges to them) are not used, as
+            # they can be far from the located ones
+            xs, ys = zip(*located)
+            self.fitInView(
+                QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)).adjusted(
+                    -40, -40, 40, 40
+                ),
+                Qt.KeepAspectRatio,
+            )
+            return
+
+        south_west, north_east = europe_extent_merc()
+        x1, y2 = self.geo_transform.merc_to_scene(*south_west)
+        x2, y1 = self.geo_transform.merc_to_scene(*north_east)
+        self.fitInView(QRectF(x1, y1, x2 - x1, y2 - y1), Qt.KeepAspectRatio)
 
     @property
     def legend_alignment(self) -> Qt.AlignmentFlag:
@@ -727,6 +1371,42 @@ class Schematic(QGraphicsView):
         """
         self.editor_settings.save_legend_position(position)
         self.overlay_layout.setAlignment(self.legend, self.legend_alignment)
+        self.minimap.reposition()
+
+    def refresh_gis_layers(self) -> None:
+        """
+        Draws the GIS layers of the model again, e.g. after the layers were added,
+        removed or changed. The layers are only shown in the geographic view.
+        :return: None
+        """
+        self.gis_overlay.refresh()
+        self.gis_layers_changed.emit()
+
+    def on_geographic_crs_changed(self) -> None:
+        """
+        Draws the schematic again after the model's geographic CRS was changed, as
+        the positions of the nodes on the map change. The view is fitted to the
+        nodes again. Nothing is drawn in the schematic view.
+        :return: None
+        """
+        self.rebuild_geo_projector()
+        if not self.editor_settings.is_geo_view_enabled:
+            return
+
+        self.reload()
+        self.fit_geo_view()
+
+    def set_basemap_visible(self, visible: bool) -> None:
+        """
+        Shows or hides the OSM basemap and its attribution, without reloading the
+        schematic. The tiles are only displayed in the geographic view.
+        :param visible: True to show the basemap, False to hide it.
+        :return: None
+        """
+        # whether a model has a basemap is saved with the model
+        self.model_config.writable_map_config["show_basemap"] = visible
+        self.model_config.has_changed()
+        self.tile_layer.set_basemap_visible(visible)
 
     def set_grid_visible(self, visible: bool) -> None:
         """
@@ -792,8 +1472,158 @@ class Schematic(QGraphicsView):
 
         for node in self.node_items.values():
             if node.model_node.type == node_type:
-                node.setVisible(not hidden)
+                node.setVisible(not self.is_node_hidden(node))
 
+        self.refresh_edge_visibility()
+        self.node_footprints.sync_visibility()
+
+        self.editor_settings.save_hidden_node_types(list(self.hidden_node_types))
+
+    def is_node_hidden(self, node: SchematicNode) -> bool:
+        """
+        Checks whether a node is hidden, either individually or through its type.
+        :param node: The schematic node.
+        :return: True if the node must not be shown.
+        """
+        return (
+            node.name in self.hidden_nodes
+            or node.model_node.type in self.hidden_node_types
+        )
+
+    def set_node_hidden(self, node_name: str, hidden: bool) -> None:
+        """
+        Hides or shows a single node on the schematic. The setting is stored.
+        :param node_name: The node name.
+        :param hidden: True to hide the node, False to show it.
+        :return: None
+        """
+        self.set_nodes_hidden([node_name], hidden)
+
+    def set_nodes_hidden(self, node_names: list[str], hidden: bool) -> None:
+        """
+        Hides or shows several nodes on the schematic. The setting is stored.
+        :param node_names: The node names.
+        :param hidden: True to hide the nodes, False to show them.
+        :return: None
+        """
+        for node_name in node_names:
+            if hidden:
+                self.hidden_nodes.add(node_name)
+            else:
+                self.hidden_nodes.discard(node_name)
+
+            node = self.node_items.get(node_name)
+            if node is not None:
+                if hidden:
+                    node.setSelected(False)
+                node.setVisible(not self.is_node_hidden(node))
+
+        self.refresh_edge_visibility()
+        self.node_footprints.sync_visibility()
+        self.minimap.refresh()
+        self.editor_settings.save_hidden_nodes(sorted(self.hidden_nodes))
+
+    def set_nodes_style(
+        self,
+        node_names: list[str],
+        color: str | None | object = UNCHANGED,
+        size: float | None | object = UNCHANGED,
+    ) -> None:
+        """
+        Sets the colour and size of one or more nodes. This overrides the style of
+        the node type. The change can be undone.
+        :param node_names: The node names.
+        :param color: The colour name. None removes the colour, UNCHANGED keeps it.
+        :param size: The size factor. None removes the size, UNCHANGED keeps it.
+        :return: None
+        """
+        if len(node_names) == 0:
+            return
+        self.app.undo_stack.push(SetNodeStyleCommand(self, node_names, color, size))
+
+    def show_node_style_dialog(self, node_names: list[str]) -> None:
+        """
+        Opens the modal to change the colour and size of the nodes. This overrides
+        the style of their node type.
+        :param node_names: The node names.
+        :return: None
+        """
+        from pywr_editor.dialogs.node_style_dialog import NodeStyleDialog
+
+        first = self.node_items[node_names[0]]
+        single = len(node_names) == 1
+        dialog = NodeStyleDialog(
+            title="Node colour and size",
+            description=(
+                f'Style of "{node_names[0]}". Overrides the style of its node type.'
+                if single
+                else f"Style of {len(node_names)} nodes. Overrides the style of "
+                "their node type."
+            ),
+            default_label="Use node type style",
+            color=first.model_node.node_color if single else None,
+            size=first.model_node.node_size if single else None,
+            parent=self.app,
+        )
+        if dialog.exec():
+            self.set_nodes_style(node_names, color=dialog.color, size=dialog.size)
+
+    def show_node_type_style_dialog(self, node_type: str, label: str) -> None:
+        """
+        Opens the modal to change the colour and size of a node type.
+        :param node_type: The node type.
+        :param label: The name of the type shown to the user.
+        :return: None
+        """
+        from pywr_editor.dialogs.node_style_dialog import NodeStyleDialog
+
+        style = self.model_config.node_type_style(node_type)
+        dialog = NodeStyleDialog(
+            title="Node type colour and size",
+            description=(
+                f'Style of all the "{label}" nodes. Colour and size set on a '
+                "node take priority."
+            ),
+            default_label="Default",
+            color=style["color"],
+            size=style["size"],
+            parent=self.app,
+        )
+        if dialog.exec():
+            self.set_node_type_style(node_type, color=dialog.color, size=dialog.size)
+
+    def set_nodes_color(self, node_names: list[str], color: str | None) -> None:
+        """
+        Sets (or removes) the colour of one or more nodes. The change can be undone.
+        :param node_names: The node names.
+        :param color: The colour name. None removes the colour.
+        :return: None
+        """
+        self.set_nodes_style(node_names, color=color)
+
+    def set_node_type_style(
+        self,
+        node_type: str,
+        color: str | None | object = UNCHANGED,
+        size: float | None | object = UNCHANGED,
+    ) -> None:
+        """
+        Sets the colour and size of all the nodes of a type, unless the nodes have
+        their own style. The change can be undone.
+        :param node_type: The node type.
+        :param color: The colour name. None removes the colour, UNCHANGED keeps it.
+        :param size: The size factor. None removes the size, UNCHANGED keeps it.
+        :return: None
+        """
+        self.app.undo_stack.push(
+            SetNodeTypeStyleCommand(self, node_type, color, size)
+        )
+
+    def refresh_edge_visibility(self) -> None:
+        """
+        Hides the edges when either of the nodes they connect is hidden.
+        :return: None
+        """
         for item in self.items():
             if (
                 isinstance(item, Edge)
@@ -801,8 +1631,6 @@ class Schematic(QGraphicsView):
                 and item.target is not None
             ):
                 item.setVisible(item.source.isVisible() and item.target.isVisible())
-
-        self.editor_settings.save_hidden_node_types(list(self.hidden_node_types))
 
     @Slot()
     def export_current_view(self) -> None:
@@ -1026,6 +1854,13 @@ class Schematic(QGraphicsView):
         :param event: The event being triggered.
         :return: None
         """
+        if event.button() == Qt.MiddleButton:
+            # pan the canvas
+            self._middle_pan_pos = event.pos()
+            self.viewport().setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
+
         if event.button() == Qt.LeftButton:
             # enable selection rectangle
             if event.modifiers() == Qt.ControlModifier:
@@ -1035,6 +1870,14 @@ class Schematic(QGraphicsView):
                 node = next(
                     (item for item in items if isinstance(item, SchematicNode)), None
                 )
+                from_footprint = node is None
+                if node is None:
+                    # a click on the polygon of a node acts on the node
+                    footprint = next(
+                        (item for item in items if isinstance(item, FootprintItem)),
+                        None,
+                    )
+                    node = footprint.node if footprint is not None else None
 
                 if (
                     node is not None
@@ -1046,16 +1889,31 @@ class Schematic(QGraphicsView):
                     event.accept()
                     return
 
+                if (
+                    from_footprint
+                    and node is not None
+                    and not self.connecting_node_props.enabled
+                ):
+                    # the polygon of a node that is locked or already selected
+                    self.de_select_all_items()
+                    node.setSelected(True)
+                    event.accept()
+                    return
+
                 # check that no selectable item was selected and canvas can be
                 # dragged
                 is_selectable = map(
                     lambda item: isinstance(
-                        item, (SchematicNode, AbstractSchematicShape)
+                        item, (SchematicNode, AbstractSchematicShape, FootprintItem)
                     ),
                     items,
                 )
-                # enable canvas dragging
-                if len(items) > 0 and not any(is_selectable):
+                if event.modifiers() == Qt.ShiftModifier and not any(is_selectable):
+                    # Shift + drag on the empty canvas draws a selection box
+                    self.de_select_all_items()
+                    self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+                elif len(items) > 0 and not any(is_selectable):
+                    # enable canvas dragging
                     self.de_select_all_items()
                     self.canvas_drag = True
                     self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
@@ -1083,6 +1941,14 @@ class Schematic(QGraphicsView):
         :param event: The event being triggered.
         :return: None
         """
+        if event.button() == Qt.MiddleButton and self._middle_pan_pos is not None:
+            self._middle_pan_pos = None
+            self.viewport().unsetCursor()
+            center = self.mapToScene(self.viewport().geometry()).boundingRect().center()
+            self.schematic_move_event.emit(center)
+            event.accept()
+            return
+
         if event.button() == Qt.LeftButton and self._node_press_target is not None:
             node = self._node_press_target
 
@@ -1165,6 +2031,18 @@ class Schematic(QGraphicsView):
         :param event: The event being triggered.
         :return: None
         """
+        if self._middle_pan_pos is not None:
+            delta = event.pos() - self._middle_pan_pos
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - delta.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - delta.y()
+            )
+            self._middle_pan_pos = event.pos()
+            event.accept()
+            return
+
         if self._node_press_target is not None:
             delta = event.pos() - self._node_press_last_pos
             if delta.manhattanLength() > 0:
@@ -1274,7 +2152,8 @@ class Schematic(QGraphicsView):
         """
         # when there is only one item (the canvas), prevent the schematic from being
         # minimised
-        if len(self.scene.items()) == 1:
+        # (the map tiles and the GIS layers are not schematic items)
+        if len([item for item in self.scene.items() if not is_map_item(item)]) == 1:
             enabled = False
         else:
             enabled = True
@@ -1329,6 +2208,9 @@ class Schematic(QGraphicsView):
         items_count = len(selected_items)
         if items_count == 1:
             item = selected_items[0]
+            # a single click shows the node in the node data panel, if it is visible
+            if not item.model_node.is_virtual:
+                self.app.node_data_panel.follow_node(item.name)
             # add and delete edge
             if not selected_items[0].model_node.is_virtual:
                 # if there are no connected nodes, keep the button disabled

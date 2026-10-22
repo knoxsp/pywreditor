@@ -7,6 +7,31 @@ from PySide6.QtCore import QFile, QTextStream
 """
 
 
+# The resources are read-only and a PywrData is created for every component (tens of
+# thousands on a large model), so each resource is read and parsed only once
+_RESOURCE_CACHE: dict[str, tuple[dict, dict]] = {}
+
+
+def _load_resource(resource_name: str) -> tuple[dict, dict]:
+    """
+    Loads and caches the resource with the components' data.
+    :param resource_name: The name of the resource.
+    :return: The "key_lookup" dictionary and the "data" dictionary, sorted by key.
+    """
+    if resource_name not in _RESOURCE_CACHE:
+        file = QFile(resource_name)
+        file.open(QFile.ReadOnly | QFile.Text)
+        components_data: dict = json.loads(QTextStream(file).readAll())
+        file.close()
+
+        _RESOURCE_CACHE[resource_name] = (
+            components_data["key_lookup"],
+            # sort keys alphabetically
+            dict(sorted(components_data["data"].items())),
+        )
+    return _RESOURCE_CACHE[resource_name]
+
+
 class PywrData:
     def __init__(self, suffix: str, resource_name: str):
         """
@@ -17,15 +42,9 @@ class PywrData:
         component. The resource must contain a dictionary with the "key_lookup" and
         "data" keys.
         """
-        file = QFile(resource_name)
-        file.open(QFile.ReadOnly | QFile.Text)
-        components_data: dict = json.loads(QTextStream(file).readAll())
-        file.close()
-
         self.suffix = suffix
-        self.key_lookup: dict = components_data["key_lookup"]
-        # sort keys alphabetically
-        self.data = dict(sorted(components_data["data"].items()))
+        # shared between instances: do not modify
+        self.key_lookup, self.data = _load_resource(resource_name)
 
     def lookup_key(self, component_type: str) -> str | None:
         """

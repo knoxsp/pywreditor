@@ -1,9 +1,29 @@
+import shutil
 import time
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QSettings
 
+from pywr_editor.schematic.map import TileCache, TileFetcher
 from pywr_editor.utils import Settings
+from tests.fake_network import FakeNetwork
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_editor_settings(tmp_path_factory):
+    """
+    Stores the editor settings in a temporary folder for the whole test session, so
+    the tests never add their models to the real "recent files" list or leave
+    per-model settings files in the user's configuration folder.
+    """
+    root = str(tmp_path_factory.mktemp("qsettings"))
+    for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+        for scope in (QSettings.Scope.UserScope, QSettings.Scope.SystemScope):
+            QSettings.setPath(fmt, scope, root)
+    yield root
+    # pytest keeps the last few base temporary folders: remove the settings now
+    shutil.rmtree(root, ignore_errors=True)
 
 
 def clean_env(model_file: str) -> None:
@@ -36,6 +56,18 @@ def clean_recent_files() -> None:
         editor_settings.global_instance.sync()
 
 
+@pytest.fixture(autouse=True)
+def offline_map_tiles(monkeypatch, tmp_path_factory):
+    """
+    Prevents the tests from downloading OSM tiles, which must not be requested by
+    automated runs, and from writing to the real tile cache.
+    """
+    monkeypatch.setattr(TileFetcher, "network_factory", FakeNetwork)
+    monkeypatch.setattr(
+        TileCache, "default_root", tmp_path_factory.getbasetemp() / "osm_tiles"
+    )
+
+
 def pytest_sessionfinish(session):
     """
     Cleans the editor settings after a test.
@@ -65,3 +97,12 @@ def delay() -> None:
     :return: None
     """
     time.sleep(1)
+
+
+@pytest.fixture(autouse=True)
+def do_not_save_run_results(monkeypatch):
+    """
+    Runs do not write an "outputs" folder next to the test models, unless a test
+    turns the setting on explicitly.
+    """
+    monkeypatch.setattr(Settings, "default_save_results", False)

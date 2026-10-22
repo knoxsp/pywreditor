@@ -161,10 +161,14 @@ class ComponentsDict:
         if self.get_all() is None:
             return None
 
-        component_names = []
-        for component_name in self.get_all().keys():
-            if self.is_used(component_name) == 0:
-                component_names.append(component_name)
+        # count the strings once. The name of a component is always found in the key
+        # of its configuration, which is not a usage (see is_used())
+        counts = JsonUtils(self.model.json).count_strings()
+        component_names = [
+            component_name
+            for component_name in self.get_all().keys()
+            if counts[component_name] - 1 <= 0
+        ]
 
         if len(component_names) > 0:
             return component_names

@@ -44,6 +44,7 @@ class ComponentsTree(QTreeWidget):
         self.items: dict[str, QTreeWidgetItem] = {}
         self.expanded_state = ExpandedItemStates()
         self.init: bool = True
+        self.filter_text = ""
         # add the context menu
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         # noinspection PyUnresolvedReferences
@@ -58,16 +59,18 @@ class ComponentsTree(QTreeWidget):
         # noinspection PyUnresolvedReferences
         self.itemCollapsed.connect(self.on_collapse_item)
 
-        # remove focus
-        self.setFocusPolicy(Qt.NoFocus)
+        # select several nodes with Ctrl/Shift (and Ctrl+A on the filtered list)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.setFocusPolicy(Qt.ClickFocus)
         # bold font on selected
         self.setItemDelegate(StyleDelegate(self))
         self.setHeaderLabels(("Component", "Value"))
         self.setColumnCount(2)
 
         self.header().resizeSection(0, 200)
-        self.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.header().setStretchLastSection(False)
+        # the value column fills the remaining width of the surrounding panel
+        self.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.header().setStretchLastSection(True)
         self.setStyleSheet(self.stylesheet())
 
     def draw(self) -> None:
@@ -98,15 +101,105 @@ class ComponentsTree(QTreeWidget):
         """
         self.clear()
         self.draw()
+        self._restore_expanded_state()
+        # the tree is rebuilt, so the search has to be applied again
+        if self.filter_text:
+            self.filter_items(self.filter_text)
 
+    def _restore_expanded_state(self) -> None:
+        """
+        Collapses the tree and expands the items whose state was stored. These are
+        node's and parameter's names that are unique.
+        :return: None
+        """
         self.collapseAll()
-        # expand items by name whose state was stored. These are node's and
-        # parameter's names that are unique
         for name in self.expanded_state.get_all():
             targets = self.findItems(name, Qt.MatchExactly | Qt.MatchRecursive, 0)
             for target in targets:
                 if self.expanded_state.is_state_stored(target):
                     target.setExpanded(True)
+
+    @staticmethod
+    def _is_component(item: QTreeWidgetItem) -> bool:
+        """
+        Whether the item is a node, parameter, recorder or table. Its children
+        are the properties of the component.
+        """
+        return isinstance(
+            item,
+            (TreeWidgetNode, TreeWidgetParameterName, TreeWidgetRecorderName, TreeWidgetTable),
+        )
+
+    @staticmethod
+    def _item_matches(item: QTreeWidgetItem, text: str) -> bool:
+        return text in item.text(0).lower() or text in item.text(1).lower()
+
+    def filter_items(self, text: str) -> int:
+        """
+        Shows only the items matching the text (case-insensitive) in their name or
+        value, together with their parents. The properties of a node, parameter,
+        recorder or table are not searched, but they are shown with the component
+        when it matches. The groups with matches are expanded; the expanded state
+        stored by the user is restored when the filter is cleared.
+        :param text: The text to search. An empty text shows all the items.
+        :return: The number of matching components.
+        """
+        text = text.strip().lower()
+        self.filter_text = text
+        matches = 0
+
+        # expanding items must not be stored as a choice of the user
+        self.blockSignals(True)
+        try:
+            if not text:
+                self._set_hidden_recursive(self.invisibleRootItem(), False)
+                self._restore_expanded_state()
+                return 0
+
+            def visit(item: QTreeWidgetItem, show_all: bool) -> bool:
+                """Shows or hides the item and returns whether it is visible."""
+                nonlocal matches
+                if show_all:
+                    item.setHidden(False)
+                    self._set_hidden_recursive(item, False)
+                    return True
+
+                own = self._item_matches(item, text)
+                if self._is_component(item):
+                    # the properties are shown with the component, not searched
+                    matches += own
+                    item.setHidden(not own)
+                    if own:
+                        self._set_hidden_recursive(item, False)
+                        item.setExpanded(False)
+                    return own
+
+                if item.childCount() == 0:
+                    matches += own
+                    item.setHidden(not own)
+                    return own
+
+                # a group: a matching name shows everything inside it
+                visible = False
+                for i in range(item.childCount()):
+                    visible = visit(item.child(i), own) or visible
+                item.setHidden(not (own or visible))
+                if own or visible:
+                    item.setExpanded(True)
+                return own or visible
+
+            root = self.invisibleRootItem()
+            for i in range(root.childCount()):
+                visit(root.child(i), False)
+        finally:
+            self.blockSignals(False)
+        return matches
+
+    def _set_hidden_recursive(self, item: QTreeWidgetItem, hidden: bool) -> None:
+        for i in range(item.childCount()):
+            child = item.child(i)
+            child.setHidden(hidden)
+            self._set_hidden_recursive(child, hidden)
 
     def _populate_nodes(self) -> None:
         """
@@ -341,6 +434,16 @@ class ComponentsTree(QTreeWidget):
         schematic = self.parent.schematic
         schematic.de_select_all_items()
 
+        # several nodes selected: select them all on the schematic
+        selected_nodes = [
+            i for i in self.selectedItems() if isinstance(i, TreeWidgetNode)
+        ]
+        if len(selected_nodes) > 1:
+            for node_item in selected_nodes:
+                if node_item.name in schematic.node_items:
+                    schematic.node_items[node_item.name].setSelected(True)
+            return
+
         # center node on the schematic
         if (
             isinstance(clicked_item, TreeWidgetNode)
@@ -383,23 +486,19 @@ class ComponentsTree(QTreeWidget):
         delete_icon = qta.icon("msc.trash", color=icon_color)
 
         if isinstance(item, TreeWidgetNode):
-            node_name = item.name
-            context_menu = ContextualMenu()
-            context_menu.set_title(node_name)
-            # Edit node
-            edit_action = context_menu.addAction(edit_icon, "Edit")
-            # noinspection PyUnresolvedReferences
-            edit_action.triggered.connect(
-                lambda *args, name=node_name: self.on_edit_node(name)
-            )
-
-            # Delete node
-            edit_action = context_menu.addAction(delete_icon, "Delete")
-            # noinspection PyUnresolvedReferences
-            edit_action.triggered.connect(
-                lambda *args, name=node_name: self.on_delete_node(name)
-            )
-            context_menu.exec(self.mapToGlobal(pos))
+            # same menu as on the schematic
+            node_items = self.parent.schematic.node_items
+            schematic_node = node_items.get(item.name)
+            if schematic_node is not None:
+                targets = [item]
+                if item.isSelected():
+                    targets = [
+                        i for i in self.selectedItems() if isinstance(i, TreeWidgetNode)
+                    ]
+                menu = schematic_node.create_context_menu(
+                    [node_items[i.name] for i in targets if i.name in node_items]
+                )
+                menu.exec(self.mapToGlobal(pos))
         if isinstance(item, TreeWidgetTable):
             table_name = item.name
             context_menu = ContextualMenu()

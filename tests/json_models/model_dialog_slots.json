@@ -15,12 +15,12 @@
       "type": "Storage",
       "max_volume": 35,
       "initial_volume": 35,
-      "position": {"editor_position": [200, 500]}
+      "position": {"schematic": [200, 500]}
     },
     {
       "name": "Link",
       "type": "Link",
-      "position": {"editor_position": [1000, 300]}
+      "position": {"schematic": [1000, 300]}
     },
     {
       "name": "Node A",

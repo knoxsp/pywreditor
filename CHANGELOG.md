@@ -7,12 +7,41 @@ All issue numbers are relative to <https://github.com/pywr-editor/editor>
 
 ### Added
 
+- Geographic view: nodes can be placed by their geographic position and shown on top of OpenStreetMap tiles. A toggle
+switches between the schematic and the geographic coordinate systems, nodes can be moved in either, and a minimap
+gives an overview. The map CRS, GIS layers (shapefiles) and other options are managed from the Schematic -> Map
+settings panel, and the CRS is stored in the model metadata. Nodes with polygon geometries are drawn as footprints
+on the map. Panning large models is faster
+- Colour, size and visibility can be set for individual nodes and for all the nodes of a type, from the node and
+legend context menus. The changes can be undone
+- A schematic legend to hide nodes by type, a snap-to-grid option and a Settings tab with the zoom direction and
+legend placement options
+- A dockable node data panel, opened by double-clicking a node, to edit the node configuration. The components tree
+is dockable too, and nodes in it can be searched and selected with Ctrl/Shift to be selected together on the schematic
+- A Validate model button in the Model tab. It lists the structural problems found by the bundled pywr-v1-schema,
+the references to missing nodes, parameters, tables and scenarios, missing files and orphaned components, with
+the location of each problem (double-click to go to the component). The Check with Pywr button loads and sets up the
+model with the Python paths, imports and solver of a run, without stepping it. A run does not start when the model
+refers to components that do not exist
+- A Copy file path button in the Model tab, and the window title shows the parent folder of the model file, to tell
+apart files with the same name
+- A table data editor
+- A dockable IPython console to run the model and read the results. The Python paths and modules, the solver and
+whether to save results can be configured, and the schematic can be laid out automatically
 - The editor can run on Linux and macOS. The unit tests run on Windows, Linux and macOS, and the release workflow
 builds the Windows installer and zip file, a Linux archive and a macOS disk image. The Linux and macOS builds are
 new and less tested than the Windows one
 
 ### Changed
 
+- Finding the orphaned parameters and recorders is much faster on large models
+- The schematic position of a node is stored in the `schematic` key of its `position`, as defined by the pywr
+specification, instead of the editor-only `editor_position` key. Models using `editor_position` are migrated when loaded.
+The schematic position is no longer converted from pywr coordinates and is shown as stored
+- Model errors are shown in a resizable dialog with a monospace stack trace
+- The Value column of the components tree fills the width of the panel
+- Schematic zoom is anchored on the cursor and the canvas is unbounded
+- A fixed light palette is used so dialogs are readable on dark desktop themes
 - "Export to Excel" writes an `.xlsx` file with `openpyxl` and opens it with the default application instead of
 using Excel via COM. It no longer requires Microsoft Excel and works on all platforms. The Excel buttons are
 displayed on all platforms
@@ -23,6 +52,8 @@ script calls `pyside6-rcc` instead of `pyside6-rcc.exe`
 
 ### Fixed
 
+- The editor keeps running when a model fails to load, and windows opened from the start screen are no longer
+garbage collected
 - Errors logged with `traceback.print_exc()` showed "None" in the log message. When exporting an annual profile to
 Excel this also raised a `TypeError` that hid the error dialog. `traceback.format_exc()` is now used
 - The model run worker forced a garbage collection from its own thread, which could crash the editor when Qt objects

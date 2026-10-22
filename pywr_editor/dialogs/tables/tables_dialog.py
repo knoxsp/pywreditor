@@ -12,6 +12,7 @@ from ..base.component_pages import ComponentPages
 from .table_empty_page import TableEmptyPage
 from .table_page import TablePage
 from .tables_list_model import TablesListModel
+from .tree_reload import reload_tree_later
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -109,7 +110,6 @@ class TablesDialog(QDialog):
 
         # update tree and status bar
         if self.app is not None:
-            if hasattr(self.app, "components_tree"):
-                self.app.components_tree.reload()
             if hasattr(self.app, "statusBar"):
                 self.app.statusBar().showMessage(f'Added new table "{table_name}"')
+            reload_tree_later(self.app)

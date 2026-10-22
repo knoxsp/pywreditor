@@ -16,7 +16,7 @@
       "max_volume": 35,
       "initial_volume": 35,
       "position": {
-        "editor_position": [
+        "schematic": [
           200,
           500
         ]
@@ -26,7 +26,7 @@
       "name": "Link1",
       "type": "Link",
       "position": {
-        "editor_position": [
+        "schematic": [
           1000,
           300
         ]
@@ -36,7 +36,7 @@
       "name": "Link2",
       "type": "Link",
       "position": {
-        "editor_position": [
+        "schematic": [
           10,
           300
         ]
@@ -47,7 +47,7 @@
       "type": "Link",
       "max_flow": "param3",
       "position": {
-        "editor_position": [
+        "schematic": [
           50,
           500
         ]
@@ -58,7 +58,7 @@
       "type": "Link",
       "max_flow": "param1",
       "position": {
-        "editor_position": [
+        "schematic": [
           70,
           20
         ]
@@ -83,7 +83,7 @@
         ]
       },
       "position": {
-        "editor_position": [
+        "schematic": [
           70,
           20
         ]

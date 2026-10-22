@@ -7,7 +7,12 @@ from .commands.add_node_command import AddNodeCommand
 from .commands.add_shape_command import AddShapeCommand
 from .commands.connect_node_command import ConnectNodeCommand
 from .commands.disconnect_node_command import DisconnectNodeCommand
+from .commands.layout_nodes_command import LayoutNodesCommand
 from .commands.move_item_command import MoveItemCommand
+from .commands.set_node_style_command import (
+    SetNodeStyleCommand,
+    SetNodeTypeStyleCommand,
+)
 from .commands.resize_shape_command import ResizeShapeCommand
 from .abstract_schematic_item import AbstractSchematicItem
 from .node import SchematicNode, SchematicLabel
@@ -16,5 +21,6 @@ from .shapes.abstract_schematic_shape import AbstractSchematicShape
 from .shapes.text_shape import SchematicText
 from .shapes.rectangle_shape import SchematicRectangle
 from .shapes.arrow_shape import SchematicArrow
+from .map import Projector, is_valid_crs, WEB_MERCATOR_CRS
 from .schematic import Schematic
 from .edge import *

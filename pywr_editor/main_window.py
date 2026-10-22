@@ -6,17 +6,27 @@ from typing import Literal
 
 import PySide6
 from PySide6.QtCore import QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QIcon, QKeySequence, Qt, QUndoStack
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
+from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, Qt, QUndoStack
+from PySide6.QtWidgets import (
+    QDockWidget,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+)
 
+from pywr_editor.console import ConsolePanel
 from pywr_editor.dialogs import (
     AboutButton,
     EdgeSlotsDialog,
+    GisLayersDialog,
     IncludesDialog,
+    PythonPathsDialog,
+    ResultsDialog,
     JsonCodeViewer,
     MetadataDialog,
     NodeDataPanel,
     ParametersDialog,
+    ValidationDialog,
     RecordersDialog,
     ScenariosDialog,
     SearchDialog,
@@ -28,13 +38,15 @@ from pywr_editor.schematic import Schematic, get_scaling_factor
 from pywr_editor.style import AppStylesheet
 from pywr_editor.toolbar import (
     GridSettings,
+    MapSettings,
+    RunSettings,
     ModelNavigationSettings,
     RunWidget,
     SchematicItemsLibrary,
     ToolbarWidget,
 )
 from pywr_editor.toolbar.run_controls.timestepper import TimeStepperWidget
-from pywr_editor.tree import ComponentsTree
+from pywr_editor.tree import ComponentsPanel, ComponentsTree
 from pywr_editor.utils import (
     Action,
     Actions,
@@ -57,7 +69,6 @@ class MainWindow(QMainWindow):
     """ Signal emitted when the model is saved """
     store_geometry_widget: list[str] = [
         "toolbar",
-        "splitter",
         "components_tree",
         "schematic",
     ]
@@ -123,23 +134,52 @@ class MainWindow(QMainWindow):
         self.jump_list = self.setup_jump_list()
 
         # layout
-        self.splitter = QSplitter()
-        self.splitter.setOpaqueResize(True)
-        self.splitter.setStretchFactor(0, 100)
-        self.splitter.addWidget(self.components_tree)
-        self.splitter.addWidget(self.schematic)
+        self.components_panel = ComponentsPanel(self.components_tree)
+        # the components are in a dock, so that the node panels can be docked above
+        # or below them
+        self.components_dock = QDockWidget("Components", self)
+        self.components_dock.setObjectName("components_dock")
+        self.components_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        )
+        self.components_dock.setWidget(self.components_panel)
 
         # window
         self.set_window_title()
         self.resize(1000, 900)
         self.setAutoFillBackground(True)
         self.setPalette(Qt.GlobalColor.white)
-        self.setDockNestingEnabled(False)
-        self.setCentralWidget(self.splitter)
+        # nesting lets docked panels share the height or the width of an area
+        self.setDockNestingEnabled(True)
+        self.setCentralWidget(self.schematic)
 
-        # Node data panel (dockable/undockable, shown on node double-click)
+        # the left and right docks take the full height of the window, and the
+        # panels in them can share it
+        for corner, area in (
+            (Qt.Corner.TopLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
+            (Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
+            (Qt.Corner.TopRightCorner, Qt.DockWidgetArea.RightDockWidgetArea),
+            (Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea),
+        ):
+            self.setCorner(corner, area)
+
+        # Node data panel (dockable/undockable, shown on node double-click). By
+        # default it is on the right, and it can be dragged to any side, above or
+        # below the other panels
         self.node_data_panel = NodeDataPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.components_dock)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.node_data_panel)
+        self.resizeDocks([self.components_dock], [320], Qt.Orientation.Horizontal)
+        self.resizeDocks([self.node_data_panel], [380], Qt.Orientation.Horizontal)
+        # adding the dock shows it: keep it hidden until a node is shown
+        self.node_data_panel.hide()
+
+        # Console (IPython kernel to run the model and read the results). The kernel
+        # starts the first time the panel is shown
+        self.console_panel = ConsolePanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.console_panel)
+        self.console_panel.hide()
 
         # Actions
         self.undo_stack = QUndoStack(self)
@@ -164,14 +204,17 @@ class MainWindow(QMainWindow):
 
         # Show the window
         self.editor_settings.restore_window_attributes(self)
+        # the restored window state can show the panel, but there is no node to show
+        self.node_data_panel.hide()
         self.show()
 
         # Draw the widgets
         self.components_tree.draw()
-        self.schematic.draw()
+        self.schematic.draw_safely()
 
         # handle schematic status during a model ru
         self.is_model_running = False
+        self.validation_dialog: ValidationDialog | None = None
         self.run_widget.run_status_changed.connect(self.on_model_run)
 
     def closeEvent(self, event: PySide6.QtGui.QCloseEvent) -> None:
@@ -181,12 +224,14 @@ class MainWindow(QMainWindow):
         :return: None
         """
         if self.model_config.has_changes is False or self.maybe_save():
-            # event.accept()
             self.editor_settings.save_window_attributes(self)
         else:
+            # the user cancelled or the model could not be saved: keep the window
             event.ignore()
+            return
 
         self.timer.stop()
+        self.console_panel.shutdown()
 
         # check if the run worker is still running
         try:
@@ -243,6 +288,15 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="copy-file-path",
+                name="Copy\n file path",
+                icon=":/toolbar/open",
+                tooltip="Copy the full path of the model file to the clipboard",
+                connection=self.copy_file_path,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="search-in-model",
                 name="Search",
                 icon=":/toolbar/search",
@@ -293,6 +347,16 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="edit-python-paths",
+                name="Python\npaths",
+                icon=":/toolbar/edit-imports",
+                tooltip="Add folders or virtual environments to the Python path "
+                "used to run the model",
+                connection=self.open_python_paths_dialog,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="edit-slots",
                 name="Slots",
                 icon=":/toolbar/edit-slots",
@@ -331,6 +395,17 @@ class MainWindow(QMainWindow):
             )
         )
 
+        self.app_actions.add(
+            Action(
+                key="validate-model",
+                name="Validate model",
+                icon=":/toolbar/find-orphaned-parameters",
+                tooltip="Check the model structure, the references between components "
+                + "and\nthe external files, and check that pywr can load the model",
+                shortcut=QKeySequence("Ctrl+Shift+V"),
+                connection=self.open_validation_dialog,
+            )
+        )
         self.app_actions.add(
             Action(
                 key="find-orphaned-nodes",
@@ -529,11 +604,53 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="toggle-geo-view",
+                name="Geographic view",
+                icon=":toolbar/toggle-geo-view",
+                tooltip="Switch the schematic between the schematic and "
+                "geographic coordinate system",
+                is_checked=self.editor_settings.is_geo_view_enabled,
+                connection=self.schematic.toggle_coordinate_system,
+            )
+        )
+        self.app_actions.add(
+            Action(
+                key="manage-gis-layers",
+                name="GIS layers",
+                icon=":toolbar/manage-gis-layers",
+                tooltip="Add, style and order the GeoJSON and Shapefile layers "
+                "shown on the schematic in the geographic view",
+                connection=self.open_gis_layers_dialog,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="center",
                 name="Centre",
                 icon=":toolbar/centre-schematic",
                 tooltip="Centre the schematic",
                 connection=self.schematic.center_view_on,
+            )
+        )
+        self.app_actions.add(
+            Action(
+                key="auto-layout",
+                name="Auto\nlayout",
+                icon=":toolbar/plot-data",
+                tooltip="Spread the nodes with a force-directed layout, keeping "
+                "connected nodes close. Only the schematic positions are changed",
+                connection=self.schematic.auto_layout,
+            )
+        )
+        self.app_actions.add(
+            Action(
+                key="infer-geo-positions",
+                name="Estimate\npositions",
+                icon=":toolbar/toggle-geo-view",
+                tooltip="Estimate the geographic position of the nodes that do not "
+                "have one from the position of the connected nodes (geographic "
+                "view only)",
+                connection=self.schematic.infer_geographic_positions,
             )
         )
         self.app_actions.add(
@@ -593,6 +710,16 @@ class MainWindow(QMainWindow):
         # )
         self.app_actions.add(
             Action(
+                key="run-results",
+                name="Results",
+                icon=":toolbar/plot-data",
+                tooltip="View the saved recorder results of the model runs in a "
+                "table and a plot",
+                connection=self.open_results_dialog,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="run-inspector",
                 name="Inspector",
                 icon=":toolbar/run-inspector",
@@ -615,6 +742,10 @@ class MainWindow(QMainWindow):
         file_panel.add_button(self.app_actions.get("save-model"))
         self.app_actions.get("save-model").setDisabled(True)
         file_panel.add_button(self.app_actions.get("reload-model"))
+        file_panel.add_button(self.app_actions.get("copy-file-path"))
+        self.app_actions.get("copy-file-path").setDisabled(
+            not self.model_config.json_file
+        )
         file_panel.add_button(self.app_actions.get("search-in-model"))
         file_panel.add_button(self.app_actions.get("open-json-reader"))
 
@@ -627,11 +758,15 @@ class MainWindow(QMainWindow):
                 self.app_actions.get("edit-slots"),
             ]
         )
+        settings_panel.add_button(self.app_actions.get("edit-python-paths"))
         settings_panel.add_button(self.app_actions.get("edit-tables"))
         settings_panel.add_button(self.app_actions.get("edit-parameters"))
         settings_panel.add_button(self.app_actions.get("edit-recorders"))
 
         validation_panel = model_tab.add_panel("Validation", layout="vertical")
+        validation_panel.add_button(
+            self.app_actions.get("validate-model"), is_large=False
+        )
         validation_panel.add_button(
             self.app_actions.get("find-orphaned-nodes"), is_large=False
         )
@@ -667,7 +802,18 @@ class MainWindow(QMainWindow):
         nodes_panel.add_widget(RunWidget(self))
 
         results_panel = run.add_panel("Results")
+        results_panel.add_button(self.app_actions.get("run-results"))
         results_panel.add_button(self.app_actions.get("run-inspector"))
+
+        toggle_console_action = self.console_panel.toggleViewAction()
+        toggle_console_action.setText("Console")
+        toggle_console_action.setIcon(QIcon(":/toolbar/run"))
+        toggle_console_action.setToolTip(
+            "Show or hide the dockable IPython console to run the model and look at "
+            "the results interactively"
+        )
+        console_panel = run.add_panel("Console")
+        console_panel.add_button(toggle_console_action)
 
         # View tab
         schematic_tab = self.toolbar.add_tab("Schematic")
@@ -676,20 +822,34 @@ class MainWindow(QMainWindow):
         zoom_panel.add_button(self.app_actions.get("zoom-out"))
         zoom_panel.add_button(self.app_actions.get("zoom-100"))
 
-        display_panel = schematic_tab.add_panel("Display", layout="vertical")
-        display_panel.add_button(self.app_actions.get("toggle-labels"), is_large=False)
-        display_panel.add_button(self.app_actions.get("toggle-arrows"), is_large=False)
-        display_panel.add_button(self.app_actions.get("toggle-legend"), is_large=False)
-        display_panel.add_button(self.app_actions.get("center"), is_large=False)
+        # two columns of (at most) three small buttons each
+        display_panel = schematic_tab.add_panel("Display")
+        display_panel.add_vertical_small_buttons(
+            [
+                self.app_actions.get("toggle-labels"),
+                self.app_actions.get("toggle-arrows"),
+                self.app_actions.get("toggle-legend"),
+            ]
+        )
 
         toggle_node_data_action = self.node_data_panel.toggleViewAction()
-        toggle_node_data_action.setText("Hide node data")
+        toggle_node_data_action.setText("Node data")
         toggle_node_data_action.setIcon(QIcon(":/toolbar/edit-node"))
         toggle_node_data_action.setToolTip(
             "Show or hide the dockable panel with the data of the node currently "
             "selected on the schematic"
         )
-        display_panel.add_button(toggle_node_data_action, is_large=False)
+        display_panel.add_vertical_small_buttons(
+            [
+                self.app_actions.get("toggle-geo-view"),
+                self.app_actions.get("center"),
+                toggle_node_data_action,
+            ]
+        )
+
+        layout_panel = schematic_tab.add_panel("Layout")
+        layout_panel.add_button(self.app_actions.get("auto-layout"))
+        layout_panel.add_button(self.app_actions.get("infer-geo-positions"))
 
         size_panel = schematic_tab.add_panel("Size")
         size_panel.add_button(self.app_actions.get("increase-width"))
@@ -700,6 +860,7 @@ class MainWindow(QMainWindow):
 
         misc_panel = schematic_tab.add_panel("Misc", layout="vertical")
         misc_panel.add_button(self.app_actions.get("lock"), is_large=False)
+        misc_panel.add_button(self.app_actions.get("manage-gis-layers"), is_large=False)
         misc_panel.add_button(
             self.app_actions.get("export-current-view"), is_large=False
         )
@@ -708,8 +869,13 @@ class MainWindow(QMainWindow):
         settings_tab = self.toolbar.add_tab("Settings")
         navigation_panel = settings_tab.add_panel("Model -> Navigation")
         navigation_panel.add_widget(ModelNavigationSettings(self))
+        run_panel = settings_tab.add_panel("Model -> Run")
+        run_panel.add_widget(RunSettings(self))
         grid_panel = settings_tab.add_panel("Schematic -> Grid")
         grid_panel.add_widget(GridSettings(self))
+        map_panel = settings_tab.add_panel("Schematic -> Map")
+        self.map_settings = MapSettings(self)
+        map_panel.add_widget(self.map_settings)
 
     def add_status_bar(self) -> None:
         """
@@ -760,13 +926,38 @@ class MainWindow(QMainWindow):
 
         return jump_list
 
+    def model_path_abs(self) -> str:
+        """
+        Returns the absolute path of the model file.
+        :return: The path, or an empty string for a model without a file.
+        """
+        json_file = self.model_config.json_file
+        return os.path.abspath(json_file) if json_file else ""
+
+    @Slot()
+    def copy_file_path(self) -> None:
+        """
+        Copies the full path of the model file to the clipboard.
+        :return: None
+        """
+        path = self.model_path_abs()
+        if not path:
+            return
+        QGuiApplication.clipboard().setText(path)
+        self.statusBar().showMessage(f"Copied to clipboard: {path}", 5000)
+
     def set_window_title(self) -> None:
         """
         Sets the window title.
         :return: None
         """
         if self.model_config.json_file:
-            title = f"{self.model_config.title} - {self.model_config.file.file_name}"
+            # show the parent folder to tell apart files with the same name
+            folder = os.path.basename(os.path.dirname(self.model_path_abs()))
+            title = (
+                f"{self.model_config.title} - {self.model_config.file.file_name}"
+                + (f" ({folder})" if folder else "")
+            )
         else:
             title = "New empty model"
         self.setWindowTitle(title)
@@ -850,6 +1041,7 @@ class MainWindow(QMainWindow):
                 model_file = files[0]
                 self.model_file = model_file
                 self.model_config.json_file = model_file
+                self.app_actions.get("copy-file-path").setEnabled(True)
                 self.save_model()
                 self.undo_stack.setClean()
             else:
@@ -895,12 +1087,90 @@ class MainWindow(QMainWindow):
         dialog.show()
 
     @Slot()
+    def open_results_dialog(self, run_dir: str | None = None) -> None:
+        """
+        Opens the dialog to view the saved results.
+        :param run_dir: The run to show. Default to the most recent one.
+        :return: None
+        """
+        from pywr_editor.model.results import resolve_output_dir
+
+        output_dir = resolve_output_dir(
+            self.editor_settings.output_dir, self.model_config.json_file
+        )
+        dialog = ResultsDialog(
+            output_dir=output_dir,
+            select_run=run_dir if isinstance(run_dir, str) else None,
+            parent=self,
+        )
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        dialog.show()
+
+    @Slot()
+    def open_python_paths_dialog(self) -> None:
+        """
+        Opens the dialog to edit the Python paths used to run the model.
+        :return: None
+        """
+        PythonPathsDialog(self.editor_settings, parent=self).exec()
+
+    @Slot()
     def open_tables_dialog(self) -> None:
         """
         Opens the dialog to edit the model tables.
         :return: None
         """
         dialog = TablesDialog(model=self.model_config, parent=self)
+        dialog.show()
+
+    @Slot()
+    def open_validation_dialog(self) -> None:
+        """
+        Opens the dialog showing the model validation results.
+        :return: None
+        """
+        if self.validation_dialog is not None and self.validation_dialog.isVisible():
+            self.validation_dialog.validate()
+            self.validation_dialog.raise_()
+            return
+
+        dialog = ValidationDialog(parent=self)
+        dialog.component_requested.connect(self.show_component)
+        self.validation_dialog = dialog
+        dialog.show()
+
+    @Slot(str, str)
+    def show_component(self, kind: str, name: str) -> None:
+        """
+        Shows a component in the schematic or in its dialog.
+        :param kind: The component kind: node, parameter, recorder, table or scenario.
+        :param name: The component name.
+        :return: None
+        """
+        if kind == "node":
+            self.schematic.scene.clearSelection()
+            self.schematic.select_node_by_name(name)
+            return
+
+        dialogs = {
+            "parameter": ParametersDialog,
+            "recorder": RecordersDialog,
+            "table": TablesDialog,
+        }
+        if kind in dialogs:
+            dialogs[kind](
+                model=self.model_config, selected_name=name, parent=self
+            ).show()
+        elif kind == "scenario":
+            self.open_scenarios_dialog()
+
+    @Slot()
+    def open_gis_layers_dialog(self) -> None:
+        """
+        Opens the dialog to manage the GIS layers shown on the schematic.
+        :return: None
+        """
+        dialog = GisLayersDialog(model_config=self.model_config, parent=self)
         dialog.show()
 
     @Slot()
@@ -1012,8 +1282,13 @@ class MainWindow(QMainWindow):
             "edit-tables",
             "edit-parameters",
             "edit-recorders",
+            "validate-model",
             "find-orphaned-nodes",
             "find-orphaned-parameters",
+            "toggle-geo-view",
+            "auto-layout",
+            "infer-geo-positions",
+            "manage-gis-layers",
         ]
         for action_name in to_disable:
             self.app_actions.get(action_name).setDisabled(is_running)
@@ -1026,6 +1301,7 @@ class MainWindow(QMainWindow):
         node_library.setDisabled(is_running)
 
         self.schematic.set_run_mode(is_running)
+        self.map_settings.setDisabled(is_running)
 
         # handle the timestepper fields
         # noinspection PyUnresolvedReferences

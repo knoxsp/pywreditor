@@ -81,6 +81,119 @@ class TestSchematicLegend:
 
         assert window.editor_settings.hidden_node_types == []
 
+    def test_set_node_hidden(self, qtbot, init_window) -> None:
+        """
+        Tests that a single node can be hidden and shown again from the context menu
+        (also used by the components tree), together with its edges.
+        """
+        window, schematic, _ = init_window
+        name, node = next(iter(schematic.node_items.items()))
+
+        def action_texts() -> list[str]:
+            menu = node.create_context_menu()
+            return [a.text() for a in menu.actions()]
+
+        assert "Hide node" in action_texts()
+        schematic.set_node_hidden(name, True)
+        assert node.isVisible() is False
+        assert window.editor_settings.hidden_nodes == [name]
+        assert "Show node on schematic" in action_texts()
+        assert "Connect to..." not in action_texts()
+        for item in schematic.items():
+            if isinstance(item, Edge) and name in (
+                item.source.name,
+                item.target.name,
+            ):
+                assert item.isVisible() is False
+
+        # hiding the node type, then showing it, must not reveal the hidden node
+        schematic.set_node_type_hidden(node.model_node.type, True)
+        schematic.set_node_type_hidden(node.model_node.type, False)
+        assert node.isVisible() is False
+
+        schematic.set_node_hidden(name, False)
+        assert node.isVisible() is True
+        assert window.editor_settings.hidden_nodes == []
+
+    def test_set_nodes_color_undo(self, qtbot, init_window) -> None:
+        """
+        Tests that the colour of several nodes can be set, stored in the model and
+        undone, and that the multi-node menu only offers the bulk actions.
+        """
+        window, schematic, _ = init_window
+        items = list(schematic.node_items.items())[:3]
+        names = [name for name, _ in items]
+
+        schematic.set_nodes_color(names, "red")
+        for name, node in items:
+            assert node.model_node.node_color == "red"
+            assert node.color_ring is not None
+            # the ring is drawn on the node, not at the scene origin
+            assert node.color_ring.scenePos() == node.scenePos()
+            assert node.sceneBoundingRect().contains(node.scenePos())
+            assert node.sceneBoundingRect().width() < 200
+            assert (
+                schematic.model_config.nodes.node(
+                    schematic.model_config.nodes.config(name)
+                ).node_color
+                == "red"
+            )
+
+        menu = items[0][1].create_context_menu([n for _, n in items])
+        texts = [a.text() for a in menu.actions()]
+        assert "Hide nodes" in texts
+        assert "Edit node" not in texts
+
+        window.undo_stack.undo()
+        for name, node in items:
+            assert node.color_ring is None
+            assert node.model_node.node_color is None
+
+        window.undo_stack.redo()
+        schematic.set_nodes_color(names, None)
+        assert all(n.color_ring is None for _, n in items)
+
+    def test_size_and_type_precedence(self, qtbot, init_window) -> None:
+        """
+        Tests the node size, the node type style and that the style set on a node
+        takes priority over the one of its type.
+        """
+        window, schematic, _ = init_window
+        by_type: dict = {}
+        for item in schematic.node_items.values():
+            by_type.setdefault(item.model_node.type, []).append(item)
+        node, other = next(v for v in by_type.values() if len(v) >= 2)[:2]
+        node_type = node.model_node.type
+
+        # type style applies to all nodes of the type
+        schematic.set_node_type_style(node_type, color="green", size=2.0)
+        for item in (node, other):
+            assert item.style_color == "green"
+            assert item.style_size == 2.0
+            assert item.node.scale() == 2.0
+            assert item.color_ring is not None
+            assert item.color_ring.scenePos() == item.scenePos()
+        assert window.model_config.editor_config["node_types"][node_type] == {
+            "color": "green",
+            "size": 2.0,
+        }
+
+        # the node style takes priority, and None falls back to the type style
+        schematic.set_nodes_style([node.name], color="red", size=0.5)
+        assert (node.style_color, node.style_size) == ("red", 0.5)
+        assert (other.style_color, other.style_size) == ("green", 2.0)
+        schematic.set_nodes_style([node.name], size=None)
+        assert (node.style_color, node.style_size) == ("red", 2.0)
+
+        # undo
+        window.undo_stack.undo()
+        assert node.style_size == 0.5
+        window.undo_stack.undo()
+        assert (node.style_color, node.style_size) == ("green", 2.0)
+        window.undo_stack.undo()
+        assert node.style_color is None and node.style_size == 1.0
+        assert "node_types" not in window.model_config.editor_config
+
     def test_hidden_node_types_restored_on_init(self, qtbot, init_window) -> None:
         """
         Tests that node types hidden in a previous session are hidden again when the
@@ -133,3 +246,4 @@ class TestSchematicLegend:
         assert button.isChecked() is False
         assert schematic.legend.isHidden() is False
         assert window.editor_settings.are_legend_hidden is False
+
