@@ -2,7 +2,7 @@ import hashlib
 import json
 import os
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from PySide6.QtCore import QPointF, QSettings
 
@@ -17,8 +17,15 @@ class Settings:
     lock_key = "schematic/lock"
     hide_labels_key = "schematic/hide_labels"
     hide_arrows_key = "schematic/hide_arrows"
+    hide_legend_key = "schematic/hide_legend"
+    hidden_node_types_key = "schematic/hidden_node_types"
     zoom_level_key = "schematic/zoom_level"
     schematic_center_key = "schematic/schematic_center"
+    reverse_zoom_key = "schematic/reverse_zoom"
+    legend_position_key = "schematic/legend_position"
+    grid_size_key = "schematic/grid_size"
+    snap_to_grid_key = "schematic/snap_to_grid"
+    show_grid_key = "schematic/show_grid"
     recent_projects_key = "recent_projects"
     run_to_date_key = "run_to_date"
 
@@ -174,6 +181,51 @@ class Settings:
         self.instance.setValue(self.hide_arrows_key, hide)
 
     @property
+    def are_legend_hidden(self) -> bool:
+        """
+        Whether the schematic legend should be hidden.
+        :return: True if the schematic legend is hidden, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.hide_legend_key, defaultValue=False)
+        )
+
+    def save_hide_legend(self, hide: bool) -> None:
+        """
+        Sets the display status of the schematic legend.
+        :param hide: True to hide the legend, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.hide_legend_key, hide)
+
+    @property
+    def hidden_node_types(self) -> list[str]:
+        """
+        Returns the list of node types currently hidden on the schematic.
+        :return: The list of node type keys. Empty if none are hidden.
+        """
+        raw_value = self.instance.value(self.hidden_node_types_key, defaultValue="[]")
+        try:
+            node_types = json.loads(raw_value)
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(node_types, list):
+            return []
+        return node_types
+
+    def save_hidden_node_types(self, node_types: list[str]) -> None:
+        """
+        Stores the list of node types currently hidden on the schematic.
+        :param node_types: The list of node type keys to store.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.hidden_node_types_key, json.dumps(node_types))
+
+    @property
     def zoom_level(self) -> float:
         """
         Returns the schematic zoom level.
@@ -209,12 +261,126 @@ class Settings:
             return
         self.instance.setValue(self.schematic_center_key, position)
 
+    @property
+    def is_zoom_reversed(self) -> bool:
+        """
+        Whether the scroll-wheel zoom direction is reversed.
+        :return: True if the zoom direction is reversed, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.reverse_zoom_key, defaultValue=False)
+        )
+
+    def save_reverse_zoom(self, reverse: bool) -> None:
+        """
+        Sets whether the scroll-wheel zoom direction is reversed.
+        :param reverse: True to reverse the zoom direction, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.reverse_zoom_key, reverse)
+
+    @property
+    def legend_position(self) -> Literal["left", "right"]:
+        """
+        Returns the schematic legend's horizontal position.
+        :return: "left" or "right". Defaults to "left".
+        """
+        position = self.instance.value(self.legend_position_key, defaultValue="left")
+        return position if position in ("left", "right") else "left"
+
+    def save_legend_position(self, position: Literal["left", "right"]) -> None:
+        """
+        Stores the schematic legend's horizontal position.
+        :param position: "left" or "right".
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.legend_position_key, position)
+
+    @property
+    def grid_size(self) -> int:
+        """
+        Returns the schematic grid size.
+        :return: The grid size, in pixels. Defaults to 25.
+        """
+        return int(self.instance.value(self.grid_size_key, defaultValue=25))
+
+    def save_grid_size(self, size: int) -> None:
+        """
+        Stores the schematic grid size.
+        :param size: The grid size, in pixels.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.grid_size_key, size)
+
+    @property
+    def is_snap_to_grid_enabled(self) -> bool:
+        """
+        Whether nodes are snapped to the nearest grid point when moved on the
+        schematic.
+        :return: True if snap-to-grid is enabled, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.snap_to_grid_key, defaultValue=False)
+        )
+
+    def save_snap_to_grid(self, enable: bool) -> None:
+        """
+        Sets whether nodes are snapped to the nearest grid point when moved on the
+        schematic.
+        :param enable: True to enable snap-to-grid, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.snap_to_grid_key, enable)
+
+    @property
+    def is_grid_shown(self) -> bool:
+        """
+        Whether the grid is drawn on the schematic background.
+        :return: True if the grid is shown, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.show_grid_key, defaultValue=False)
+        )
+
+    def save_show_grid(self, show: bool) -> None:
+        """
+        Sets whether the grid is drawn on the schematic background.
+        :param show: True to show the grid, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.show_grid_key, show)
+
+    def _get_recent_files_list(self) -> list[str]:
+        """
+        Returns the stored recent-file paths as a proper list. QSettings' INI
+        backend serialises a single-item list the same way as a plain string,
+        so a 1-entry list is read back as a bare str rather than a list of one
+        - this normalises both that case and the unset (None) case.
+        :return: The list of recent file paths (empty if none are stored).
+        """
+        recent_files = self.global_instance.value(self.recent_projects_key)
+        if recent_files is None:
+            return []
+        if isinstance(recent_files, str):
+            return [recent_files]
+        return recent_files
+
     def get_recent_files(self) -> list[dict[str, str | ModelFileInfo]]:
         """
         Returns the list of recent open files.
         :return: The files as dictionary or an empty list if no file has been stored.
         """
-        recent_files: list[str] = self.global_instance.value(self.recent_projects_key)
+        recent_files = self._get_recent_files_list()
         valid_files = []
         file_info = []
 
@@ -259,11 +425,9 @@ class Settings:
         :return: None.
         """
         # this is not connected to any model file
-        recent_files: list[str] = self.global_instance.value(self.recent_projects_key)
+        recent_files = self._get_recent_files_list()
 
-        if recent_files is None:
-            recent_files = [file]
-        elif file not in recent_files:
+        if file not in recent_files:
             recent_files.append(file)
 
         self.global_instance.setValue(self.recent_projects_key, recent_files)

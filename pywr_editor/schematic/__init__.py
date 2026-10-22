@@ -11,6 +11,7 @@ from .commands.move_item_command import MoveItemCommand
 from .commands.resize_shape_command import ResizeShapeCommand
 from .abstract_schematic_item import AbstractSchematicItem
 from .node import SchematicNode, SchematicLabel
+from .legend import SchematicLegend
 from .shapes.abstract_schematic_shape import AbstractSchematicShape
 from .shapes.text_shape import SchematicText
 from .shapes.rectangle_shape import SchematicRectangle
