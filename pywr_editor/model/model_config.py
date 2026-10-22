@@ -4,12 +4,14 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import pyproj
 from pandas import period_range
 from PySide6.QtCore import QObject, Signal
 
 from pywr_editor.model import (
     Constants,
     Edges,
+    GisLayers,
     Includes,
     ModelFileInfo,
     Nodes,
@@ -22,6 +24,9 @@ from pywr_editor.model import (
     Shapes,
     Tables,
 )
+from pywr_editor.model.constants import UNCHANGED
+from pywr_editor.model.node_config import valid_node_size
+from pywr_editor.style import Color
 
 
 class ModelConfig(QObject):
@@ -67,6 +72,7 @@ class ModelConfig(QObject):
         self.scenarios = Scenarios(model=self)
         self.includes = Includes(model=self)
         self.shapes = Shapes(model=self)
+        self.gis_layers = GisLayers(model=self)
 
         # custom components cannot use same name as built-in parameters. Pywr always
         # prioritises its own
@@ -290,6 +296,11 @@ class ModelConfig(QObject):
             ] = []
             self.has_changed()
 
+        self.migrate_legacy_positions()
+
+        # note: the "map" key is only added when a map setting is changed (see
+        # writable_map_config), as practically every existing model file predates it
+
         # check that the metadata dictionary and its key/value pairs are defined
         default_metadata = {
             "minimum_version": "1.19.0",
@@ -301,6 +312,25 @@ class ModelConfig(QObject):
                 self.json["metadata"][key], str
             ):
                 self.json["metadata"][key] = value
+
+    def migrate_legacy_positions(self) -> None:
+        """
+        Moves the schematic position stored by previous versions of the editor in the
+        "editor_position" key to the "schematic" key defined by the pywr
+        specification. A legacy value replaces any existing "schematic" value, as it
+        is the position displayed by the editor.
+        :return: None
+        """
+        legacy_key = Constants.LEGACY_POSITION_KEY.value
+        key = Constants.POSITION_KEY.value
+        for node in self.json.get("nodes", []):
+            position = node.get("position") if isinstance(node, dict) else None
+            if not isinstance(position, dict) or legacy_key not in position:
+                continue
+            legacy_value = position.pop(legacy_key)
+            if isinstance(legacy_value, (list, tuple)) and len(legacy_value) == 2:
+                position[key] = legacy_value
+            self.has_changed()
 
     def is_valid(self) -> bool:
         """
@@ -520,6 +550,172 @@ class ModelConfig(QObject):
         :return: None
         """
         self.editor_config[Constants.SCHEMATIC_SIZE_KEY.value] = size
+        self.has_changed()
+
+    @property
+    def map_config(self) -> dict:
+        """
+        Gets the map configuration dictionary (CRS, basemap visibility and GIS
+        overlay layers) for reading. When the model does not have a map section, a
+        detached dictionary with the defaults is returned, so that merely opening
+        and saving a model does not add the section to its file. Use
+        writable_map_config to change the settings.
+        :return: The map configuration dictionary.
+        """
+        map_dict = self.editor_config.get(Constants.MAP_KEY.value)
+        if not isinstance(map_dict, dict):
+            return self._default_map_config()
+
+        layers_key = Constants.GIS_LAYERS_KEY.value
+        if not isinstance(map_dict.get(layers_key), list):
+            # not stored: this is only a view with the defaults
+            return {**map_dict, layers_key: []}
+        return map_dict
+
+    @property
+    def writable_map_config(self) -> dict:
+        """
+        Gets the map configuration dictionary stored in the model, creating the
+        section with the defaults and healing the invalid keys if needed. Use this
+        before changing a map setting.
+        :return: The map configuration dictionary.
+        """
+        map_key = Constants.MAP_KEY.value
+        if not isinstance(self.editor_config.get(map_key), dict):
+            self.editor_config[map_key] = self._default_map_config()
+        map_dict = self.editor_config[map_key]
+        if not isinstance(map_dict.get(Constants.GIS_LAYERS_KEY.value), list):
+            map_dict[Constants.GIS_LAYERS_KEY.value] = []
+        return map_dict
+
+    @staticmethod
+    def _default_map_config() -> dict:
+        """
+        Returns a new map configuration dictionary with the default values.
+        :return: The dictionary.
+        """
+        return {
+            "crs": Constants.DEFAULT_GEOGRAPHIC_CRS.value,
+            "show_basemap": True,
+            Constants.GIS_LAYERS_KEY.value: [],
+        }
+
+    @staticmethod
+    def _is_valid_crs(crs: object) -> bool:
+        """
+        Checks that a value is a CRS definition pyproj can parse.
+        :param crs: The value.
+        :return: True if the CRS is valid.
+        """
+        if not isinstance(crs, str):
+            return False
+        try:
+            pyproj.CRS.from_user_input(crs)
+            return True
+        except pyproj.exceptions.CRSError:
+            return False
+
+    def node_type_style(self, node_type: str | None) -> dict:
+        """
+        Gets the style stored for a node type. The nodes use it unless they have
+        their own colour or size.
+        :param node_type: The node type.
+        :return: A dictionary with the "color" and "size" keys. The value is None
+        when not set.
+        """
+        styles = self.editor_config.get(Constants.NODE_TYPES_KEY.value)
+        style = styles.get(node_type) if isinstance(styles, dict) else None
+        if not isinstance(style, dict):
+            style = {}
+        color = style.get("color")
+        return {
+            "color": color if isinstance(color, str) and color in Color.colors else None,
+            "size": valid_node_size(style.get("size")),
+        }
+
+    def set_node_type_style(
+        self,
+        node_type: str,
+        color: str | None | object = UNCHANGED,
+        size: float | None | object = UNCHANGED,
+    ) -> None:
+        """
+        Sets or removes the style of a node type.
+        :param node_type: The node type.
+        :param color: The colour name. None removes it, UNCHANGED keeps it.
+        :param size: The scale factor. None removes it, UNCHANGED keeps it.
+        :return: None
+        """
+        key = Constants.NODE_TYPES_KEY.value
+        if not isinstance(self.editor_config.get(key), dict):
+            self.editor_config[key] = {}
+        styles = self.editor_config[key]
+        style = dict(styles.get(node_type) or {})
+        for name, value in (("color", color), ("size", size)):
+            if value is UNCHANGED:
+                continue
+            if value is None:
+                style.pop(name, None)
+            else:
+                style[name] = value
+        if style:
+            styles[node_type] = style
+        else:
+            styles.pop(node_type, None)
+        if not styles:
+            del self.editor_config[key]
+        self.has_changed()
+
+    @property
+    def stored_geographic_crs(self) -> object | None:
+        """
+        Gets the CRS stored in the model, even if it is not valid. The CRS is read
+        from the "crs" key of the model metadata. Models saved by older versions
+        of the editor keep it in the map settings, which is used when the metadata
+        does not have it.
+        :return: The stored value, None if the model does not have one.
+        """
+        metadata = self.json.get("metadata")
+        if isinstance(metadata, dict) and metadata.get("crs") is not None:
+            return metadata["crs"]
+        return self.map_config.get("crs")
+
+    @property
+    def geographic_crs(self) -> str:
+        """
+        Gets the CRS to use to interpret the nodes' "geographic" coordinates. The
+        stored value is not changed when it is invalid.
+        :return: The CRS from the model config file as an EPSG string (e.g.
+        "EPSG:4326"). If not available or invalid, the default CRS is returned.
+        """
+        crs = self.stored_geographic_crs
+        if self._is_valid_crs(crs):
+            return crs
+        return Constants.DEFAULT_GEOGRAPHIC_CRS.value
+
+    @property
+    def has_valid_geographic_crs(self) -> bool:
+        """
+        Whether the stored CRS is missing (the default applies) or valid.
+        :return: False if the model stores an invalid CRS, True otherwise.
+        """
+        crs = self.stored_geographic_crs
+        return crs is None or self._is_valid_crs(crs)
+
+    def update_geographic_crs(self, crs: str) -> None:
+        """
+        Sets the CRS to use to interpret the nodes' "geographic" coordinates. This
+        is stored in the "crs" key of the model metadata. A CRS stored by older
+        versions in the map settings is removed.
+        :param crs: The CRS as an EPSG string (e.g. "EPSG:4326").
+        :return: None
+        """
+        if not isinstance(self.json.get("metadata"), dict):
+            self.json["metadata"] = {}
+        self.json["metadata"]["crs"] = crs
+        map_dict = self.editor_config.get(Constants.MAP_KEY.value)
+        if isinstance(map_dict, dict):
+            map_dict.pop("crs", None)
         self.has_changed()
 
     def normalize_file_path(self, file: str | None) -> str | None:

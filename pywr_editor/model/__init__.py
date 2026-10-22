@@ -22,6 +22,9 @@ from .recorders import Recorders
 from .scenarios import Scenarios
 from .tables import Tables
 from .shapes import Shapes, TextShape, BaseShape, RectangleShape, LineArrowShape
+from .gis_layers import GisLayers, GisLayerConfig
 from .model_config import ModelConfig
 
 from .pywr_worker import PywrWorker, PywrProgress
+from .preflight import PreflightWorker
+from .validation import Diagnostic, validate_all, validate_model, validate_schema

@@ -95,6 +95,60 @@ class TestModelConfig:
         model = self.model("model_1.json")
         assert model.schematic_size == [1900, 1450]
 
+    def test_update_geographic_crs(self):
+        """
+        Test the update_geographic_crs method.
+        """
+        model = self.model("model_1.json")
+        model.update_geographic_crs("EPSG:27700")
+        assert model.geographic_crs == "EPSG:27700"
+        assert model.has_changes is True
+
+    def test_missing_geographic_crs(self):
+        """
+        Tests that the geographic_crs prop returns the default CRS when this is not
+        available in the JSON file, and that reading the map config does not add the
+        map section to the model.
+        """
+        model = self.model("model_2.json")
+        assert model.geographic_crs == Constants.DEFAULT_GEOGRAPHIC_CRS.value
+        assert model.map_config[Constants.GIS_LAYERS_KEY.value] == []
+        assert Constants.MAP_KEY.value not in model.editor_config
+
+        # the section is created when a setting is changed
+        model.update_geographic_crs("EPSG:27700")
+        assert model.json["metadata"]["crs"] == "EPSG:27700"
+        assert "crs" not in model.editor_config.get(Constants.MAP_KEY.value, {})
+
+    def test_crs_in_metadata(self):
+        """
+        Tests that the CRS is read from the metadata, which takes priority over the
+        CRS stored in the map settings by older versions, and that updating it
+        removes the old key.
+        """
+        model = self.model("model_2.json")
+        model.editor_config[Constants.MAP_KEY.value] = {"crs": "EPSG:3857"}
+        assert model.geographic_crs == "EPSG:3857"
+
+        model.json["metadata"]["crs"] = "EPSG:27700"
+        assert model.geographic_crs == "EPSG:27700"
+
+        model.update_geographic_crs("EPSG:4326")
+        assert model.json["metadata"]["crs"] == "EPSG:4326"
+        assert "crs" not in model.editor_config[Constants.MAP_KEY.value]
+
+    def test_invalid_geographic_crs(self):
+        """
+        Tests that an invalid or non-string CRS falls back to the default one,
+        without overwriting the stored value.
+        """
+        model = self.model("model_2.json")
+        for crs in ["not a crs", 4326, None, ["EPSG:4326"]]:
+            model.editor_config[Constants.MAP_KEY.value] = {"crs": crs}
+            assert model.geographic_crs == Constants.DEFAULT_GEOGRAPHIC_CRS.value
+            assert model.has_valid_geographic_crs is (crs is None)
+            assert model.editor_config[Constants.MAP_KEY.value]["crs"] == crs
+
     def test_validation_missing_props(self):
         """
         Tests that the model JSOn is filled with the missing keys.

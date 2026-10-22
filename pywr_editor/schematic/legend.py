@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from pywr_editor.node_shapes import get_node_icon, get_pixmap_from_type
 from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.widgets import ContextualMenu
 
 if TYPE_CHECKING:
     from .schematic import Schematic
@@ -99,6 +100,10 @@ class SchematicLegend(QFrame):
         self.setVisible(
             len(groups) > 0 and not self.schematic.editor_settings.are_legend_hidden
         )
+        # the minimap sits above the legend when both are on the right
+        minimap = getattr(self.schematic, "minimap", None)
+        if minimap is not None:
+            minimap.reposition()
 
     def _build_row(self, group: NodeTypeGroup) -> QWidget:
         """
@@ -128,11 +133,40 @@ class SchematicLegend(QFrame):
             )
         )
 
+        # right-click to change the colour and size of the node type
+        row.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        # noinspection PyUnresolvedReferences
+        row.customContextMenuRequested.connect(
+            lambda pos, g=group, r=row: self._on_row_menu(g, r, pos)
+        )
+        row.setToolTip("Right-click to change the colour and size of these nodes")
+
         row_layout.addWidget(icon_label)
         row_layout.addWidget(text_label, 1)
         row_layout.addWidget(checkbox)
 
         return row
+
+    def _on_row_menu(self, group: NodeTypeGroup, row: QWidget, pos) -> None:
+        """
+        Opens the context menu of a legend row.
+        :param group: The node type group.
+        :param row: The row widget.
+        :param pos: The position, in row coordinates.
+        :return: None
+        """
+        if self.schematic.app.is_model_running:
+            return
+        menu = ContextualMenu()
+        menu.set_title(group["label"])
+        action = menu.addAction("Colour and size...")
+        # noinspection PyUnresolvedReferences
+        action.triggered.connect(
+            lambda *args: self.schematic.show_node_type_style_dialog(
+                group["type"], group["label"]
+            )
+        )
+        menu.exec(row.mapToGlobal(pos))
 
     def toggle(self) -> None:
         """

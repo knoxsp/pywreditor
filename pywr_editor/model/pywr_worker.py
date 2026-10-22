@@ -1,7 +1,10 @@
+import importlib
+import site
 import sys
 import traceback
 from enum import Enum
 from io import StringIO
+from pathlib import Path
 from typing import TypedDict
 
 import pandas as pd
@@ -10,7 +13,89 @@ from pandas import Timestamp
 from PySide6.QtCore import QMutex, QObject, QWaitCondition, Signal
 from pywr.model import Model
 
+from pywr_editor.model.results import export_results
 from pywr_editor.utils import Logging
+
+
+def add_python_paths(paths: list[str]) -> list[str]:
+    """
+    Makes the folders importable. A virtual environment (or any folder containing
+    a "site-packages" folder) is added through its site-packages folder.
+    :param paths: The folders to add.
+    :return: The folders that were added to sys.path.
+    """
+    added = []
+    for path in paths:
+        folder = Path(path).expanduser()
+        if not folder.is_dir():
+            continue
+        # Linux/macOS: lib/pythonX.Y/site-packages. Windows: Lib/site-packages. Only
+        # the running Python version is used, as packages are not portable
+        version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        site_dirs = [
+            d
+            for d in [
+                folder / "lib" / version / "site-packages",
+                folder / "Lib" / "site-packages",
+                folder / "site-packages",
+            ]
+            if d.is_dir()
+        ]
+        for d in site_dirs or [folder]:
+            if str(d) not in sys.path:
+                if site_dirs:
+                    # also processes .pth files
+                    site.addsitedir(str(d))
+                else:
+                    sys.path.insert(0, str(d))
+                added.append(str(d))
+    return added
+
+
+def apply_solver(model_dict: dict, solver: str | None) -> dict:
+    """
+    Sets the solver in the model dictionary if the model does not set its own.
+    :param model_dict: The model dictionary.
+    :param solver: The solver name (e.g. "glpk-edge").
+    :return: The dictionary to load. This is a copy if the solver is set, as the
+    dictionary is owned by the editor.
+    """
+    if solver and "solver" not in model_dict:
+        return {**model_dict, "solver": {"name": solver}}
+    return model_dict
+
+
+def load_pywr_model(
+    model_dict: dict,
+    model_file: str,
+    python_paths: list[str] | None = None,
+    python_modules: list[str] | None = None,
+    logger=None,
+) -> Model:
+    """
+    Loads the model with pywr. This is used to run the model and to check that it
+    loads before running it.
+    :param model_dict: The model dictionary, with the solver already set.
+    :param model_file: The absolute path to the model file, used by pywr to resolve
+    relative files.
+    :param python_paths: Folders or virtual environments to add to the Python
+    search path so that custom components can be imported.
+    :param python_modules: Modules imported before the model is loaded, so that
+    the custom components they define are registered with Pywr.
+    :param logger: The logger.
+    :return: The pywr model. Any exception is raised.
+    """
+    added = add_python_paths(python_paths or [])
+    if added and logger:
+        logger.debug(f"Added to the Python path: {added}")
+    for module in python_modules or []:
+        # accept a file name such as "parameters.py"
+        module = module.strip().removesuffix(".py")
+        if logger:
+            logger.debug(f"Importing module {module}")
+        importlib.import_module(module)
+    # noinspection PyArgumentList
+    return Model.load(data=model_dict, path=model_file)
 
 
 class RunMode(Enum):
@@ -59,6 +144,10 @@ class PywrWorker(QObject):
     """ Signal emitted when the run-to date is reached """
     end_date_reached = Signal()
     """ Signal emitted when the end date is reached """
+    results_saved = Signal(str)
+    """ Signal emitted with the folder of the results, when they have been saved """
+    results_error = Signal(str)
+    """ Signal emitted when the results cannot be saved """
 
     def __init__(
         self,
@@ -66,6 +155,10 @@ class PywrWorker(QObject):
         model_file: str,
         end_date: pd.Timestamp,
         run_to_date: pd.Timestamp,
+        python_paths: list[str] | None = None,
+        python_modules: list[str] | None = None,
+        solver: str | None = None,
+        results_dir: str | None = None,
     ):
         """
         Initialises the worker to run the pywr model.
@@ -74,12 +167,27 @@ class PywrWorker(QObject):
         to let pywr resolve relative files in the JSON file.
         :param end_date: The end date of the run.
         :param run_to_date: The run-to date.
+        :param python_paths: Folders or virtual environments to add to the Python
+        search path so that custom parameters, nodes and recorders can be imported.
+        :param python_modules: Modules imported before the model is loaded, so that
+        the custom components they define are registered with Pywr.
+        :param solver: The solver name (e.g. "glpk-edge"). It is only used when the
+        model does not set its own "solver" key.
+        :param results_dir: The folder where the recorder results are saved, in a
+        timestamped subfolder, when the run ends or is stopped. Results are not
+        saved if None.
         """
         super().__init__()
         self.logger = Logging().logger(self.__class__.__name__)
         self.logger.debug("Init thread")
         self.end_date = end_date
         self.run_to_date = run_to_date
+        self.python_paths = python_paths or []
+        self.python_modules = python_modules or []
+        self.results_dir = results_dir
+        self._run_failed = False
+        self._last_index: int | None = None
+        model_dict = apply_solver(model_dict, solver)
 
         self.mode: RunMode | None = None
         self.model_config = model_dict
@@ -103,12 +211,16 @@ class PywrWorker(QObject):
         try:
             self.logger.debug(f"Loading model. Using pywr-{pywr.__version__}")
             self.status_update.emit("Loading model")
-            # noinspection PyArgumentList
-            self.pywr_model: Model = Model.load(
-                data=self.model_config, path=self.model_file
+            self.pywr_model: Model = load_pywr_model(
+                self.model_config,
+                self.model_file,
+                self.python_paths,
+                self.python_modules,
+                self.logger,
             )
             # noinspection PyUnresolvedReferences
             last_index = len(self.pywr_model.timestepper) - 1
+            self._last_index = last_index
         except Exception:
             e = traceback.format_exc()
             self.logger.debug(f"Pywr failed to load because: {e}")
@@ -156,6 +268,7 @@ class PywrWorker(QObject):
                     )
                     self.logger.debug(f"Pywr failed to step because: {e}")
                     self.model_error.emit(e)
+                    self._run_failed = True
                     self.finished.emit()
                     # exit worker loop
                     break
@@ -209,6 +322,7 @@ class PywrWorker(QObject):
                         )
                         self.logger.debug(f"Pywr failed to step because: {e}")
                         self.model_error.emit(e)
+                        self._run_failed = True
                         self.finished.emit()
                         failed = True
                         break
@@ -242,11 +356,44 @@ class PywrWorker(QObject):
                 if self.mode == RunMode.RUN_TO and current_timestep.index <= last_index:
                     self.pause()
 
+        self.save_results(current_timestep)
+
         # do not force a garbage collection from this thread: it can destroy Qt
         # objects outside the GUI thread and crash the application
         del self.pywr_model
         self.finished.emit()
         self.pywr_model = None
+
+    def save_results(self, current_timestep) -> None:
+        """
+        Saves the recorders of the model to a timestamped folder. Nothing is saved if
+        no output folder is set, the model failed or it did not run any timestep.
+        :param current_timestep: The last timestep run by the model.
+        :return: None
+        """
+        if (
+            not self.results_dir
+            or self.pywr_model is None
+            or current_timestep is None
+            or self._run_failed
+        ):
+            return
+        # noinspection PyBroadException
+        try:
+            self.status_update.emit("Saving results")
+            run_dir = export_results(
+                self.pywr_model,
+                self.results_dir,
+                model_file=self.model_file,
+                completed=self._last_index is not None
+                and current_timestep.index >= self._last_index,
+            )
+            self.logger.debug(f"Results saved to {run_dir}")
+            self.results_saved.emit(str(run_dir))
+        except Exception:
+            e = traceback.format_exc()
+            self.logger.debug(f"Results could not be saved because: {e}")
+            self.results_error.emit(e)
 
     def pause(self) -> None:
         """

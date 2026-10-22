@@ -1,0 +1,11 @@
+{
+  "generator": "pywr-v1-schema json_schema::model_schema",
+  "pywr_v1_schema_version": "0.25.1",
+  "pywr_v1_schema_commit": "71b3dca",
+  "target_pywr_version": "1.23.0",
+  "dialect": "https://json-schema.org/draft/2020-12/schema",
+  "files": {
+    "pywr-v1-model.schema.json": "CustomTypes::Any (lenient)",
+    "pywr-v1-model-strict.schema.json": "CustomTypes::NonCoreOnly (strict)"
+  }
+}

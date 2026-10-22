@@ -16,7 +16,7 @@
       "max_volume": 35,
       "initial_volume": 35,
       "position": {
-        "editor_position": [
+        "schematic": [
           200,
           500
         ]
@@ -26,7 +26,7 @@
       "name": "Link",
       "type": "Link",
       "position": {
-        "editor_position": [
+        "schematic": [
           1000,
           300
         ]

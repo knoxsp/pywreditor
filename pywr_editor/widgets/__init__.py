@@ -10,6 +10,7 @@ from .push_icon_button import PushIconButton
 from .spin_box import SpinBox
 from .table_view import TableView
 from .table_widget import TableWidget
+from .data_grid import DataGridModel, DataGridView
 from .toggle_switch_widget import ToggleSwitchWidget
 from .parameter_icon import ParameterIcon
 from .recorder_icon import RecorderIcon

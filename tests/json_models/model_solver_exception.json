@@ -22,7 +22,7 @@
       "type": "Input",
       "max_flow": 20,
       "position": {
-        "editor_position": [
+        "schematic": [
           400.0,
           300.0
         ]
@@ -33,7 +33,7 @@
       "type": "link",
       "min_flow": 1000,
       "position": {
-        "editor_position": [
+        "schematic": [
           288.0,
           208.0
         ]
@@ -44,7 +44,7 @@
       "type": "Output",
       "max_flow": 10,
       "position": {
-        "editor_position": [
+        "schematic": [
           504.0,
           161.0
         ]

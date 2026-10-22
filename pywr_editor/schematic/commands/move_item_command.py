@@ -44,12 +44,30 @@ class MoveItemCommand(QUndoCommand):
                 )
             elif isinstance(item, AbstractSchematicShape):
                 self.moved_item_configs.append(self.model_config.shapes.find(item.id))
-        self.prev_positions: list[tuple[float, float]] = []
+        # in the geographic view the nodes' geographic position is moved
+        self.is_geo_view = schematic.editor_settings.is_geo_view_enabled
+        self.prev_positions: list[tuple[float, float] | list[float] | None] = []
         self.updated_positions: list[tuple[float, float]] = []
 
         total_nodes = len(selected_items)
         suffix = "item" if total_nodes == 1 else "items"
         self.setText(f"moved {total_nodes} {suffix}")
+
+    def set_node_position(self, name: str, position: list[float] | None) -> None:
+        """
+        Sets the position of a node: its geographic position in the geographic
+        view, its schematic position otherwise.
+        :param name: The node name.
+        :param position: The position. None removes the geographic position.
+        :return: None
+        """
+        if self.is_geo_view:
+            self.model_config.nodes.set_geographic_position(
+                node_name=name, position=position
+            )
+            self.schematic.node_footprints.update(name)
+        else:
+            self.model_config.nodes.set_position(node_name=name, position=position)
 
     def redo(self) -> None:
         """
@@ -64,12 +82,17 @@ class MoveItemCommand(QUndoCommand):
                 else:
                     item = self.schematic.shape_items[config.id]
 
-                self.prev_positions.append(item.prev_position)
+                is_geo_node = self.is_geo_view and isinstance(config, NodeConfig)
+                self.prev_positions.append(
+                    item.prev_geographic if is_geo_node else item.prev_position
+                )
 
                 # store the new positions of any selected nodes as long as the
                 # items were moved
                 item.save_position_if_moved()
-                self.updated_positions.append(item.position)
+                self.updated_positions.append(
+                    item.prev_geographic if is_geo_node else item.position
+                )
             self.logger.debug(f"Moved {len(self.moved_item_configs)} items")
         # redo position after undo
         else:
@@ -77,9 +100,7 @@ class MoveItemCommand(QUndoCommand):
                 self.moved_item_configs, self.updated_positions
             ):
                 if isinstance(item_config, NodeConfig):
-                    self.model_config.nodes.set_position(
-                        node_name=item_config.name, position=position
-                    )
+                    self.set_node_position(item_config.name, position)
                     self.logger.debug(
                         f"Moved node '{item_config.name}' back to {position}"
                     )
@@ -101,9 +122,7 @@ class MoveItemCommand(QUndoCommand):
             self.moved_item_configs, self.prev_positions
         ):
             if isinstance(item_config, NodeConfig):
-                self.model_config.nodes.set_position(
-                    node_name=item_config.name, position=prev_position
-                )
+                self.set_node_position(item_config.name, prev_position)
                 self.logger.debug(
                     f"Restored position '{item_config.name}' to {prev_position}"
                 )
