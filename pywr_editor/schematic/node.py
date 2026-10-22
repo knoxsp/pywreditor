@@ -337,11 +337,11 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
 
     def mouseDoubleClickEvent(self, event) -> None:
         """
-        Edit node on double-click.
+        Shows the node data in the dockable node data panel on double-click.
         :param event: The event that triggered this.
         :return: None.
         """
-        self.on_edit_node()
+        self.on_show_node_data()
 
     def contextMenuEvent(
         self, event: PySide6.QtWidgets.QGraphicsSceneContextMenuEvent
@@ -474,6 +474,14 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
             parent=self.view.app,
         )
         dialog.show()
+
+    @Slot()
+    def on_show_node_data(self) -> None:
+        """
+        Shows the node configuration in the dockable node data panel.
+        :return: None
+        """
+        self.view.app.node_data_panel.show_node(self.name)
 
 
 class SchematicLabel(QGraphicsTextItem):
