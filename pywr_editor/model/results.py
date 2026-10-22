@@ -37,9 +37,7 @@ def default_output_dir(model_file: str | Path | None) -> Path:
     return Path.cwd() / DEFAULT_OUTPUT_FOLDER
 
 
-def resolve_output_dir(
-    configured: str | None, model_file: str | Path | None
-) -> Path:
+def resolve_output_dir(configured: str | None, model_file: str | Path | None) -> Path:
     """
     Returns the folder where the runs are saved.
     :param configured: The folder set by the user. A relative path is relative to
@@ -320,9 +318,7 @@ def envelope(frame: pd.DataFrame) -> pd.DataFrame:
     :return: A dataframe with a column for each of ENVELOPE_PERCENTILES.
     """
     values = np.nanpercentile(frame.to_numpy(dtype=float), ENVELOPE_PERCENTILES, axis=1)
-    return pd.DataFrame(
-        values.T, index=frame.index, columns=list(ENVELOPE_PERCENTILES)
-    )
+    return pd.DataFrame(values.T, index=frame.index, columns=list(ENVELOPE_PERCENTILES))
 
 
 def trace_statistics(frame: pd.DataFrame) -> pd.DataFrame:
@@ -330,6 +326,4 @@ def trace_statistics(frame: pd.DataFrame) -> pd.DataFrame:
     Returns the minimum, mean and maximum of each trace, used to find the traces of
     interest (for example the ones with the highest maximum).
     """
-    return pd.DataFrame(
-        {"min": frame.min(), "mean": frame.mean(), "max": frame.max()}
-    )
+    return pd.DataFrame({"min": frame.min(), "mean": frame.mean(), "max": frame.max()})

@@ -13,7 +13,13 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QUndoCommand, QUndoStack
+from PySide6.QtGui import (
+    QAction,
+    QGuiApplication,
+    QKeySequence,
+    QUndoCommand,
+    QUndoStack,
+)
 from PySide6.QtWidgets import QAbstractItemView, QInputDialog, QMenu, QTableView
 
 """
@@ -351,7 +357,9 @@ class DataGridView(QTableView):
         self.horizontalHeader().sectionDoubleClicked.connect(self._rename_column)
 
         # every edit rebuilds the model: keep the cursor and selection in place
-        self._saved_selection: tuple[tuple[int, int], list[tuple[int, int]]] | None = None
+        self._saved_selection: tuple[tuple[int, int], list[tuple[int, int]]] | None = (
+            None
+        )
         self.grid.modelAboutToBeReset.connect(self._save_selection)
         self.grid.modelReset.connect(self._restore_selection)
 
@@ -378,7 +386,9 @@ class DataGridView(QTableView):
                 run = (r, run[1], c)
                 continue
             if run:
-                selection.select(model.index(run[0], run[1]), model.index(run[0], run[2]))
+                selection.select(
+                    model.index(run[0], run[1]), model.index(run[0], run[2])
+                )
             run = (r, c, c)
         if run:
             selection.select(model.index(run[0], run[1]), model.index(run[0], run[2]))

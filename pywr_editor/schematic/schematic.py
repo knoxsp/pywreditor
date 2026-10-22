@@ -39,12 +39,8 @@ from pywr_editor.model import (
     RectangleShape,
     TextShape,
 )
+from pywr_editor.model.constants import UNCHANGED
 from pywr_editor.node_shapes import get_node_icon_classes
-from pywr_editor.schematic.layout import (
-    force_directed_layout,
-    infer_positions,
-    snap_to_grid,
-)
 from pywr_editor.schematic import (
     AbstractSchematicItem,
     AbstractSchematicShape,
@@ -64,7 +60,11 @@ from pywr_editor.schematic import (
     get_scaling_factor,
     units_to_factor,
 )
-from pywr_editor.model.constants import UNCHANGED
+from pywr_editor.schematic.layout import (
+    force_directed_layout,
+    infer_positions,
+    snap_to_grid,
+)
 from pywr_editor.style import Color, stylesheet_dict_to_str
 from pywr_editor.toolbar import LibraryPanel
 from pywr_editor.utils import Logging
@@ -73,13 +73,12 @@ from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
 from .legend import NodeTypeGroup, SchematicLegend
-from .minimap import SchematicMinimap
 from .map import (
     ATTRIBUTION,
     ATTRIBUTION_URL,
     MAX_ZOOM,
-    GeoTransform,
     FootprintItem,
+    GeoTransform,
     GisOverlay,
     NodeFootprints,
     Projector,
@@ -89,6 +88,7 @@ from .map import (
     is_map_item,
     looks_like_degrees,
 )
+from .minimap import SchematicMinimap
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -108,7 +108,8 @@ class Schematic(QGraphicsView):
     gis_layers_changed = Signal()
     """ Emitted when the GIS layers of the model were changed and drawn again """
     geo_view_changed = Signal(bool)
-    """ Emitted after the schematic switched to (True) or from (False) the geographic view """
+    """ Emitted after the schematic switched to (True) or from (False) the geographic
+    view """
     """ event emitted when a node is being connected to another """
     min_zoom = get_scaling_factor("zoom-out", 3)
     """ min zoom factor"""
@@ -673,7 +674,8 @@ class Schematic(QGraphicsView):
         """
         Transforms a node's geographic coordinates to scene coordinates, via Web
         Mercator. The transform is fitted to the extent of the nodes (see
-        GeoTransform), so one scene unit is not a fixed distance. The current view zoom (see scale_view()) provides the on-screen magnification.
+        GeoTransform), so one scene unit is not a fixed distance. The current view zoom
+        (see scale_view()) provides the on-screen magnification.
         :param lonlat: The [longitude, latitude] pair, in the model's configured
         geographic CRS.
         :return: The transformed [x, y] scene coordinates. The centre of the
@@ -803,9 +805,7 @@ class Schematic(QGraphicsView):
                     continue
                 candidate_result = count_outside_area_of_use(candidate, positions)
                 if candidate_result is not None and candidate_result[0] == 0:
-                    messages.append(
-                        f"The positions fit {candidate}: set it as the CRS"
-                    )
+                    messages.append(f"The positions fit {candidate}: set it as the CRS")
                     break
         if looks_like_degrees(crs, positions):
             messages.append(
@@ -1074,7 +1074,9 @@ class Schematic(QGraphicsView):
         for node_props in self.model_config.nodes.get_all():
             name = node_props["name"]
             names.append(name)
-            point = self.geo_point(self.model_config.nodes.node(node_props).geographic_position)
+            point = self.geo_point(
+                self.model_config.nodes.node(node_props).geographic_position
+            )
             if point is not None:
                 known[name] = point
         missing = [name for name in names if name not in known]
@@ -1097,9 +1099,7 @@ class Schematic(QGraphicsView):
         for name, (x, y) in inferred.items():
             lon_lat = self.geo_projector.merc_to_lonlat(x, y)
             positions[name] = [round(lon_lat[0], 6), round(lon_lat[1], 6)]
-        self.app.undo_stack.push(
-            LayoutNodesCommand(self, positions, geographic=True)
-        )
+        self.app.undo_stack.push(LayoutNodesCommand(self, positions, geographic=True))
         unplaced = len(missing) - len(positions)
         self.app.statusBar().showMessage(
             f"Estimated the position of {len(positions)} nodes"
@@ -1615,9 +1615,7 @@ class Schematic(QGraphicsView):
         :param size: The size factor. None removes the size, UNCHANGED keeps it.
         :return: None
         """
-        self.app.undo_stack.push(
-            SetNodeTypeStyleCommand(self, node_type, color, size)
-        )
+        self.app.undo_stack.push(SetNodeTypeStyleCommand(self, node_type, color, size))
 
     def refresh_edge_visibility(self) -> None:
         """

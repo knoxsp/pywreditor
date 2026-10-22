@@ -38,9 +38,9 @@ class TestGeoViewToggle:
     def test_toggle_geo_view(self, qtbot, init_window):
         """
         Tests that enabling the geographic view plots the nodes with a geographic
-        position by that position, places nodes without one at a default location (showing the warning
-        banner), persists the setting, and
-        that toggling back restores the schematic view.
+        position by that position, places nodes without one at a default location
+        (showing the warning banner), persists the setting, and that toggling back
+        restores the schematic view.
         """
         window, schematic, display_panel = init_window
         initial_json = copy.deepcopy(window.model_config.json)

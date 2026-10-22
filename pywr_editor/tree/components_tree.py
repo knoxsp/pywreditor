@@ -127,7 +127,12 @@ class ComponentsTree(QTreeWidget):
         """
         return isinstance(
             item,
-            (TreeWidgetNode, TreeWidgetParameterName, TreeWidgetRecorderName, TreeWidgetTable),
+            (
+                TreeWidgetNode,
+                TreeWidgetParameterName,
+                TreeWidgetRecorderName,
+                TreeWidgetTable,
+            ),
         )
 
     @staticmethod

@@ -1,9 +1,8 @@
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import PySide6
 from PySide6.QtCore import Qt, Slot
-from pathlib import Path
-
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QVBoxLayout, QWidget
 
 from pywr_editor.form import FormTitle
@@ -177,7 +176,9 @@ class TablePage(QWidget):
                 )
                 return
             stem = Path(self.model.json_file).stem
-            safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in self.name)
+            safe_name = "".join(
+                c if c.isalnum() or c in " -_" else "_" for c in self.name
+            )
             file = Path(model_path) / f"{stem}_tables" / f"{safe_name.strip()}.csv"
             if file.exists():
                 QMessageBox.warning(

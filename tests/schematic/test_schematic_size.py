@@ -121,9 +121,7 @@ class TestSchematicResize:
         "action, n",
         [("decrease-width", 100), ("decrease-height", 100)],
     )
-    def test_decrease_button_floor(
-        self, qtbot, resize, init_window, action, n
-    ) -> None:
+    def test_decrease_button_floor(self, qtbot, resize, init_window, action, n) -> None:
         """
         Tests that decreasing the schematic size repeatedly stops at a minimum
         floor (max_view_size_delta), and that the button stays enabled at that

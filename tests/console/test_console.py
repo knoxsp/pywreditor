@@ -2,7 +2,6 @@ import json
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 from pywr.model import Model
@@ -110,7 +109,9 @@ def test_startup_applies_python_paths_and_modules(tmp_path, model_file):
 
 def test_startup_reports_a_failing_module(tmp_path, model_file):
     out = run_startup(
-        tmp_path, model_file, "print('MODEL', model is not None)",
+        tmp_path,
+        model_file,
+        "print('MODEL', model is not None)",
         python_modules=["not_a_module"],
     )
     assert "Cannot import the module 'not_a_module'" in out
