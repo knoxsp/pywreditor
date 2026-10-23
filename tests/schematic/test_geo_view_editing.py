@@ -433,7 +433,7 @@ def test_polygon_footprint(qtbot, tmp_path):
 
 def test_polygon_footprint_is_clickable(qtbot, tmp_path):
     """Clicking the polygon of a node selects the node."""
-    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
 
     with open(BASE_MODEL) as fp:

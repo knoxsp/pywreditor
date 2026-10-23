@@ -4,7 +4,7 @@ import traceback
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from pywr_editor.model.pywr_worker import apply_solver, load_pywr_model
+from pywr_editor.model.pywr_worker import apply_solver, load_pywr_model, release_solver
 from pywr_editor.utils import Logging
 
 """
@@ -52,6 +52,7 @@ class PreflightWorker(QObject):
         """
         start = time.perf_counter()
         error = None
+        model = None
         # noinspection PyBroadException
         try:
             model = load_pywr_model(
@@ -65,5 +66,9 @@ class PreflightWorker(QObject):
         except Exception:
             error = traceback.format_exc()
             self.logger.debug(f"Preflight failed because: {error}")
+        finally:
+            # free the solver in this thread (see release_solver)
+            release_solver(model)
+            model = None
         # noinspection PyUnresolvedReferences
         self.finished.emit(error, time.perf_counter() - start)

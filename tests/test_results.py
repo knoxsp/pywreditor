@@ -8,8 +8,8 @@ from pywr.model import Model
 from pywr_editor.model.results import (
     ResultsRun,
     choose_plot_mode,
-    default_ticked,
     default_output_dir,
+    default_ticked,
     envelope,
     export_results,
     list_runs,
@@ -183,7 +183,6 @@ class TestResultsDialog:
 
 def test_full_run_saves_results_and_opens_viewer(qtbot, tmp_path):
     from PySide6.QtCore import Qt
-    from PySide6.QtTest import QSignalSpy
 
     from pywr_editor import MainWindow
     from pywr_editor.toolbar.run_controls.run_widget import RunWidget
@@ -200,7 +199,6 @@ def test_full_run_saves_results_and_opens_viewer(qtbot, tmp_path):
     window.editor_settings.save_results_enabled(True)
     run_widget = window.findChild(RunWidget)
     qtbot.mouseClick(run_widget.run_button, Qt.MouseButton.LeftButton)
-    spy = QSignalSpy(run_widget.worker.results_saved)
     qtbot.waitUntil(lambda: run_widget.last_results_dir is not None, timeout=20000)
 
     # default location: "outputs" next to the model

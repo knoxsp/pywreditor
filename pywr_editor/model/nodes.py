@@ -75,13 +75,9 @@ class Nodes:
 
         schematic_key = Constants.POSITION_KEY.value
         if "position" in self.model.json["nodes"][node_index]:
-            self.model.json["nodes"][node_index]["position"][
-                schematic_key
-            ] = position
+            self.model.json["nodes"][node_index]["position"][schematic_key] = position
         else:
-            self.model.json["nodes"][node_index]["position"] = {
-                schematic_key: position
-            }
+            self.model.json["nodes"][node_index]["position"] = {schematic_key: position}
 
         self.model.has_changed()
         return self.model.json["nodes"][node_index]
@@ -175,7 +171,9 @@ class Nodes:
         :param position: The new [x, y] centroid.
         :return: None
         """
-        centroid = NodeConfig({"position": {"geographic": geometry}}).geographic_position
+        centroid = NodeConfig(
+            {"position": {"geographic": geometry}}
+        ).geographic_position
         if centroid is None:
             return
         dx, dy = position[0] - centroid[0], position[1] - centroid[1]
@@ -292,7 +290,10 @@ class Nodes:
             new_node_dict["position"][
                 Constants.GEOGRAPHIC_KEY.value
             ] = node_obj.raw_geographic
-        for style_key in (Constants.NODE_COLOR_KEY.value, Constants.NODE_SIZE_KEY.value):
+        for style_key in (
+            Constants.NODE_COLOR_KEY.value,
+            Constants.NODE_SIZE_KEY.value,
+        ):
             if style_key in node_obj.props.get("position", {}):
                 new_node_dict["position"][style_key] = node_obj.props["position"][
                     style_key

@@ -51,7 +51,9 @@ class TestMinimap:
         minimap = schematic.minimap
         minimap.repaint()
         before = minimap.view_rect().center()
-        QTest.mouseClick(minimap, Qt.MouseButton.LeftButton, pos=QPointF(15, 15).toPoint())
+        QTest.mouseClick(
+            minimap, Qt.MouseButton.LeftButton, pos=QPointF(15, 15).toPoint()
+        )
         after = minimap.view_rect().center()
         assert (before - after).manhattanLength() > 1
 

@@ -75,8 +75,10 @@ def force_directed_layout(
         temperature -= cooling
 
     pos += centre - pos.mean(axis=0)
-    return {name: [round(float(pos[i, 0]), 4), round(float(pos[i, 1]), 4)]
-            for name, i in index.items()}
+    return {
+        name: [round(float(pos[i, 0]), 4), round(float(pos[i, 1]), 4)]
+        for name, i in index.items()
+    }
 
 
 def snap_to_grid(
@@ -93,6 +95,7 @@ def snap_to_grid(
     grid = max(int(grid_size), 1)
     taken: set[tuple[int, int]] = set()
     snapped = {}
+
     # nodes closest to a grid point get it first
     def error(item):
         x, y = item[1]
@@ -153,7 +156,9 @@ def infer_positions(
         for name in frontier:
             for other in neighbours[name]:
                 if other not in current and other not in inferred:
-                    found.setdefault(other, []).append(current.get(name) or inferred[name])
+                    found.setdefault(other, []).append(
+                        current.get(name) or inferred[name]
+                    )
         frontier = []
         for name, points in found.items():
             inferred[name] = (
@@ -169,10 +174,14 @@ def infer_positions(
     for _ in range(iterations):
         largest_move = 0.0
         for name in list(inferred):
-            points = [position(n) for n in neighbours[name] if n in current or n in inferred]
+            points = [
+                position(n) for n in neighbours[name] if n in current or n in inferred
+            ]
             x = sum(p[0] for p in points) / len(points)
             y = sum(p[1] for p in points) / len(points)
-            largest_move = max(largest_move, abs(x - inferred[name][0]), abs(y - inferred[name][1]))
+            largest_move = max(
+                largest_move, abs(x - inferred[name][0]), abs(y - inferred[name][1])
+            )
             inferred[name] = (x, y)
         if largest_move < 1e-6:
             break

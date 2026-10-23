@@ -2,13 +2,7 @@ import html
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtWidgets import (
-    QGridLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QWidget,
-)
+from PySide6.QtWidgets import QGridLayout, QLabel, QLineEdit, QPushButton, QWidget
 
 from pywr_editor.schematic.map import crs_name, is_valid_crs
 from pywr_editor.style import Color

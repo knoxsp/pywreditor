@@ -629,7 +629,9 @@ class ModelConfig(QObject):
             style = {}
         color = style.get("color")
         return {
-            "color": color if isinstance(color, str) and color in Color.colors else None,
+            "color": (
+                color if isinstance(color, str) and color in Color.colors else None
+            ),
             "size": valid_node_size(style.get("size")),
         }
 

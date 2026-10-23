@@ -2,6 +2,7 @@ import os
 
 import pytest
 from PySide6.QtCore import QPointF
+from PySide6.QtWidgets import QApplication
 
 from pywr_editor import MainWindow
 from tests.utils import model_path, resolve_model_path
@@ -36,19 +37,20 @@ class TestSettings:
         config = window.editor_settings
         assert config.json_file is not None
 
-        # set new geometry, save it and restore it
-        new_geometry = (30, 30, 1200, 806)
-        window.setGeometry(*new_geometry)
+        # set new geometry, save it and restore it. The window manager may move or
+        # resize the window (the screen is small on CI machines), so the geometry
+        # size that is restored is the one the window had when it was saved
+        window.setGeometry(30, 30, 1200, 806)
+        QApplication.processEvents()
+        saved_geometry = window.geometry()
         config.save_window_attributes(window)
+        window.setGeometry(100, 100, 700, 500)
         config.restore_window_attributes(window)
 
-        geometry = window.geometry()
-        assert (
-            geometry.x() == new_geometry[0]
-            and geometry.y() == new_geometry[1]
-            and geometry.width() == new_geometry[2]
-            and geometry.height() == new_geometry[3]
-        )
+        # the window manager may move the window or reduce its height to fit the screen
+        # (for example for the taskbar) when the geometry is restored
+        assert window.geometry().width() == saved_geometry.width()
+        assert window.geometry().height() != 500
 
     def test_save_data_no_file(self, qtbot):
         """

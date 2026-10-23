@@ -12,6 +12,7 @@
  The names defined here are available in the console. The model is loaded by the
  first call to reload_model(), made by the editor once the console is connected.
 """
+
 import copy as _copy
 import importlib as _importlib
 import json as _json
@@ -176,4 +177,3 @@ def results(run=None):
         return Results(available[0])
     path = _Path(run)
     return Results(path if path.is_absolute() else _Path(output_dir) / path)
-

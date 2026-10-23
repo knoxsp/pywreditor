@@ -151,9 +151,15 @@ class NodeConfig(ComponentConfig):
         if geometry_type == "Point" and self._is_xy(coordinates):
             return [coordinates[0], coordinates[1]]
         if geometry_type == "Polygon":
-            ring = coordinates[0] if isinstance(coordinates, list) and coordinates else None
-            if isinstance(ring, list) and len(ring) > 0 and all(
-                self._is_xy(v) for v in ring
+            ring = (
+                coordinates[0]
+                if isinstance(coordinates, list) and coordinates
+                else None
+            )
+            if (
+                isinstance(ring, list)
+                and len(ring) > 0
+                and all(self._is_xy(v) for v in ring)
             ):
                 return self.polygon_centroid(ring)
         return None
@@ -174,7 +180,9 @@ class NodeConfig(ComponentConfig):
         return [
             ring
             for ring in coordinates
-            if isinstance(ring, list) and len(ring) > 2 and all(self._is_xy(v) for v in ring)
+            if isinstance(ring, list)
+            and len(ring) > 2
+            and all(self._is_xy(v) for v in ring)
         ]
 
     @staticmethod

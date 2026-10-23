@@ -16,7 +16,10 @@ def test_layout_pushes_stacked_nodes_apart():
 
     assert len({tuple(p) for p in result.values()}) == 4
     # connected nodes are closer than the ends of the chain
-    dist = lambda a, b: sum((x - y) ** 2 for x, y in zip(result[a], result[b]))
+
+    def dist(a, b):
+        return sum((x - y) ** 2 for x, y in zip(result[a], result[b]))
+
     assert dist("a", "b") < dist("a", "d")
     # centred on the initial centre
     assert sum(p[0] for p in result.values()) / 4 == pytest.approx(400, abs=0.1)
@@ -94,7 +97,6 @@ class TestSelectionBox:
         QTest.mouseMove(viewport, end)
         QTest.mouseRelease(viewport, Qt.LeftButton, Qt.ShiftModifier, end)
         assert len(schematic.scene.selectedItems()) > 1
-
 
     def test_layout_snaps_to_grid(self, qtbot, tmp_path):
         with open(resolve_model_path("model_geographic_positions.json")) as fp:

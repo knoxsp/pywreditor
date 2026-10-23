@@ -115,7 +115,7 @@ class AbstractColumnsSelectorWidget(FormWidget):
             self.field.set_warning("The table does not contain any column")
             self.logger.debug("Keeping field disabled with warning")
         else:
-            self.logger.debug(f"Filling field with: {', '.join(map(str,columns))}")
+            self.logger.debug(f"Filling field with: {', '.join(map(str, columns))}")
             # noinspection PyTypeChecker
             url_form_widget: "UrlWidget" = self.form.fields["url"].widget
             # H5 files already contain DataFrame object (index is already set and
@@ -191,7 +191,7 @@ class AbstractColumnsSelectorWidget(FormWidget):
             selected_col_name = value
         else:
             self.logger.debug(
-                f"Found the following columns: {', '.join(map(str,columns))}"
+                f"Found the following columns: {', '.join(map(str, columns))}"
             )
 
             # for H5 file, use the built-in index as it does not come form index_col key
