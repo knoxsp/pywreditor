@@ -47,8 +47,10 @@ class TestSettings:
         window.setGeometry(100, 100, 700, 500)
         config.restore_window_attributes(window)
 
-        # the position may be moved to fit the screen when it is restored
-        assert window.geometry().size() == saved_geometry.size()
+        # the window manager may move the window or reduce its height to fit the screen
+        # (for example for the taskbar) when the geometry is restored
+        assert window.geometry().width() == saved_geometry.width()
+        assert window.geometry().height() != 500
 
     def test_save_data_no_file(self, qtbot):
         """
