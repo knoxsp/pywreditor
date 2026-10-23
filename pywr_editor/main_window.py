@@ -15,12 +15,7 @@ from PySide6.QtGui import (
     Qt,
     QUndoStack,
 )
-from PySide6.QtWidgets import (
-    QDockWidget,
-    QFileDialog,
-    QMainWindow,
-    QMessageBox,
-)
+from PySide6.QtWidgets import QDockWidget, QFileDialog, QMainWindow, QMessageBox
 
 from pywr_editor.console import ConsolePanel
 from pywr_editor.dialogs import (
@@ -28,18 +23,18 @@ from pywr_editor.dialogs import (
     EdgeSlotsDialog,
     GisLayersDialog,
     IncludesDialog,
-    PythonPathsDialog,
-    ResultsDialog,
     JsonCodeViewer,
     MetadataDialog,
     NodeDataPanel,
     ParametersDialog,
-    ValidationDialog,
+    PythonPathsDialog,
     RecordersDialog,
+    ResultsDialog,
     ScenariosDialog,
     SearchDialog,
     StartScreen,
     TablesDialog,
+    ValidationDialog,
 )
 from pywr_editor.model import ModelConfig
 from pywr_editor.schematic import Schematic, get_scaling_factor
@@ -48,8 +43,8 @@ from pywr_editor.toolbar import (
     AppearanceSettings,
     GridSettings,
     MapSettings,
-    RunSettings,
     ModelNavigationSettings,
+    RunSettings,
     RunWidget,
     SchematicItemsLibrary,
     ToolbarWidget,

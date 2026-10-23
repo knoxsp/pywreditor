@@ -1,7 +1,6 @@
 import json
 
 from pywr_editor.model import pywr_data
-from pywr_editor.model.pywr_data import PywrData
 from pywr_editor.model.pywr_parameters_data import PywrParametersData
 from pywr_editor.model.pywr_recorders_data import PywrRecordersData
 
@@ -12,7 +11,9 @@ class TestPywrDataCache:
         calls = []
         real_loads = json.loads
         monkeypatch.setattr(
-            pywr_data.json, "loads", lambda *a, **k: calls.append(1) or real_loads(*a, **k)
+            pywr_data.json,
+            "loads",
+            lambda *a, **k: calls.append(1) or real_loads(*a, **k),
         )
         for _ in range(50):
             PywrParametersData()
@@ -42,10 +43,13 @@ class TestPywrDataCache:
         data.humanise_name("constant")
         data.names, data.classes, data.values
         assert json.dumps([data.key_lookup, data.data], sort_keys=True) == before
-        assert json.dumps(
-            [PywrParametersData().key_lookup, PywrParametersData().data],
-            sort_keys=True,
-        ) == before
+        assert (
+            json.dumps(
+                [PywrParametersData().key_lookup, PywrParametersData().data],
+                sort_keys=True,
+            )
+            == before
+        )
 
     def test_data_sorted_by_key(self):
         data = PywrParametersData()

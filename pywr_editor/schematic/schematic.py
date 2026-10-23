@@ -1,3 +1,4 @@
+import html
 import inspect
 import math
 from typing import TYPE_CHECKING, Literal, Sequence, Union
@@ -39,12 +40,8 @@ from pywr_editor.model import (
     RectangleShape,
     TextShape,
 )
+from pywr_editor.model.constants import UNCHANGED
 from pywr_editor.node_shapes import get_node_icon_classes
-from pywr_editor.schematic.layout import (
-    force_directed_layout,
-    infer_positions,
-    snap_to_grid,
-)
 from pywr_editor.schematic import (
     AbstractSchematicItem,
     AbstractSchematicShape,
@@ -64,7 +61,11 @@ from pywr_editor.schematic import (
     get_scaling_factor,
     units_to_factor,
 )
-from pywr_editor.model.constants import UNCHANGED
+from pywr_editor.schematic.layout import (
+    force_directed_layout,
+    infer_positions,
+    snap_to_grid,
+)
 from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.toolbar import LibraryPanel
 from pywr_editor.utils import Logging
@@ -73,13 +74,12 @@ from .canvas import SchematicCanvas
 from .connecting_node_props import ConnectingNodeProps
 from .edge import Edge, TempEdge
 from .legend import NodeTypeGroup, SchematicLegend
-from .minimap import SchematicMinimap
 from .map import (
     ATTRIBUTION,
     ATTRIBUTION_URL,
     MAX_ZOOM,
-    GeoTransform,
     FootprintItem,
+    GeoTransform,
     GisOverlay,
     NodeFootprints,
     Projector,
@@ -89,6 +89,7 @@ from .map import (
     is_map_item,
     looks_like_degrees,
 )
+from .minimap import SchematicMinimap
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -108,10 +109,13 @@ class Schematic(QGraphicsView):
     gis_layers_changed = Signal()
     """ Emitted when the GIS layers of the model were changed and drawn again """
     geo_view_changed = Signal(bool)
-    """ Emitted after the schematic switched to (True) or from (False) the geographic view """
+    """ Emitted after the schematic switched to (True) or from (False) the geographic
+    view """
     """ event emitted when a node is being connected to another """
     min_zoom = get_scaling_factor("zoom-out", 3)
     """ min zoom factor"""
+    max_listed_nodes = 3
+    """ The maximum number of node names listed in the geographic view warnings """
     max_zoom = get_scaling_factor("zoom-in", 3)
     """ max zoom factor"""
     shape_class_map = {
@@ -244,6 +248,9 @@ class Schematic(QGraphicsView):
                 }
             )
         )
+        self.geo_view_banner.setTextFormat(Qt.TextFormat.RichText)
+        self.geo_view_banner.setOpenExternalLinks(False)
+        self.geo_view_banner.linkActivated.connect(self.on_geo_banner_link)
         self.geo_view_banner.hide()
         self.overlay_layout.addWidget(
             self.geo_view_banner,
@@ -691,7 +698,8 @@ class Schematic(QGraphicsView):
         """
         Transforms a node's geographic coordinates to scene coordinates, via Web
         Mercator. The transform is fitted to the extent of the nodes (see
-        GeoTransform), so one scene unit is not a fixed distance. The current view zoom (see scale_view()) provides the on-screen magnification.
+        GeoTransform), so one scene unit is not a fixed distance. The current view zoom
+        (see scale_view()) provides the on-screen magnification.
         :param lonlat: The [longitude, latitude] pair, in the model's configured
         geographic CRS.
         :return: The transformed [x, y] scene coordinates. The centre of the
@@ -764,6 +772,69 @@ class Schematic(QGraphicsView):
             self._geo_projector = Projector(Constants.DEFAULT_GEOGRAPHIC_CRS.value)
         self._geo_transform = None
 
+    def nodes_without_geo_position(self) -> list[str]:
+        """
+        Returns the names of the nodes that do not have a valid geographic position.
+        These are placed at a default location in the geographic view.
+        :return: The node names.
+        """
+        names = []
+        for props in self.model_config.nodes.get_all():
+            node = self.model_config.nodes.node(props)
+            if self.geo_point(node.geographic_position) is None:
+                names.append(node.name)
+        return names
+
+    def missing_position_message(self) -> str | None:
+        """
+        Returns the warning about the nodes without a geographic position. This names
+        the nodes, up to a few, so they can be found.
+        :return: The message or None if all the nodes have a position.
+        """
+        names = self.nodes_without_geo_position()
+        if len(names) == 0:
+            return None
+
+        listed = ", ".join(f"'{name}'" for name in names[: self.max_listed_nodes])
+        if len(names) > self.max_listed_nodes:
+            listed += f" and {len(names) - self.max_listed_nodes} more"
+        noun = "node has" if len(names) == 1 else "nodes have"
+        return (
+            f"{len(names)} {noun} no geographic position ({listed}) - drag "
+            f"{'it' if len(names) == 1 else 'them'} into place"
+        )
+
+    @Slot(str)
+    def on_geo_banner_link(self, link: str) -> None:
+        """
+        Handles a link in the geographic view banner.
+        :param link: The link target.
+        :return: None
+        """
+        if link == "missing-nodes":
+            self.show_nodes_without_geo_position()
+
+    def show_nodes_without_geo_position(self) -> None:
+        """
+        Selects the nodes without a geographic position and centres the view on them.
+        :return: None
+        """
+        names = set(self.nodes_without_geo_position())
+        items = [
+            item
+            for item in self.items()
+            if isinstance(item, SchematicNode) and item.name in names
+        ]
+        if len(items) == 0:
+            return
+
+        self.scene.clearSelection()
+        bounds = QRectF()
+        for item in items:
+            item.setSelected(True)
+            bounds = bounds.united(item.sceneBoundingRect())
+        self.centerOn(bounds.center())
+
     def geo_view_messages(self) -> list[str]:
         """
         Returns the warnings to show in the banner of the geographic view.
@@ -779,17 +850,9 @@ class Schematic(QGraphicsView):
                 f"valid, {self.model_config.geographic_crs} is used instead"
             )
 
-        default_count = sum(
-            self.geo_point(self.model_config.nodes.node(props).geographic_position)
-            is None
-            for props in self.model_config.nodes.get_all()
-        )
-        if default_count > 0:
-            noun = "node has" if default_count == 1 else "nodes have"
-            messages.append(
-                f"{default_count} {noun} no geographic position - drag "
-                f"{'it' if default_count == 1 else 'them'} into place"
-            )
+        missing = self.missing_position_message()
+        if missing is not None:
+            messages.append(missing)
 
         return messages + self.crs_warnings()
 
@@ -821,9 +884,7 @@ class Schematic(QGraphicsView):
                     continue
                 candidate_result = count_outside_area_of_use(candidate, positions)
                 if candidate_result is not None and candidate_result[0] == 0:
-                    messages.append(
-                        f"The positions fit {candidate}: set it as the CRS"
-                    )
+                    messages.append(f"The positions fit {candidate}: set it as the CRS")
                     break
         if looks_like_degrees(crs, positions):
             messages.append(
@@ -843,7 +904,14 @@ class Schematic(QGraphicsView):
             self.geo_view_banner.hide()
             return
 
-        self.geo_view_banner.setText("\n".join(messages))
+        missing = self.missing_position_message()
+        lines = []
+        for message in messages:
+            line = html.escape(message)
+            if message == missing:
+                line += ' (<a href="missing-nodes">show</a>)'
+            lines.append(line)
+        self.geo_view_banner.setText("<br>".join(lines))
         self.geo_view_banner.show()
 
     @Slot()
@@ -1092,7 +1160,9 @@ class Schematic(QGraphicsView):
         for node_props in self.model_config.nodes.get_all():
             name = node_props["name"]
             names.append(name)
-            point = self.geo_point(self.model_config.nodes.node(node_props).geographic_position)
+            point = self.geo_point(
+                self.model_config.nodes.node(node_props).geographic_position
+            )
             if point is not None:
                 known[name] = point
         missing = [name for name in names if name not in known]
@@ -1115,9 +1185,7 @@ class Schematic(QGraphicsView):
         for name, (x, y) in inferred.items():
             lon_lat = self.geo_projector.merc_to_lonlat(x, y)
             positions[name] = [round(lon_lat[0], 6), round(lon_lat[1], 6)]
-        self.app.undo_stack.push(
-            LayoutNodesCommand(self, positions, geographic=True)
-        )
+        self.app.undo_stack.push(LayoutNodesCommand(self, positions, geographic=True))
         unplaced = len(missing) - len(positions)
         self.app.statusBar().showMessage(
             f"Estimated the position of {len(positions)} nodes"
@@ -1633,9 +1701,7 @@ class Schematic(QGraphicsView):
         :param size: The size factor. None removes the size, UNCHANGED keeps it.
         :return: None
         """
-        self.app.undo_stack.push(
-            SetNodeTypeStyleCommand(self, node_type, color, size)
-        )
+        self.app.undo_stack.push(SetNodeTypeStyleCommand(self, node_type, color, size))
 
     def refresh_edge_visibility(self) -> None:
         """

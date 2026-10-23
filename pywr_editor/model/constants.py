@@ -33,7 +33,7 @@ class Constants(Enum):
     NODE_SIZE_KEY = "node_size"
     """ key defying where to store the scale factor of the node symbol """
     NODE_TYPES_KEY = "node_types"
-    """ key in editor's setting dictionary where to store the style of the node types """
+    """ key in editor's settings where to store the style of the node types """
     EDGE_COLOR_KEY = "edge_color"
     """ key defying where to store the style describing the edge colour """
     CUSTOM_NODE_GROUP_NAME = "Custom"

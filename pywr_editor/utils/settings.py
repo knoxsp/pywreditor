@@ -42,6 +42,11 @@ class Settings:
     python_modules_key = "python/modules"
     console_python_key = "console/python"
 
+    storage_format = QSettings.Format.NativeFormat
+    """ Where the settings are stored: the registry on Windows, a property list on
+    macOS and an ini file on Linux. The tests use ini files, as only these can be
+    redirected to a temporary folder """
+
     def __init__(self, json_file: str | None = None):
         """
         Initialises the class.
@@ -72,7 +77,12 @@ class Settings:
         Returns the settings instance.
         :returns The QSettings object.
         """
-        return QSettings(self.org_name, self.app_name)
+        return QSettings(
+            self.storage_format,
+            QSettings.Scope.UserScope,
+            self.org_name,
+            self.app_name or "",
+        )
 
     @property
     def global_instance(self) -> QSettings:
@@ -80,7 +90,9 @@ class Settings:
         Returns the settings instance. This is not connected to the model file.
         :returns The QSettings object.
         """
-        return QSettings(self.org_name)
+        return QSettings(
+            self.storage_format, QSettings.Scope.UserScope, self.org_name, ""
+        )
 
     @property
     def theme(self) -> str:
@@ -133,9 +145,7 @@ class Settings:
         qsettings = self.instance
 
         window.restoreGeometry(qsettings.value("window/geometry"))
-        window.restoreState(
-            qsettings.value("window/state"), self.window_state_version
-        )
+        window.restoreState(qsettings.value("window/state"), self.window_state_version)
         for widget in self.store_geometry_widget:
             w = getattr(window, widget)
             w.restoreGeometry(qsettings.value(f"{widget}/geometry"))

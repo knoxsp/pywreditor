@@ -99,9 +99,7 @@ class TraceModel(QAbstractTableModel):
         self.stats = pd.DataFrame()
         self.ticked: set[tuple[str, int]] = set()
 
-    def set_traces(
-        self, traces: list[Trace], stats: pd.DataFrame, ticked: set
-    ) -> None:
+    def set_traces(self, traces: list[Trace], stats: pd.DataFrame, ticked: set) -> None:
         self.beginResetModel()
         self.traces = traces
         self.stats = stats
@@ -221,9 +219,7 @@ class ResultsDialog(QDialog):
         # noinspection PyUnresolvedReferences
         self.filter.textChanged.connect(self.apply_recorder_filter)
         self.recorder_list = QListWidget()
-        self.recorder_list.setSelectionMode(
-            QListWidget.SelectionMode.ExtendedSelection
-        )
+        self.recorder_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         # noinspection PyUnresolvedReferences
         self.recorder_list.itemSelectionChanged.connect(self.schedule_update)
         self.recorder_count = QLabel()
@@ -320,14 +316,22 @@ class ResultsDialog(QDialog):
         self.trace_label = QLabel()
 
         buttons = [
-            ("First 20", f"Tick the first {MAX_INDIVIDUAL_TRACES} traces", self.tick_first),
+            (
+                "First 20",
+                f"Tick the first {MAX_INDIVIDUAL_TRACES} traces",
+                self.tick_first,
+            ),
             ("Tick shown", "Tick the traces matching the filter", self.tick_shown),
             (
                 "Tick highlighted",
                 "Tick the rows selected in the table",
                 self.tick_highlighted,
             ),
-            ("Top 20 by max", "Tick the 20 traces with the largest maximum", self.tick_top),
+            (
+                "Top 20 by max",
+                "Tick the 20 traces with the largest maximum",
+                self.tick_top,
+            ),
             ("Untick all", "Remove all the traces from the plot", self.untick_all),
         ]
         pick_buttons = QHBoxLayout()
@@ -501,8 +505,7 @@ class ResultsDialog(QDialog):
         finally:
             QApplication.restoreOverrideCursor()
         self.recorder_count.setText(
-            self.recorder_count.text().split(";")[0]
-            + f"; {len(names)} selected"
+            self.recorder_count.text().split(";")[0] + f"; {len(names)} selected"
         )
 
     def update_values_table(self, names: list[str]) -> None:
@@ -629,7 +632,10 @@ class ResultsDialog(QDialog):
             recorders = sorted({t.recorder for t in self.traces})
             # one band for each recorder, unless there are too many to read
             groups = (
-                {r: [t.label for t in self.traces if t.recorder == r] for r in recorders}
+                {
+                    r: [t.label for t in self.traces if t.recorder == r]
+                    for r in recorders
+                }
                 if len(recorders) <= MAX_INDIVIDUAL_TRACES
                 else {f"All {total} traces": list(self.frame.columns)}
             )
@@ -672,11 +678,15 @@ class ResultsDialog(QDialog):
                 pen=pg.mkPen(
                     pg.intColor(i, hues=max(min(len(ticked), 20), 3)),
                     width=2 if mode == "individual" else 1,
-                    style=Qt.PenStyle.SolidLine
-                    if mode == "individual"
-                    else Qt.PenStyle.DashLine,
+                    style=(
+                        Qt.PenStyle.SolidLine
+                        if mode == "individual"
+                        else Qt.PenStyle.DashLine
+                    ),
                 ),
-                name=trace.label if mode == "individual" and len(ticked) <= 20 else None,
+                name=(
+                    trace.label if mode == "individual" and len(ticked) <= 20 else None
+                ),
             )
         if len(ticked) > 20:
             message.append("Legend hidden: more than 20 lines.")

@@ -2,11 +2,19 @@ import pytest
 
 from pywr_editor.model import NodeConfig
 
-SQUARE = [[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [4.0, 2.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 0.0]]
+SQUARE = [
+    [0.0, 0.0, 0.0],
+    [4.0, 0.0, 0.0],
+    [4.0, 2.0, 0.0],
+    [0.0, 2.0, 0.0],
+    [0.0, 0.0, 0.0],
+]
 
 
 def config(geographic) -> NodeConfig:
-    return NodeConfig({"name": "n", "type": "link", "position": {"geographic": geographic}})
+    return NodeConfig(
+        {"name": "n", "type": "link", "position": {"geographic": geographic}}
+    )
 
 
 class TestGeographicGeometry:
@@ -23,8 +31,14 @@ class TestGeographicGeometry:
 
     @pytest.mark.parametrize(
         "value",
-        [None, "x", [1], {"type": "LineString", "coordinates": [[0, 0]]},
-         {"type": "Polygon", "coordinates": []}, {"type": "Polygon", "coordinates": [["a"]]}],
+        [
+            None,
+            "x",
+            [1],
+            {"type": "LineString", "coordinates": [[0, 0]]},
+            {"type": "Polygon", "coordinates": []},
+            {"type": "Polygon", "coordinates": [["a"]]},
+        ],
     )
     def test_invalid(self, value):
         assert config(value).geographic_position is None
