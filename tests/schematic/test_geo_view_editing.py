@@ -458,3 +458,48 @@ def test_polygon_footprint_is_clickable(qtbot, tmp_path):
     QTest.mouseClick(schematic.viewport(), Qt.LeftButton, pos=view_pos)
     assert node.isSelected()
     window.editor_settings.instance.clear()
+
+
+class TestSnapToGrid:
+    """
+    Snap to grid only applies to the schematic view
+    """
+
+    @staticmethod
+    def open(qtbot, tmp_path, geo_view: bool):
+        QTimer.singleShot(100, close_message_box)
+        window = MainWindow(model_with(tmp_path))
+        window.editor_settings.save_snap_to_grid(True)
+        window.editor_settings.save_grid_size(50)
+        window.hide()
+        if geo_view:
+            window.schematic.set_geo_view(True)
+        return window, window.schematic
+
+    def test_nodes_are_not_snapped_in_the_geographic_view(self, qtbot, tmp_path):
+        window, schematic = self.open(qtbot, tmp_path, geo_view=True)
+        node = schematic.node_items["Reservoir"]
+
+        # drawn where the map puts it, not on a grid point
+        position = window.model_config.nodes.config(
+            "Reservoir", as_dict=False
+        ).geographic_position
+        expected = schematic.to_geo_px(position)
+        assert node.pos().toTuple() == pytest.approx(tuple(expected))
+        assert (expected[0] % 50, expected[1] % 50) != (0, 0)
+
+        node.setPos(123.4, 567.8)
+        assert node.pos().toTuple() == pytest.approx((123.4, 567.8))
+
+    def test_nodes_are_snapped_in_the_schematic_view(self, qtbot, tmp_path):
+        window, schematic = self.open(qtbot, tmp_path, geo_view=False)
+        node = schematic.node_items["Reservoir"]
+        node.setPos(123.4, 567.8)
+        assert node.pos().toTuple() == pytest.approx((100, 550))
+
+    def test_snapping_comes_back_with_the_schematic_view(self, qtbot, tmp_path):
+        window, schematic = self.open(qtbot, tmp_path, geo_view=True)
+        schematic.set_geo_view(False)
+        node = schematic.node_items["Reservoir"]
+        node.setPos(123.4, 567.8)
+        assert node.pos().toTuple() == pytest.approx((100, 550))
