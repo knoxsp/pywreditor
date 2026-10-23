@@ -6,13 +6,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QShowEvent
-from PySide6.QtWidgets import (
-    QDockWidget,
-    QHBoxLayout,
-    QLabel,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QDockWidget, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pywr_editor.model.results import resolve_output_dir
 from pywr_editor.utils import Logging

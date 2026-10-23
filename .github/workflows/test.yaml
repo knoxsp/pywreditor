@@ -12,7 +12,7 @@ jobs:
   Test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       # run all the platforms even if one fails
       fail-fast: false
@@ -45,14 +45,34 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - name: Install system libraries (macOS)
+        if: runner.os == 'macOS'
+        # PyTables builds from source without a wheel and needs HDF5
+        run: |
+          brew install hdf5 c-blosc glpk
+          echo "HDF5_DIR=$(brew --prefix hdf5)" >> "$GITHUB_ENV"
+          echo "BLOSC_DIR=$(brew --prefix c-blosc)" >> "$GITHUB_ENV"
+          # Pywr has no macOS wheels. It builds the GLPK solver from source and the
+          # editor does not need the lp_solve one
+          echo "PYWR_BUILD_LPSOLVE=false" >> "$GITHUB_ENV"
+          echo "CFLAGS=-I$(brew --prefix glpk)/include" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-L$(brew --prefix glpk)/lib" >> "$GITHUB_ENV"
       - name: Install Dependencies
         run: |
-          pip install --upgrade pip
+          # pip cannot replace itself on Windows when run as "pip"
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
       - name: Run Tests
-        # run tests separately to prevent the pipeline from failing
-        # when too many dialog instances are run
+        # Each test file runs in its own process. The dialogs of many tests in the same
+        # process are garbage collected while Qt objects are created, which crashes the
+        # process on Windows. All the files run, then the job fails if any of them
+        # failed
         run: |
-          pytest -s tests/ --ignore=tests/widgets_dataframe
-          pytest -s tests/widgets_dataframe
+          status=0
+          for target in $(find tests -name "test_*.py" -not -path "*/__pycache__/*" | sort); do
+            echo "::group::pytest $target"
+            pytest -s -v --tb=short -rfE "$target" || status=1
+            echo "::endgroup::"
+          done
+          exit $status

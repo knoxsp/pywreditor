@@ -1,20 +1,20 @@
 import copy
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPlainTextEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
-    QHeaderView,
-    QAbstractItemView,
 )
 
 from pywr_editor.model import (
@@ -102,7 +102,8 @@ class ValidationDialog(QDialog):
         info = schema_info()
         note = QLabel(
             "The structure is checked against the pywr-v1-schema "
-            f"{info['pywr_v1_schema_version']} (for pywr {info['target_pywr_version']}) "
+            f"{info['pywr_v1_schema_version']} "
+            f"(for pywr {info['target_pywr_version']}) "
             "and by the editor. These checks do not guarantee that the model solves "
             "at every time-step. Double-click a row to go to the component."
         )

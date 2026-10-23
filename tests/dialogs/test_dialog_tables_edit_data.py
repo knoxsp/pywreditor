@@ -76,9 +76,7 @@ def paste(rows, headers=None):
 
 
 class TestNewTable:
-    def test_creates_csv_in_subfolder_and_sets_url(
-        self, qtbot, model_file, opened
-    ):
+    def test_creates_csv_in_subfolder_and_sets_url(self, qtbot, model_file, opened):
         page = open_page(qtbot, ModelConfig(str(model_file)))
         opened.edit = paste([["a", "b"], ["1", "2"]], headers=["x", "y"])
         page.on_edit_data()
@@ -184,9 +182,7 @@ class TestExistingTable:
         page.on_edit_data()
         assert csv.read_text() == "d,v\n01/02,2.50\n"
 
-    def test_file_outside_subfolder_is_edited_in_place(
-        self, qtbot, model_file, opened
-    ):
+    def test_file_outside_subfolder_is_edited_in_place(self, qtbot, model_file, opened):
         csv = model_file.parent / "data" / "t.csv"
         csv.parent.mkdir()
         csv.write_text("a\n1\n")
@@ -244,9 +240,7 @@ class TestExistingTable:
         assert len(opened.dialogs) == 1
 
     @pytest.mark.parametrize("name", ["table.xlsx", "table.h5"])
-    def test_excel_and_h5_are_refused(
-        self, qtbot, model_file, opened, messages, name
-    ):
+    def test_excel_and_h5_are_refused(self, qtbot, model_file, opened, messages, name):
         shutil.copy(FILES / name, model_file.parent / name)
         before = (model_file.parent / name).read_bytes()
         model = ModelConfig(str(model_file))
@@ -271,9 +265,7 @@ class TestExistingTable:
         assert not (model_file.parent / "missing.csv").exists()
         assert messages
 
-    def test_model_json_is_not_changed_by_editing_data(
-        self, qtbot, model_file, opened
-    ):
+    def test_model_json_is_not_changed_by_editing_data(self, qtbot, model_file, opened):
         csv = model_file.parent / "t.csv"
         csv.write_text("a\n1\n")
         model = ModelConfig(str(model_file))
@@ -292,9 +284,7 @@ class TestButton:
         page = open_page(qtbot, ModelConfig(str(model_file)))
         assert page.findChild(QPushButton, "edit_data_button") is not None
 
-    def test_clicking_the_button_opens_the_dialog(
-        self, qtbot, model_file, opened
-    ):
+    def test_clicking_the_button_opens_the_dialog(self, qtbot, model_file, opened):
         from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QPushButton
 

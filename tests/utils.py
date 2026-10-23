@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPlainTextEdit, QWidget
 
 from pywr_editor.widgets import TableView
 
@@ -51,12 +51,25 @@ def check_msg(message: str):
         assert True
         return
 
-    widget: QMessageBox = QApplication.activeModalWidget()
+    widget: QWidget = QApplication.activeModalWidget()
 
     if widget is not None:
-        text = widget.text()
-        assert message in text
-        widget.close()
+        try:
+            if isinstance(widget, QMessageBox):
+                text = widget.text()
+            else:
+                # a dialog, for example the one showing the model error
+                text = "\n".join(
+                    [label.text() for label in widget.findChildren(QLabel)]
+                    + [
+                        edit.toPlainText()
+                        for edit in widget.findChildren(QPlainTextEdit)
+                    ]
+                )
+            assert message in text
+        finally:
+            # always close the dialog or the test waits for it forever
+            widget.close()
     else:
         assert False, f"QMessageBox not found. Message was '{message}'"
 

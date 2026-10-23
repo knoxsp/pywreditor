@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING, Any, Literal, Sequence, TypedDict, Union
 
 import PySide6
 import qtawesome as qta
-from PySide6.QtCore import QPointF, QRectF, QSize, QUuid, Qt, Slot
-from PySide6.QtGui import QAction, QBrush, QColor, QFont, QIcon, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QPointF, QRectF, QSize, QUuid, Slot
+from PySide6.QtGui import QAction, QBrush, QColor, QFont, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsItem,
@@ -162,9 +162,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         """
         if self.model_node.node_size is not None:
             return self.model_node.node_size
-        type_size = self.view.model_config.node_type_style(self.model_node.type)[
-            "size"
-        ]
+        type_size = self.view.model_config.node_type_style(self.model_node.type)["size"]
         return type_size if type_size is not None else 1.0
 
     def apply_style(self) -> None:

@@ -193,3 +193,35 @@ def test_component_from_path():
 def test_real_test_model_has_no_errors():
     config = ModelConfig(resolve_model_path("model_1.json"))
     assert messages(validate_all(config), "error") == []
+
+
+def test_preflight_releases_the_solver_in_its_thread(monkeypatch, make_config):
+    from pywr_editor.model import PreflightWorker, preflight
+
+    class FakeModel:
+        solver = object()
+
+        def setup(self):
+            pass
+
+    model = FakeModel()
+    monkeypatch.setattr(preflight, "load_pywr_model", lambda *args, **kwargs: model)
+    results = []
+    worker = PreflightWorker(base_model(), "model.json")
+    worker.finished.connect(lambda error, elapsed: results.append(error))
+    worker.run()
+
+    assert results == [None]
+    assert model.solver is None
+
+
+def test_release_solver_ignores_failures():
+    from pywr_editor.model.pywr_worker import release_solver
+
+    class ReadOnlyModel:
+        @property
+        def solver(self):
+            return object()
+
+    release_solver(None)
+    release_solver(ReadOnlyModel())

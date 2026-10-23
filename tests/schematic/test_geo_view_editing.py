@@ -433,7 +433,7 @@ def test_polygon_footprint(qtbot, tmp_path):
 
 def test_polygon_footprint_is_clickable(qtbot, tmp_path):
     """Clicking the polygon of a node selects the node."""
-    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
 
     with open(BASE_MODEL) as fp:
@@ -458,3 +458,54 @@ def test_polygon_footprint_is_clickable(qtbot, tmp_path):
     QTest.mouseClick(schematic.viewport(), Qt.LeftButton, pos=view_pos)
     assert node.isSelected()
     window.editor_settings.instance.clear()
+
+
+class TestMissingPositionBanner:
+    def test_message_names_the_nodes(self, qtbot, tmp_path):
+        path = model_with(tmp_path, geographic={"Link2": None})
+        window, schematic = open_window(qtbot, path)
+
+        assert schematic.nodes_without_geo_position() == ["Link2"]
+        assert schematic.missing_position_message() == (
+            "1 node has no geographic position ('Link2') - drag it into place"
+        )
+        assert "Link2" in schematic.geo_view_banner.text()
+        assert "missing-nodes" in schematic.geo_view_banner.text()
+
+    def test_message_lists_a_few_nodes(self, qtbot, tmp_path):
+        path = model_with(
+            tmp_path, geographic={"Reservoir": None, "Link1": None, "Link2": None}
+        )
+        window, schematic = open_window(qtbot, path)
+        names = schematic.nodes_without_geo_position()
+        assert len(names) == 3
+        message = schematic.missing_position_message()
+        assert message.startswith("3 nodes have no geographic position (")
+        assert all(f"'{name}'" in message for name in names)
+        assert message.endswith("- drag them into place")
+
+        schematic.max_listed_nodes = 1
+        message = schematic.missing_position_message()
+        assert message.count("'") == 2
+        assert "and 2 more" in message
+
+    def test_no_message_when_all_nodes_have_a_position(self, qtbot, tmp_path):
+        window, schematic = open_window(
+            qtbot, model_with(tmp_path, geographic={"Link2": [-1.0, 52.0]})
+        )
+        assert schematic.nodes_without_geo_position() == []
+        assert schematic.missing_position_message() is None
+
+    def test_link_selects_and_centres_the_nodes(self, qtbot, tmp_path):
+        path = model_with(tmp_path, geographic={"Link2": None})
+        window, schematic = open_window(qtbot, path)
+        schematic.scene.clearSelection()
+
+        schematic.on_geo_banner_link("missing-nodes")
+
+        selected = [item.name for item in schematic.scene.selectedItems()]
+        assert selected == ["Link2"]
+        centre = schematic.mapToScene(schematic.viewport().rect().center())
+        node = schematic.node_items["Link2"]
+        assert centre.x() == pytest.approx(node.sceneBoundingRect().center().x(), abs=2)
+        assert centre.y() == pytest.approx(node.sceneBoundingRect().center().y(), abs=2)

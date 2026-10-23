@@ -85,7 +85,12 @@ class TableDataDialog(QDialog):
         buttons.addWidget(close_button)
 
         # Return in the grid must never trigger a button
-        for push_button in (paste_button, paste_header_button, save_button, close_button):
+        for push_button in (
+            paste_button,
+            paste_header_button,
+            save_button,
+            close_button,
+        ):
             push_button.setAutoDefault(False)
             push_button.setDefault(False)
 

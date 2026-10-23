@@ -105,13 +105,13 @@ class TestGisLayersDialog:
 
         layers = window.model_config.gis_layers.get_all()
         assert [layer.name for layer in layers] == ["first", "second"]
-        assert layers[0].path == str(first)
+        assert layers[0].path == first.as_posix()
         # the layer drawn on top (the last one) is first on the list, and selected
         assert self.names(dialog) == ["second", "first"]
         assert dialog.selected_layer_id() == layers[1].id
         assert dialog.form.isEnabled() is True
         assert dialog.form.name_field.text() == "second"
-        assert dialog.form.path_field.text() == str(second)
+        assert dialog.form.path_field.text() == second.as_posix()
         assert "1 feature(s)" in dialog.form.status.text()
         assert "EPSG:4326" in dialog.form.status.text()
         assert window.model_config.changed_ is True
@@ -263,13 +263,13 @@ class TestGisLayersDialog:
             QFileDialog, "getOpenFileName", lambda *a, **k: (str(other), "")
         )
         dialog.form.browse_button.click()
-        assert window.model_config.gis_layers.find(layer_id).path == str(other)
-        assert dialog.form.path_field.text() == str(other)
+        assert window.model_config.gis_layers.find(layer_id).path == other.as_posix()
+        assert dialog.form.path_field.text() == other.as_posix()
 
         # cancelling keeps the file
         monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *a, **k: ("", ""))
         dialog.form.browse_button.click()
-        assert window.model_config.gis_layers.find(layer_id).path == str(other)
+        assert window.model_config.gis_layers.find(layer_id).path == other.as_posix()
 
     def test_missing_file_and_shapefile_warning_are_shown(
         self, init_window, tmp_path, monkeypatch
