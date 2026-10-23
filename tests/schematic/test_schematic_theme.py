@@ -113,3 +113,30 @@ class TestSchematicTheme:
         }
         assert "#ffffff" in colours
         assert Theme.tokens["base"][1].lower() not in colours
+
+    def test_legend_and_minimap(self, qtbot, init_window):
+        """
+        Checks that the legend and the minimap follow the theme.
+        """
+        window, schematic = init_window
+        window.show()
+        schematic.legend.refresh()
+        schematic.minimap.show()
+
+        def brightness(widget) -> int:
+            # a pixel inside the background, away from the border and the content
+            image = widget.grab().toImage()
+            return image.pixelColor(6, 6).lightness()
+
+        light_legend = brightness(schematic.legend)
+        light_minimap = brightness(schematic.minimap)
+        assert light_legend > 200
+        assert light_minimap > 200
+
+        Theme.apply_mode("dark")
+        assert brightness(schematic.legend) < 100
+        assert brightness(schematic.minimap) < 100
+
+        Theme.apply_mode("light")
+        assert brightness(schematic.legend) > 200
+        assert brightness(schematic.minimap) > 200

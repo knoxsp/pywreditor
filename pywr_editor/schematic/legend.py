@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from pywr_editor.node_shapes import get_node_icon, get_pixmap_from_type
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.widgets import ContextualMenu
 
 if TYPE_CHECKING:
@@ -77,7 +77,8 @@ class SchematicLegend(QFrame):
         layout.addWidget(title)
         layout.addWidget(self.scroll_area)
 
-        self.setStyleSheet(self.stylesheet)
+        # the background and border follow the theme
+        Theme.bind(self, lambda legend: legend.stylesheet)
         self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         # hidden until refresh() finds at least one node type to show
         self.hide()
