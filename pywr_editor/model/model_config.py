@@ -26,6 +26,12 @@ from pywr_editor.model import (
 )
 from pywr_editor.model.constants import UNCHANGED
 from pywr_editor.model.node_config import valid_node_size
+from pywr_editor.model.sidecar import (
+    read_into_model,
+    sidecar_path,
+    split_model,
+    write_sidecar,
+)
 from pywr_editor.style import Color
 
 
@@ -45,6 +51,8 @@ class ModelConfig(QObject):
         self.json = dict()
         self.changed_ = False
         self.load_error = None
+        self.sidecar_error: str | None = None
+        """ The reason why the file with the editor data cannot be read """
         self.load_model()
         # stop performing other tasks if the model cannot be loaded
         if not self.is_valid():
@@ -263,6 +271,11 @@ class ModelConfig(QObject):
                 + f"cannot be loaded:\n\n{type(e).__name__}: {e}\n\n"
                 + "Please fix the error by manually editing the JSON file"
             )
+            return
+
+        # the editor data is stored next to the model (see sidecar.py)
+        if isinstance(self.json, dict):
+            self.sidecar_error = read_into_model(self.json_file, self.json)
 
     def check_missing_keys(self) -> None:
         """
@@ -486,26 +499,55 @@ class ModelConfig(QObject):
         self.file = ModelFileInfo(self.json_file)
 
     @property
+    def clean_json(self) -> dict:
+        """
+        Returns the model without the data of the editor. This is what is written in
+        the model file, and what is run, validated and shown.
+        :return: The model dictionary. Its nodes are copies, but the other values are
+        shared with the model.
+        """
+        return split_model(self.json)[0]
+
+    @property
     def as_string(self) -> str | bool:
         """
-        Saves the model as JSON string.
+        Saves the model as JSON string, without the data of the editor.
         :return: A string containing the model, or False if the model cannot be
         converted to a string.
         """
         # noinspection PyBroadException
         try:
-            return json.dumps(self.json, indent=2)
+            return json.dumps(self.clean_json, indent=2)
         except Exception:
             return False
 
     def save(self) -> bool | str:
         """
-        Saves the JSON file.
+        Saves the model file, and the editor data in its sidecar file (see sidecar.py)
         :return: True if the file is successfully saved, the error message otherwise.
         """
+        model, editor_data = split_model(self.json)
+        # the sidecar is written first: if the model cannot be written, the sidecar
+        # has the new editor data and the model keeps the old one, which the sidecar
+        # overrides when the model is loaded
+        try:
+            write_sidecar(
+                self.json_file,
+                editor_data,
+                # keep a copy of a file that could not be read, as it is replaced
+                backup_existing=self.sidecar_error is not None,
+            )
+            self.sidecar_error = None
+        except Exception as e:
+            return (
+                "The editor data (the shapes, node styles and map settings) cannot be "
+                f"saved in {sidecar_path(self.json_file)} because:\n\n"
+                f"{type(e).__name__}: {e}\n\n"
+            )
+
         try:
             with open(self.json_file, "w") as outfile:
-                json.dump(self.json, outfile, indent=2)
+                json.dump(model, outfile, indent=2)
         except Exception as e:
             return f"The model cannot be saved because:\n\n{type(e).__name__}: {e}\n\n"
 

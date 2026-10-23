@@ -163,7 +163,7 @@ class RunWidget(QWidget):
             self.app.findChild(DateEdit, "run_to_date").date().toPython()
         )
         self.worker = PywrWorker(
-            model_dict=self.model_config.json,
+            model_dict=self.model_config.clean_json,
             model_file=self.model_config.json_file,
             end_date=pd.Timestamp(end_date),
             run_to_date=pd.Timestamp(run_to_date),

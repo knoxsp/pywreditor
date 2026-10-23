@@ -34,6 +34,13 @@ new and less tested than the Windows one
 
 ### Changed
 
+- The model file only has what Pywr defines. The data of the editor (the shapes, the schematic size, the node styles,
+the map settings and the GIS layers, and the footprints of the nodes) is stored in a `.pywr-editor` folder next to the
+model file, in `<model file name>.json`, which names the model it belongs to. The positions stay in the `position` of the
+nodes (`schematic` and `geographic`, as defined by Pywr). A footprint is saved as its centroid. Models with the data
+inside are read as before and are saved without it, the first time they are saved. Keep the folder with the model to
+keep the shapes and styles
+
 - Finding the orphaned parameters and recorders is much faster on large models
 - The schematic position of a node is stored in the `schematic` key of its `position`, as defined by the pywr
 specification, instead of the editor-only `editor_position` key. Models using `editor_position` are migrated when loaded.

@@ -34,7 +34,8 @@ class GridSettings(QWidget):
         main_layout.addWidget(QLabel("Snap to grid"), 1, 0)
         snap_to_grid = ToggleSwitchWidget()
         snap_to_grid.setToolTip(
-            "Snap nodes to the nearest grid point when moving them on the schematic"
+            "Snap nodes to the nearest grid point when moving them on the schematic.\n"
+            "This does not apply to the geographic view"
         )
         snap_to_grid.setChecked(editor_settings.is_snap_to_grid_enabled)
         # noinspection PyUnresolvedReferences
