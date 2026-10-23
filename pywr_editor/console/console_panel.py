@@ -146,7 +146,7 @@ class ConsolePanel(QDockWidget):
         model_config = self.app.model_config
         settings = self.app.editor_settings
         with open(folder / "model.json", "w") as fid:
-            json.dump(model_config.json, fid, default=str)
+            json.dump(model_config.clean_json, fid, default=str)
         config = {
             "model_json": str(folder / "model.json"),
             "model_file": model_config.json_file,

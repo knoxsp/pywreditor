@@ -168,7 +168,7 @@ class ValidationDialog(QDialog):
         self.schema_diagnostics = []
         self.populate()
 
-        self.schema_worker = SchemaWorker(copy.deepcopy(self.model_config.json))
+        self.schema_worker = SchemaWorker(copy.deepcopy(self.model_config.clean_json))
         self.schema_thread = QThread(self)
         self.schema_worker.moveToThread(self.schema_thread)
         # noinspection PyUnresolvedReferences
@@ -260,7 +260,7 @@ class ValidationDialog(QDialog):
             return
         settings = self.app.editor_settings
         self.worker = PreflightWorker(
-            model_dict=self.model_config.json,
+            model_dict=self.model_config.clean_json,
             model_file=self.model_config.json_file,
             python_paths=settings.python_paths,
             python_modules=settings.python_modules,
