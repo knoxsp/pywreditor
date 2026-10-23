@@ -459,6 +459,7 @@ def test_polygon_footprint_is_clickable(qtbot, tmp_path):
     assert node.isSelected()
     window.editor_settings.instance.clear()
 
+
 class TestSnapToGrid:
     """
     Snap to grid only applies to the schematic view
@@ -502,6 +503,8 @@ class TestSnapToGrid:
         node = schematic.node_items["Reservoir"]
         node.setPos(123.4, 567.8)
         assert node.pos().toTuple() == pytest.approx((100, 550))
+
+
 class TestMissingPositionBanner:
     def test_message_names_the_nodes(self, qtbot, tmp_path):
         path = model_with(tmp_path, geographic={"Link2": None})
