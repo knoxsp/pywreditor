@@ -36,8 +36,15 @@ class TestSettings:
         config = window.editor_settings
         assert config.json_file is not None
 
-        # set new geometry, save it and restore it
-        new_geometry = (30, 30, 1200, 806)
+        # set new geometry, save it and restore it. The window is kept within the
+        # screen, which is small on CI machines, as it is moved otherwise
+        available = window.screen().availableGeometry()
+        new_geometry = (
+            available.x() + 30,
+            available.y() + 30,
+            min(1200, available.width() - 80),
+            min(806, available.height() - 100),
+        )
         window.setGeometry(*new_geometry)
         config.save_window_attributes(window)
         config.restore_window_attributes(window)
