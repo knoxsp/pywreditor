@@ -2,6 +2,7 @@ import os
 
 import pytest
 from PySide6.QtCore import QPointF
+from PySide6.QtWidgets import QApplication
 
 from pywr_editor import MainWindow
 from tests.utils import model_path, resolve_model_path
@@ -40,6 +41,7 @@ class TestSettings:
         # resize the window (the screen is small on CI machines), so the geometry
         # that is restored is the one the window had when it was saved
         window.setGeometry(30, 30, 1200, 806)
+        QApplication.processEvents()
         saved_geometry = window.geometry()
         config.save_window_attributes(window)
         window.setGeometry(100, 100, 700, 500)
