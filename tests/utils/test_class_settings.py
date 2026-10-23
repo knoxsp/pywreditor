@@ -39,7 +39,7 @@ class TestSettings:
 
         # set new geometry, save it and restore it. The window manager may move or
         # resize the window (the screen is small on CI machines), so the geometry
-        # that is restored is the one the window had when it was saved
+        # size that is restored is the one the window had when it was saved
         window.setGeometry(30, 30, 1200, 806)
         QApplication.processEvents()
         saved_geometry = window.geometry()
@@ -47,7 +47,8 @@ class TestSettings:
         window.setGeometry(100, 100, 700, 500)
         config.restore_window_attributes(window)
 
-        assert window.geometry() == saved_geometry
+        # the position may be moved to fit the screen when it is restored
+        assert window.geometry().size() == saved_geometry.size()
 
     def test_save_data_no_file(self, qtbot):
         """

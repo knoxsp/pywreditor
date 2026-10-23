@@ -20,12 +20,12 @@ def isolated_editor_settings(tmp_path_factory):
     root = str(tmp_path_factory.mktemp("qsettings"))
     # the native format is the registry on Windows and a property list on macOS, which
     # setPath() does not redirect. Use ini files everywhere
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    Settings.storage_format = QSettings.Format.IniFormat
     for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
         for scope in (QSettings.Scope.UserScope, QSettings.Scope.SystemScope):
             QSettings.setPath(fmt, scope, root)
     yield root
-    QSettings.setDefaultFormat(QSettings.Format.NativeFormat)
+    Settings.storage_format = QSettings.Format.NativeFormat
     # pytest keeps the last few base temporary folders: remove the settings now
     shutil.rmtree(root, ignore_errors=True)
 
