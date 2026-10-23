@@ -1059,7 +1059,7 @@ class MainWindow(QMainWindow):
         Opens the JSON viewer.
         :return: None
         """
-        viewer = JsonCodeViewer(parent=self, file_content=self.model_config.json)
+        viewer = JsonCodeViewer(parent=self, file_content=self.model_config.clean_json)
         viewer.setWindowTitle(self.model_config.file.file_name)
         viewer.exec()
 
