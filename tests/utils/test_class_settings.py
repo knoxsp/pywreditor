@@ -36,26 +36,16 @@ class TestSettings:
         config = window.editor_settings
         assert config.json_file is not None
 
-        # set new geometry, save it and restore it. The window is kept within the
-        # screen, which is small on CI machines, as it is moved otherwise
-        available = window.screen().availableGeometry()
-        new_geometry = (
-            available.x() + 30,
-            available.y() + 30,
-            min(1200, available.width() - 80),
-            min(806, available.height() - 100),
-        )
-        window.setGeometry(*new_geometry)
+        # set new geometry, save it and restore it. The window manager may move or
+        # resize the window (the screen is small on CI machines), so the geometry
+        # that is restored is the one the window had when it was saved
+        window.setGeometry(30, 30, 1200, 806)
+        saved_geometry = window.geometry()
         config.save_window_attributes(window)
+        window.setGeometry(100, 100, 700, 500)
         config.restore_window_attributes(window)
 
-        geometry = window.geometry()
-        assert (
-            geometry.x() == new_geometry[0]
-            and geometry.y() == new_geometry[1]
-            and geometry.width() == new_geometry[2]
-            and geometry.height() == new_geometry[3]
-        )
+        assert window.geometry() == saved_geometry
 
     def test_save_data_no_file(self, qtbot):
         """
