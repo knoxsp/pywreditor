@@ -300,7 +300,12 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :return: The itemChange event.
         """
         if change == QGraphicsItemGroup.ItemPositionChange:
-            if self.view.editor_settings.is_snap_to_grid_enabled:
+            # the grid is a schematic grid: it does not apply to the geographic view,
+            # where the position comes from the map
+            if (
+                self.view.editor_settings.is_snap_to_grid_enabled
+                and not self.view.editor_settings.is_geo_view_enabled
+            ):
                 grid_size = max(self.view.editor_settings.grid_size, 1)
                 value = QPointF(
                     round(value.x() / grid_size) * grid_size,
