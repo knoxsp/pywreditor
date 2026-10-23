@@ -3,7 +3,7 @@ from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QFocusEvent
 from PySide6.QtWidgets import QComboBox, QWidget
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 
 class ComboBox(QComboBox):
@@ -18,7 +18,7 @@ class ComboBox(QComboBox):
         self.view().window().setWindowFlags(
             Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint
         )
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
         # self.view().window().setAttribute(Qt.WA_TranslucentBackground)
         # prevent mouse wheel from changing value on scroll
         self.setFocusPolicy(Qt.StrongFocus)
@@ -69,7 +69,7 @@ class ComboBox(QComboBox):
         return stylesheet_dict_to_str(
             {
                 "QComboBox": {
-                    "background": "#FFF",
+                    "background": Theme.color("base"),
                     "border": f"1px solid {Color('gray', 300).hex}",
                     "border-radius": "4px",
                     "padding": "4px 6px",
@@ -80,7 +80,7 @@ class ComboBox(QComboBox):
                         "background": Color("gray", 50).hex,
                     },
                     ":focus:hover": {
-                        "background": "#FFF",
+                        "background": Theme.color("base"),
                     },
                     "::drop-down": {
                         "subcontrol-origin": "padding",
@@ -93,7 +93,7 @@ class ComboBox(QComboBox):
                         "border-bottom-right-radius": "6px",
                     },
                     ":on": {
-                        "background": "#FFF",
+                        "background": Theme.color("base"),
                         "border": f"1px solid {Color('blue', 400).hex}",
                     },
                     ":disabled": {
@@ -106,7 +106,7 @@ class ComboBox(QComboBox):
                     },
                 },
                 "ComboBox QAbstractItemView": {
-                    "background": "#FFF",
+                    "background": Theme.color("base"),
                     "border": f"1px solid {Color('gray', 300).hex}",
                     "border-radius": "6px",
                     "outline": 0,

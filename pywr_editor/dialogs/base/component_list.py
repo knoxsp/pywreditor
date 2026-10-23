@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 
 from pywr_editor.dialogs.base.component_empty_page import ComponentEmptyPage
 from pywr_editor.dialogs.base.component_pages import ComponentPages
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.widgets import TableView
 
 """
@@ -48,11 +48,19 @@ class ComponentListView(TableView):
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 
         # add style
+        Theme.bind(self, lambda w: w.stylesheet())
+
+    @staticmethod
+    def stylesheet() -> str:
+        """
+        Returns the widget stylesheet.
+        :return: The stylesheet as string.
+        """
         stylesheet: dict = TableView.stylesheet(as_string=False)
         stylesheet["TableView"]["background"] = "transparent"
         stylesheet["TableView"]["border"] = "0px"
         stylesheet["TableView"]["::item"]["border-radius"] = "5px"
-        self.setStyleSheet(stylesheet_dict_to_str(stylesheet))
+        return stylesheet_dict_to_str(stylesheet)
 
     def selectionChanged(
         self,
@@ -99,8 +107,9 @@ class ComponentList(QWidget):
         self.setMinimumWidth(290)
         self.setMaximumWidth(400)
         self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-        self.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            self,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "ComponentList": {
                         "background": Color("gray", 100).hex,
@@ -108,7 +117,7 @@ class ComponentList(QWidget):
                         "margin-top": "1px",
                     }
                 }
-            )
+            ),
         )
 
         # Add the table

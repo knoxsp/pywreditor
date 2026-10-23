@@ -3,7 +3,6 @@ import traceback
 from typing import TYPE_CHECKING
 
 import pandas as pd
-import qtawesome as qta
 from pandas import read_csv, read_excel, read_hdf
 from PySide6.QtCore import QSize, Signal, Slot
 from PySide6.QtGui import QIcon
@@ -107,9 +106,7 @@ class TableSelectorWidget(FormWidget):
                 ext = "N/A"
             self.combo_box.addItem(QIcon(ExtensionIcon(ext)), name)
         # Open button
-        self.open_button = PushIconButton(
-            icon=qta.icon("msc.table"), label="Open", small=True
-        )
+        self.open_button = PushIconButton(icon="msc.table", label="Open", small=True)
         self.open_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         self.open_button.setToolTip(
             "Open the table file externally with the default associated application"
@@ -118,9 +115,7 @@ class TableSelectorWidget(FormWidget):
         self.open_button.clicked.connect(self.on_open_file)
 
         # Reload button
-        self.reload_button = PushIconButton(
-            icon=qta.icon("msc.refresh"), label="Reload"
-        )
+        self.reload_button = PushIconButton(icon="msc.refresh", label="Reload")
         self.reload_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.reload_button.setToolTip(
             "Reload the column names from the file in case its content changed"

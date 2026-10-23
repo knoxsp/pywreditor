@@ -150,3 +150,13 @@ def test_replace_str(dict_utils):
             "dd": ["New"],
         },
     }
+
+
+def test_count_strings():
+    counts = JsonUtils(
+        {"a": ["x", {"x": 1, "y": "x"}], "z": "y", "n": 3, "none": None}
+    ).count_strings()
+    assert counts["x"] == 3
+    assert counts["y"] == 2
+    assert counts["a"] == 1
+    assert "3" not in counts

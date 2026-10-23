@@ -8,6 +8,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pywr_editor.style import Theme
+
 from .json_editor import JsonEditor
 
 
@@ -24,7 +26,9 @@ class JsonCodeViewer(QDialog):
         # noinspection PyUnresolvedReferences
         button_box.rejected.connect(self.reject)
         # noinspection PyUnresolvedReferences
-        button_box.findChild(QPushButton).setIcon(qta.icon("msc.close"))
+        close_button = button_box.findChild(QPushButton)
+        close_button.setIcon(qta.icon("msc.close"))
+        Theme.on_change(close_button, lambda w: w.setIcon(qta.icon("msc.close")))
 
         layout = QVBoxLayout()
         layout.addWidget(JsonEditor(file_content))

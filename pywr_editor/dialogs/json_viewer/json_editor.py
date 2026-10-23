@@ -5,7 +5,7 @@ from PySide6.QtCore import QRect, Slot
 from PySide6.QtGui import QFont, QPainter, Qt
 from PySide6.QtWidgets import QPlainTextEdit
 
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 
 from .json_highlighter import JsonHighlighter
 from .line_number_area import LineNumberArea
@@ -27,7 +27,8 @@ class JsonEditor(QPlainTextEdit):
         if isinstance(file_content, dict):
             file_content = json.dumps(file_content, indent=2)
 
-        JsonHighlighter(self.document())
+        self.highlighter = JsonHighlighter(self.document())
+        Theme.on_change(self, lambda w: w.highlighter.refresh())
 
         # font
         font = QFont()

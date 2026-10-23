@@ -40,17 +40,79 @@ class BaseNode(QGraphicsItemGroup):
 
         self.parent = parent
         self.outline_width = 1.5
+        self.hover = False
+
+        if fill is None:
+            fill = Color(name="gray", shade=400)
+        if outline is None:
+            outline = Color(name="gray", shade=800)
+        if label is None:
+            label = outline
         self.fill = fill
         self.outline = outline
         self.label = label
-        self.hover = False
 
-        if self.fill is None:
-            self.fill = Color(name="gray", shade=400)
-        if self.outline is None:
-            self.outline = Color(name="gray", shade=800)
-        if self.label is None:
-            self.label = self.outline
+    @staticmethod
+    def refresh_color(color: Color) -> Color:
+        """
+        Resolves a Color again for the active theme. Colors are resolved when they
+        are created, so the ones kept by the shape must be refreshed to follow
+        theme changes.
+        :param color: The Color instance.
+        :return: The new Color instance.
+        """
+        return Color(color.name, color.shade, color.themed)
+
+    @property
+    def fill(self) -> Color:
+        """
+        Returns the fill color for the active theme.
+        :return: The Color instance.
+        """
+        return self.refresh_color(self._fill)
+
+    @fill.setter
+    def fill(self, color: Color) -> None:
+        """
+        Sets the fill color, as defined for the light theme.
+        :param color: The Color instance.
+        :return: None
+        """
+        self._fill = color
+
+    @property
+    def outline(self) -> Color:
+        """
+        Returns the outline color for the active theme.
+        :return: The Color instance.
+        """
+        return self.refresh_color(self._outline)
+
+    @outline.setter
+    def outline(self, color: Color) -> None:
+        """
+        Sets the outline color, as defined for the light theme.
+        :param color: The Color instance.
+        :return: None
+        """
+        self._outline = color
+
+    @property
+    def label(self) -> Color:
+        """
+        Returns the label color for the active theme.
+        :return: The Color instance.
+        """
+        return self.refresh_color(self._label)
+
+    @label.setter
+    def label(self, color: Color) -> None:
+        """
+        Sets the label color, as defined for the light theme.
+        :param color: The Color instance.
+        :return: None
+        """
+        self._label = color
 
     def boundingRect(self) -> PySide6.QtCore.QRectF:
         """

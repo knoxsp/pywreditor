@@ -7,6 +7,10 @@ from pywr_editor.style import Color
 
 from .base_node import BaseNode
 
+_RENDERERS: dict[tuple[str, str], QSvgRenderer] = {}
+""" The renderers by icon and fill colour. Loading and parsing the SVG on every
+paint made panning and zooming slow on models with many nodes """
+
 
 class IconProps:
     def __init__(
@@ -61,6 +65,11 @@ class SvgIcon(QGraphicsItem):
         parent's colours.
         :return: The SVG renderer instance.
         """
+        key = (self.icon_name, self.fill.hex)
+        cached = _RENDERERS.get(key)
+        if cached is not None:
+            return cached
+
         f = QFile(self.icon_name)
         f.open(QFile.ReadOnly | QFile.Text)
         stream = QTextStream(f)
@@ -69,9 +78,12 @@ class SvgIcon(QGraphicsItem):
 
         # svg_data = svg_data.replace('currentFill', self.fill.hex)
         # svg_data = svg_data.replace('currentStroke', self.outline.hex)
-        svg_data = svg_data.replace("currentColor", self.fill.hex)
+        fill = BaseNode.refresh_color(self.fill)
+        svg_data = svg_data.replace("currentColor", fill.hex)
         # noinspection PyTypeChecker
-        return QSvgRenderer(QByteArray(svg_data))
+        renderer = QSvgRenderer(QByteArray(svg_data))
+        _RENDERERS[key] = renderer
+        return renderer
 
     def boundingRect(self) -> PySide6.QtCore.QRectF:
         """

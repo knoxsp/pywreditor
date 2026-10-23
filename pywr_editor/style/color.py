@@ -2,6 +2,8 @@ from typing import Literal
 
 from PySide6.QtGui import QColor
 
+from .theme import Theme
+
 """
 Utility functions for colours
 """
@@ -306,15 +308,19 @@ class Color:
         },
     }
 
-    def __init__(self, name: ColorName, shade: ColorShade):
+    def __init__(self, name: ColorName, shade: ColorShade, themed: bool = True):
         """
         Initialises the class.
         :param name: The color name.
-        :param shade: The color shade.
+        :param shade: The color shade, as defined for the light theme.
+        :param themed: Whether to mirror the shade when the dark theme is active.
+        Set this to False for colours that identify data (e.g. edges) and that must
+        not change with the theme.
         :return: None
         """
         self.name = name
         self.shade = shade
+        self.themed = themed
 
         if self.name not in self.colors:
             raise KeyError(f'The color named "{self.name}" does not exist')
@@ -324,7 +330,8 @@ class Color:
                 + f"'{self.name}' does not exist"
             )
 
-        self.color = self.colors[self.name][self.shade]
+        lookup_shade = Theme.shade(self.shade) if self.themed else self.shade
+        self.color = self.colors[self.name][lookup_shade]
 
     @property
     def hex(self) -> str:
@@ -368,4 +375,4 @@ class Color:
         :param new_shade: The new shade.
         :return: The new color instance.
         """
-        return Color(self.name, new_shade)
+        return Color(self.name, new_shade, self.themed)

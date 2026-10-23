@@ -1,6 +1,8 @@
 [flake8]
 max-line-length = 88
 extend-ignore = E203, C901
-per-file-ignores = app_stylesheet.py:F403,F401
+per-file-ignores =
+    app_stylesheet.py:F403,F401
+    kernel_startup.py:E402,F401
 require-plugins = flake8-black,flake8-isort
 exclude: venv*,dist,build,pywr_data.py,assets.py,custom_parameter_syntax_error.py,__init__.py

@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import PySide6
@@ -9,9 +10,11 @@ from pywr_editor.model import JsonUtils, ModelConfig
 from pywr_editor.utils import get_columns, maybe_delete_component
 from pywr_editor.widgets import PushIconButton
 
+from .table_data_dialog import TableDataDialog
 from .table_form_widget import TableFormWidget
 from .table_url_widget import TableUrlWidget
 from .tables_list_model import TablesListModel
+from .tree_reload import reload_tree_later
 
 if TYPE_CHECKING:
     from ..base.component_pages import ComponentPages
@@ -52,6 +55,14 @@ class TablePage(QWidget):
         self.save_button.setObjectName("save_button")
         self.save_button.clicked.connect(self.on_save_table)
 
+        edit_data_button = PushIconButton(icon="msc.table", label="Edit data")
+        edit_data_button.setObjectName("edit_data_button")
+        edit_data_button.setToolTip(
+            "Edit the table in a grid, or paste data from Excel. A new CSV file is "
+            "created next to the model file if the table has no file yet"
+        )
+        edit_data_button.clicked.connect(self.on_edit_data)
+
         add_button = PushIconButton(icon="msc.add", label="Add new")
         add_button.setObjectName("add_button")
         add_button.clicked.connect(self.on_add_new_table)
@@ -62,6 +73,7 @@ class TablePage(QWidget):
 
         button_box = QHBoxLayout()
         button_box.addWidget(add_button)
+        button_box.addWidget(edit_data_button)
         button_box.addStretch()
         button_box.addWidget(self.save_button)
         button_box.addWidget(delete_button)
@@ -130,6 +142,63 @@ class TablePage(QWidget):
         :return: None
         """
         self.dialog.add_table()
+
+    @Slot()
+    def on_edit_data(self) -> None:
+        """
+        Opens the grid editor for the table CSV file. If the table has no file, a
+        new CSV is created in the "<model name>_tables" folder next to the model
+        file.
+        :return: None
+        """
+        url_widget: TableUrlWidget = self.form.find_field("url").widget
+        # the form is loaded lazily
+        text = url_widget.line_edit.text().strip()
+
+        if text:
+            file = Path(url_widget.full_file) if url_widget.full_file else None
+            if file is None or file.suffix.lower() not in [".csv", ".txt"]:
+                QMessageBox.information(
+                    self,
+                    "Edit data",
+                    "Only existing CSV tables can be edited. Excel and H5 tables "
+                    "must be edited in their own application.",
+                )
+                return
+        else:
+            model_path = self.model.file.file_path
+            if not model_path:
+                QMessageBox.information(
+                    self,
+                    "Edit data",
+                    "Please save the model configuration file first, so the table "
+                    "can be stored next to it.",
+                )
+                return
+            stem = Path(self.model.json_file).stem
+            safe_name = "".join(
+                c if c.isalnum() or c in " -_" else "_" for c in self.name
+            )
+            file = Path(model_path) / f"{stem}_tables" / f"{safe_name.strip()}.csv"
+            if file.exists():
+                QMessageBox.warning(
+                    self,
+                    "Edit data",
+                    f"The file {file} already exists. Please set it as the table "
+                    "URL or rename the table.",
+                )
+                return
+
+        sep = self.form.field_value("sep") or ","
+        dialog = TableDataDialog(self.name, file, sep=sep, parent=self)
+        dialog.exec()
+
+        if dialog.saved and not text:
+            url_widget.line_edit.setText(
+                self.model.path_to_relative(str(file), False).replace("\\", "/")
+            )
+        elif dialog.saved:
+            url_widget.on_reload_click()
 
     @Slot()
     def on_save_table(self) -> None:
@@ -208,10 +277,9 @@ class TablePage(QWidget):
 
         # update tree and status bar
         if self.dialog.app is not None:
-            if hasattr(self.dialog.app, "components_tree"):
-                self.dialog.app.components_tree.reload()
             if hasattr(self.dialog.app, "statusBar"):
                 self.dialog.app.statusBar().showMessage(f'Table "{self.name}" updated')
+            reload_tree_later(self.dialog.app)
 
     @Slot()
     def on_delete_table(self) -> None:
@@ -241,12 +309,11 @@ class TablePage(QWidget):
 
             # update tree and status bar
             if self.dialog.app is not None:
-                if hasattr(self.dialog.app, "components_tree"):
-                    self.dialog.app.components_tree.reload()
                 if hasattr(self.dialog.app, "statusBar"):
                     self.dialog.app.statusBar().showMessage(
                         f'Deleted table "{self.name}"'
                     )
+                reload_tree_later(self.dialog.app)
 
     def showEvent(self, event: PySide6.QtGui.QShowEvent) -> None:
         """

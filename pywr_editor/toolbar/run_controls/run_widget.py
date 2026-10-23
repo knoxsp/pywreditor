@@ -5,9 +5,12 @@ import pandas as pd
 from PySide6.QtCore import QThread, Signal, Slot
 from PySide6.QtGui import QAction, QIcon, Qt
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPlainTextEdit,
     QProgressBar,
     QSizePolicy,
     QVBoxLayout,
@@ -15,8 +18,9 @@ from PySide6.QtWidgets import (
 )
 
 from pywr_editor.dialogs import InspectorDialog
-from pywr_editor.model import PywrProgress, PywrWorker
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.model import PywrProgress, PywrWorker, validate_model
+from pywr_editor.model.results import resolve_output_dir
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.toolbar.small_button import ToolbarSmallButton
 from pywr_editor.utils import Logging
 from pywr_editor.widgets import DateEdit
@@ -53,6 +57,7 @@ class RunWidget(QWidget):
         self.worker: PywrWorker | None = None
         self.thread: QThread | None = None
         self.is_running = False
+        self.last_results_dir: str | None = None
         self.is_past_run_to_date = False
         self.is_end_date_reached = False
 
@@ -99,7 +104,7 @@ class RunWidget(QWidget):
         self.progress_bar.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
-        self.progress_bar.setStyleSheet(self.progress_bar_style)
+        Theme.bind(self.progress_bar, lambda w: RunWidget.progress_bar_style())
         self.progress_status = QLabel("Ready to run")
         self.progress_status.setMinimumWidth(70)
 
@@ -115,8 +120,8 @@ class RunWidget(QWidget):
 
         self.setLayout(main_layout)
 
-    @property
-    def progress_bar_style(self) -> str:
+    @staticmethod
+    def progress_bar_style() -> str:
         """
         Returns the progress bar style.
         :return: The style as string.
@@ -124,7 +129,7 @@ class RunWidget(QWidget):
         return stylesheet_dict_to_str(
             {
                 "QProgressBar": {
-                    "background": "white",
+                    "background": Theme.color("base"),
                     "border": f"1px solid {Color('gray', 400).hex}",
                     "border-radius": "5px",
                     "height": "10px",
@@ -147,6 +152,9 @@ class RunWidget(QWidget):
         if not self.validate_timestepper():
             return False
 
+        if not self.confirm_validation():
+            return False
+
         self.logger.debug("Starting a new worker")
         # noinspection PyUnresolvedReferences
         end_date: datetime = self.app.findChild(DateEdit, "end_date").date().toPython()
@@ -155,10 +163,23 @@ class RunWidget(QWidget):
             self.app.findChild(DateEdit, "run_to_date").date().toPython()
         )
         self.worker = PywrWorker(
-            model_dict=self.model_config.json,
+            model_dict=self.model_config.clean_json,
             model_file=self.model_config.json_file,
             end_date=pd.Timestamp(end_date),
             run_to_date=pd.Timestamp(run_to_date),
+            python_paths=self.app.editor_settings.python_paths,
+            python_modules=self.app.editor_settings.python_modules,
+            solver=self.app.editor_settings.solver,
+            results_dir=(
+                str(
+                    resolve_output_dir(
+                        self.app.editor_settings.output_dir,
+                        self.model_config.json_file,
+                    )
+                )
+                if self.app.editor_settings.are_results_saved
+                else None
+            ),
         )
         self.thread = QThread(self)
         self.worker.moveToThread(self.thread)
@@ -181,6 +202,8 @@ class RunWidget(QWidget):
         self.worker.status_update.connect(self.update_status)
 
         self.worker.model_error.connect(self.on_model_error)
+        self.worker.results_saved.connect(self.on_results_saved)
+        self.worker.results_error.connect(self.on_results_error)
 
         self.thread.start()
         self.is_running = True
@@ -363,6 +386,43 @@ class RunWidget(QWidget):
         self.progress_status.setText(message)
 
     @Slot(str)
+    def on_results_saved(self, run_dir: str) -> None:
+        """
+        Tells the user where the results were saved.
+        :param run_dir: The folder of the run.
+        :return: None
+        """
+        self.app.statusBar().showMessage(f"Results saved to {run_dir}")
+        self.last_results_dir = run_dir
+
+        box = QMessageBox(self.app)
+        box.setWindowTitle("Results saved")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(f"The recorder results were saved to:\n{run_dir}")
+        view = box.addButton("View results", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.setWindowModality(Qt.WindowModality.NonModal)
+        # noinspection PyUnresolvedReferences
+        view.clicked.connect(lambda: self.app.open_results_dialog(run_dir))
+        box.show()
+        self._results_box = box
+
+    @Slot(str)
+    def on_results_error(self, exception: str) -> None:
+        """
+        Shows the error that stopped the results from being saved.
+        :param exception: The exception message.
+        :return: None
+        """
+        message = QMessageBox(self.app)
+        message.setWindowTitle("Results not saved")
+        message.setIcon(QMessageBox.Icon.Warning)
+        message.setText("The recorder results could not be saved.")
+        message.setDetailedText(exception)
+        message.show()
+        self._results_box = message
+
+    @Slot(str)
     def on_model_error(self, exception: str) -> None:
         """
         Shows an error dialog with the exception if the model fails to load.
@@ -371,22 +431,34 @@ class RunWidget(QWidget):
         """
         self.reset_progress()
 
-        message = QMessageBox()
-        message.setWindowTitle("Model error")
-        message.setIcon(QMessageBox.Icon.Critical)
-        message.setText(
-            "An exception occurred while running the pywr model. "
-            + "The complete stack trace has been reported below. "
-        )
-        message.setDetailedText(exception)
-        message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # a resizable dialog is used instead of a QMessageBox, which cannot be resized
+        dialog = QDialog(self.app)
+        dialog.setWindowTitle("Model error")
+        dialog.setSizeGripEnabled(True)
+        dialog.resize(900, 600)
 
-        # open the exception message box
-        for button in message.buttons():
-            if message.buttonRole(button) == QMessageBox.ButtonRole.ActionRole:
-                button.click()
-                break
-        message.exec()
+        label = QLabel(
+            "An exception occurred while running the pywr model. "
+            + "The complete stack trace has been reported below."
+        )
+        label.setWordWrap(True)
+
+        trace = QPlainTextEdit(exception)
+        trace.setReadOnly(True)
+        trace.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        font = trace.font()
+        font.setFamily("monospace")
+        font.setStyleHint(font.StyleHint.Monospace)
+        trace.setFont(font)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(dialog.accept)
+
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label)
+        layout.addWidget(trace, 1)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     @Slot()
     def run_to_date_reached(self) -> None:
@@ -424,6 +496,39 @@ class RunWidget(QWidget):
             model_config=self.model_config, pywr_model=self.worker.pywr_model
         )
         dialog.show()
+
+    def confirm_validation(self) -> bool:
+        """
+        Checks the model before it is run. Only the editor checks run here, as the
+        schema validation is slow on large models and does not tell if pywr can load
+        the model. Warnings do not stop the run. The errors are references to missing
+        components, which pywr fails to load.
+        :return: Whether the run can start.
+        """
+        errors = [
+            d
+            for d in validate_model(self.model_config, include_orphans=False)
+            if d.severity == "error"
+        ]
+        if not errors:
+            return True
+
+        self.logger.debug(f"Validation found {len(errors)} error(s)")
+        box = QMessageBox(self.app)
+        box.setWindowTitle("Model validation")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText(f"The model cannot be run because it has {len(errors)} error(s).")
+        shown = "\n".join(f"- {d.message}" for d in errors[:5])
+        more = f"\n... and {len(errors) - 5} more" if len(errors) > 5 else ""
+        box.setInformativeText(shown + more)
+        show = box.addButton("Show problems", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(show)
+        box.exec()
+
+        if box.clickedButton() is show:
+            self.app.open_validation_dialog()
+        return False
 
     def validate_timestepper(self) -> bool:
         """

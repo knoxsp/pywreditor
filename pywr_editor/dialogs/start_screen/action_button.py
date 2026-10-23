@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 
 class StartScreenActionButton(QWidget):
@@ -57,7 +57,7 @@ class StartScreenActionButton(QWidget):
         wrapper_layout.addWidget(button)
 
         self.setLayout(wrapper_layout)
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
 
     @property
     def stylesheet(self) -> str:
@@ -94,6 +94,8 @@ class Icon(QSvgWidget):
         self.setStyleSheet("QSvgWidget { background: transparent }")
 
         self.renderer().load(self.svg_bytes)
+        # the icon colours are replaced when the SVG is loaded
+        Theme.on_change(self, lambda w: w.renderer().load(w.svg_bytes))
 
     @property
     def svg_bytes(self) -> PySide6.QtCore.QByteArray:
@@ -126,8 +128,9 @@ class TitleLabel(QLabel):
         self.setText(title)
         self.setMaximumHeight(100)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            self,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "QLabel": {
                         "background": "transparent",
@@ -135,7 +138,7 @@ class TitleLabel(QLabel):
                         "font-size": "16px",
                     }
                 }
-            )
+            ),
         )
 
 
@@ -150,13 +153,14 @@ class DescriptionLabel(QLabel):
         self.setText(description)
         self.setMaximumHeight(15)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        self.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            self,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "QLabel": {
                         "background": "transparent",
                         "color": Color("gray", 500).hex,
                     }
                 }
-            )
+            ),
         )

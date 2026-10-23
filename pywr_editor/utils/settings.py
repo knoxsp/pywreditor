@@ -18,7 +18,11 @@ class Settings:
     hide_labels_key = "schematic/hide_labels"
     hide_arrows_key = "schematic/hide_arrows"
     hide_legend_key = "schematic/hide_legend"
+    hide_minimap_key = "schematic/hide_minimap"
+    geo_view_key = "schematic/geo_view"
+    map_notice_key = "schematic/map_notice_shown"
     hidden_node_types_key = "schematic/hidden_node_types"
+    hidden_nodes_key = "schematic/hidden_nodes"
     zoom_level_key = "schematic/zoom_level"
     schematic_center_key = "schematic/schematic_center"
     reverse_zoom_key = "schematic/reverse_zoom"
@@ -28,6 +32,20 @@ class Settings:
     show_grid_key = "schematic/show_grid"
     recent_projects_key = "recent_projects"
     run_to_date_key = "run_to_date"
+    theme_key = "appearance/theme"
+    python_paths_key = "python/paths"
+    solver_key = "run/solver"
+    output_dir_key = "run/output_dir"
+    save_results_key = "run/save_results"
+    default_solver = "glpk-edge"
+    default_save_results = True
+    python_modules_key = "python/modules"
+    console_python_key = "console/python"
+
+    storage_format = QSettings.Format.NativeFormat
+    """ Where the settings are stored: the registry on Windows, a property list on
+    macOS and an ini file on Linux. The tests use ini files, as only these can be
+    redirected to a temporary folder """
 
     def __init__(self, json_file: str | None = None):
         """
@@ -44,9 +62,11 @@ class Settings:
             self.instance.setValue("file", self.json_file)
             self.app_name = hashlib.md5(self.json_file.encode()).hexdigest()
 
+        self.window_state_version = 3
+        """ The version of the layout of the docked panels. The saved layout is
+        ignored when it was stored by a version with different panels """
         self.store_geometry_widget = [
             "toolbar",
-            "splitter",
             "components_tree",
             "schematic",
         ]
@@ -57,7 +77,12 @@ class Settings:
         Returns the settings instance.
         :returns The QSettings object.
         """
-        return QSettings(self.org_name, self.app_name)
+        return QSettings(
+            self.storage_format,
+            QSettings.Scope.UserScope,
+            self.org_name,
+            self.app_name or "",
+        )
 
     @property
     def global_instance(self) -> QSettings:
@@ -65,7 +90,29 @@ class Settings:
         Returns the settings instance. This is not connected to the model file.
         :returns The QSettings object.
         """
-        return QSettings(self.org_name)
+        return QSettings(
+            self.storage_format, QSettings.Scope.UserScope, self.org_name, ""
+        )
+
+    @property
+    def theme(self) -> str:
+        """
+        Returns the saved theme preference. This is not connected to the model file.
+        :return: "light", "dark" or "system". System is the default.
+        """
+        value = self.global_instance.value(self.theme_key, defaultValue="system")
+        return value if value in ("light", "dark", "system") else "system"
+
+    def save_theme(self, theme: str) -> None:
+        """
+        Saves the theme preference. This is not connected to the model file.
+        :param theme: "light", "dark" or "system". Any other value is saved as
+        system.
+        :return: None
+        """
+        self.global_instance.setValue(
+            self.theme_key, theme if theme in ("light", "dark", "system") else "system"
+        )
 
     def save_window_attributes(self, window: "MainWindow") -> None:
         """
@@ -79,7 +126,7 @@ class Settings:
         qsettings = self.instance
 
         qsettings.setValue("window/geometry", window.saveGeometry())
-        qsettings.setValue("window/state", window.saveState())
+        qsettings.setValue("window/state", window.saveState(self.window_state_version))
         for widget in self.store_geometry_widget:
             w = getattr(window, widget)
             qsettings.setValue(f"{widget}/geometry", w.saveGeometry())
@@ -98,7 +145,7 @@ class Settings:
         qsettings = self.instance
 
         window.restoreGeometry(qsettings.value("window/geometry"))
-        window.restoreState(qsettings.value("window/state"))
+        window.restoreState(qsettings.value("window/state"), self.window_state_version)
         for widget in self.store_geometry_widget:
             w = getattr(window, widget)
             w.restoreGeometry(qsettings.value(f"{widget}/geometry"))
@@ -201,6 +248,192 @@ class Settings:
         self.instance.setValue(self.hide_legend_key, hide)
 
     @property
+    def python_paths(self) -> list[str]:
+        """
+        The folders (source folders or virtual environments) added to the Python
+        search path when the model is run.
+        :return: The list of paths.
+        """
+        value = self.instance.value(self.python_paths_key, defaultValue=[])
+        if isinstance(value, str):
+            value = [value]
+        return [str(p) for p in value or []]
+
+    def save_python_paths(self, paths: list[str]) -> None:
+        """
+        Saves the Python paths used to run the model.
+        :param paths: The list of paths.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.python_paths_key, list(paths))
+
+    @property
+    def solver(self) -> str:
+        """
+        The Pywr solver used to run the model, unless the model file sets one.
+        :return: The solver name. Defaults to glpk-edge.
+        """
+        return str(
+            self.instance.value(self.solver_key, defaultValue=self.default_solver)
+        )
+
+    def save_solver(self, name: str) -> None:
+        """
+        Saves the Pywr solver used to run the model.
+        :param name: The solver name.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.solver_key, name)
+
+    @property
+    def output_dir(self) -> str:
+        """
+        The folder where the run results are saved, as set by the user.
+        :return: The folder. An empty string means the "outputs" folder next to the
+        model file. A relative path is relative to the model folder.
+        """
+        return str(self.instance.value(self.output_dir_key, defaultValue=""))
+
+    def save_output_dir(self, folder: str) -> None:
+        """
+        Saves the folder where the run results are saved.
+        :param folder: The folder.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.output_dir_key, folder)
+
+    @property
+    def are_results_saved(self) -> bool:
+        """
+        Whether the recorder results are saved when a run ends.
+        :return: True if the results are saved. Defaults to True.
+        """
+        return self.str_to_bool(
+            self.instance.value(
+                self.save_results_key, defaultValue=self.default_save_results
+            )
+        )
+
+    def save_results_enabled(self, enabled: bool) -> None:
+        """
+        Sets whether the recorder results are saved when a run ends.
+        :param enabled: True to save the results.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.save_results_key, enabled)
+
+    @property
+    def python_modules(self) -> list[str]:
+        """
+        The modules imported before the model is loaded, so that the custom
+        components they define are registered with Pywr.
+        :return: The list of module names.
+        """
+        value = self.instance.value(self.python_modules_key, defaultValue=[])
+        if isinstance(value, str):
+            value = [value]
+        return [str(m) for m in value or []]
+
+    def save_python_modules(self, modules: list[str]) -> None:
+        """
+        Saves the modules imported before the model is loaded.
+        :param modules: The list of module names.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.python_modules_key, list(modules))
+
+    @property
+    def console_python(self) -> str:
+        """
+        The Python interpreter running the console kernel.
+        :return: The path to the interpreter. Empty to use the editor's own Python.
+        """
+        return str(self.instance.value(self.console_python_key, defaultValue="") or "")
+
+    def save_console_python(self, path: str) -> None:
+        """
+        Saves the Python interpreter running the console kernel.
+        :param path: The path to the interpreter. Empty to use the editor's Python.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.console_python_key, path.strip())
+
+    @property
+    def are_minimap_hidden(self) -> bool:
+        """
+        Whether the schematic minimap (overview) should be hidden.
+        :return: True if the minimap is hidden, False otherwise. Defaults to False.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.hide_minimap_key, defaultValue=False)
+        )
+
+    def save_hide_minimap(self, hide: bool) -> None:
+        """
+        Sets the display status of the schematic minimap.
+        :param hide: True to hide the minimap, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.hide_minimap_key, hide)
+
+    @property
+    def is_geo_view_enabled(self) -> bool:
+        """
+        Whether the schematic should plot nodes using their geographic (lon/lat)
+        position instead of their schematic position.
+        :return: True if the geographic view is enabled, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.geo_view_key, defaultValue=False)
+        )
+
+    def save_geo_view(self, enabled: bool) -> None:
+        """
+        Sets whether the schematic should use the geographic view.
+        :param enabled: True to enable the geographic view, False otherwise.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.geo_view_key, enabled)
+
+    @property
+    def is_map_notice_shown(self) -> bool:
+        """
+        Whether the user was told that the map tiles are downloaded from the
+        internet.
+        :return: True if the notice was already shown, False otherwise.
+        """
+        return self.str_to_bool(
+            self.instance.value(self.map_notice_key, defaultValue=False)
+        )
+
+    def save_map_notice_shown(self, shown: bool = True) -> None:
+        """
+        Stores whether the user was told that the map tiles are downloaded from the
+        internet.
+        :param shown: True if the notice was shown.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.map_notice_key, shown)
+
+    @property
     def hidden_node_types(self) -> list[str]:
         """
         Returns the list of node types currently hidden on the schematic.
@@ -224,6 +457,31 @@ class Settings:
         if self.app_name is None:
             return
         self.instance.setValue(self.hidden_node_types_key, json.dumps(node_types))
+
+    @property
+    def hidden_nodes(self) -> list[str]:
+        """
+        Returns the names of the individual nodes hidden on the schematic.
+        :return: The list of node names. Empty if none are hidden.
+        """
+        raw_value = self.instance.value(self.hidden_nodes_key, defaultValue="[]")
+        try:
+            names = json.loads(raw_value)
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(names, list):
+            return []
+        return names
+
+    def save_hidden_nodes(self, names: list[str]) -> None:
+        """
+        Stores the names of the individual nodes hidden on the schematic.
+        :param names: The list of node names to store.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.hidden_nodes_key, json.dumps(names))
 
     @property
     def zoom_level(self) -> float:

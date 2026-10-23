@@ -72,7 +72,6 @@ from .widgets.model_component_picker_dialog.model_component_source_selector_widg
 )
 from .widgets.model_component_picker_dialog.picker_form_helpers import *
 
-
 # Specific widgets for parameters
 from .widgets.parameters.parameter_agg_func_widget import ParameterAggFuncWidget
 from .widgets.parameters.annual_profiles.profile_plot_dialog import (

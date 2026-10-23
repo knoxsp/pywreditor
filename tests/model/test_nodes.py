@@ -25,14 +25,14 @@ class TestNodesClass:
         node_index = 1
         # by name
         model.nodes.set_position([9.0, 10.0], node_name="Link")
-        assert model.json["nodes"][node_index]["position"]["editor_position"] == [
+        assert model.json["nodes"][node_index]["position"]["schematic"] == [
             9,
             10,
         ]
 
         # by index
         model.nodes.set_position([5, 77], node_index=node_index)
-        assert model.json["nodes"][node_index]["position"]["editor_position"] == [
+        assert model.json["nodes"][node_index]["position"]["schematic"] == [
             5,
             77,
         ]
@@ -47,15 +47,62 @@ class TestNodesClass:
         model = self.model("model_missing_schematic_props.json")
 
         model.nodes.set_position([9, 10], node_name="Link1")
-        assert model.json["nodes"][1]["position"]["editor_position"] == [9, 10]
+        assert model.json["nodes"][1]["position"]["schematic"] == [9, 10]
 
         model.nodes.set_position([12, 78], node_name="Link2")
-        assert model.json["nodes"][2]["position"]["editor_position"] == [12, 78]
+        assert model.json["nodes"][2]["position"]["schematic"] == [12, 78]
 
         model.nodes.set_position([55, 410], node_name="Link3")
-        assert model.json["nodes"][3]["position"]["editor_position"] == [
+        assert model.json["nodes"][3]["position"]["schematic"] == [
             55,
             410,
+        ]
+
+    def test_set_geographic_position(self):
+        """
+        Tests the set_geographic_position method.
+        """
+        model = self.model("model_1.json")
+        node_index = 1
+        # by name
+        model.nodes.set_geographic_position([-0.448083, 51.6217], node_name="Link")
+        assert model.json["nodes"][node_index]["position"]["geographic"] == [
+            -0.448083,
+            51.6217,
+        ]
+
+        # by index
+        model.nodes.set_geographic_position([-1.5, 52.1], node_index=node_index)
+        assert model.json["nodes"][node_index]["position"]["geographic"] == [
+            -1.5,
+            52.1,
+        ]
+
+        assert model.has_changes is True
+
+    def test_set_geographic_position_missing_props(self):
+        """
+        Tests the set_geographic_position method when the node does not have the
+        position keys set.
+        """
+        model = self.model("model_missing_schematic_props.json")
+
+        model.nodes.set_geographic_position([-0.1, 51.5], node_name="Link1")
+        assert model.json["nodes"][1]["position"]["geographic"] == [-0.1, 51.5]
+
+    def test_update_preserves_geographic_position(self):
+        """
+        Tests that Nodes.update() preserves an existing geographic position.
+        """
+        model = self.model("model_1.json")
+        model.nodes.set_geographic_position([-0.448083, 51.6217], node_name="Link")
+
+        model.nodes.update({"name": "Link", "type": "Link", "comment": "updated"})
+
+        node_index = model.nodes.find_node_index_by_name("Link")
+        assert model.json["nodes"][node_index]["position"]["geographic"] == [
+            -0.448083,
+            51.6217,
         ]
 
     def test_find_node_index(self):
@@ -165,7 +212,7 @@ class TestNodesClass:
                     "type": "Storage",
                     "max_volume": 10,
                     "initial_volume": 0,
-                    "position": {"editor_position": [200, 500]},
+                    "position": {"schematic": [200, 500]},
                 },
             ),
             # add edge_color
@@ -184,7 +231,7 @@ class TestNodesClass:
                     "max_volume": 35,
                     "initial_volume": 35,
                     "position": {
-                        "editor_position": [200, 500],
+                        "schematic": [200, 500],
                         "edge_color": "blue",
                         "node_style": "wtw",
                     },

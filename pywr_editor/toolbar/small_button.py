@@ -2,7 +2,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QWidget
 
-from pywr_editor.style import stylesheet_dict_to_str
+from pywr_editor.style import Theme, stylesheet_dict_to_str
 
 from .base_button import ToolbarBaseButton
 
@@ -17,7 +17,7 @@ class ToolbarSmallButton(ToolbarBaseButton):
         super().__init__(parent, action)
 
         # load the button style
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
         # aspect
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.setMinimumHeight(28)

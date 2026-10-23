@@ -1,7 +1,7 @@
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QTableWidget, QWidget
 
-from pywr_editor.style import stylesheet_dict_to_str
+from pywr_editor.style import Theme, stylesheet_dict_to_str
 
 from .table_view import TableView
 
@@ -27,14 +27,22 @@ class TableWidget(QTableWidget):
         self.verticalHeader().hide()
         self.setAlternatingRowColors(False)
 
+        Theme.bind(self, lambda w: w.stylesheet())
+        self.verticalScrollBar().setContextMenuPolicy(
+            Qt.ContextMenuPolicy.NoContextMenu
+        )
+
+    @staticmethod
+    def stylesheet() -> str:
+        """
+        Defines the widget stylesheet.
+        :return: The stylesheet as string.
+        """
         style = TableView.stylesheet(as_string=False)
-        for key, value in style.items():
+        for key, value in list(style.items()):
             if "TableView" in key:
                 del style[key]
                 key = key.replace("TableView", "TableWidget")
                 style[key] = value
 
-        self.setStyleSheet(stylesheet_dict_to_str(style))
-        self.verticalScrollBar().setContextMenuPolicy(
-            Qt.ContextMenuPolicy.NoContextMenu
-        )
+        return stylesheet_dict_to_str(style)

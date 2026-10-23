@@ -98,8 +98,8 @@ class TestAddNodes:
 
         assert node_dict["name"] == new_node_name
         assert node_dict["type"] == "link"
-        assert node_dict["position"]["editor_position"][0] == round(node_pos[0], 4)
-        assert node_dict["position"]["editor_position"][1] == round(node_pos[1], 4)
+        assert node_dict["position"]["schematic"][0] == round(node_pos[0], 4)
+        assert node_dict["position"]["schematic"][1] == round(node_pos[1], 4)
 
         # 3. Change node config
         schematic.node_items[new_node_name].on_edit_node()

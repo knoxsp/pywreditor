@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from pywr_editor.form import FieldConfig, Form, FormTitle
 from pywr_editor.model import ModelConfig
+from pywr_editor.style import Theme
 
 from .edge_slots_widget import EdgeSlotsWidget
 
@@ -53,7 +54,9 @@ class EdgeSlotsDialog(QDialog):
         # noinspection PyUnresolvedReferences
         button_box.rejected.connect(self.reject)
         # noinspection PyUnresolvedReferences
-        button_box.findChild(QPushButton).setIcon(qta.icon("msc.close"))
+        close_button = button_box.findChild(QPushButton)
+        close_button.setIcon(qta.icon("msc.close"))
+        Theme.on_change(close_button, lambda w: w.setIcon(qta.icon("msc.close")))
 
         # Form
         form = Form(

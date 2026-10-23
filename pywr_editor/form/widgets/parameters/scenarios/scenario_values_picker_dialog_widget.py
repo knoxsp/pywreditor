@@ -1,6 +1,5 @@
 from typing import Any, Callable
 
-import qtawesome as qta
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
@@ -78,11 +77,11 @@ class ScenarioValuesPickerDialogWidget(QDialog):
 
         # Buttons
         button_box = QHBoxLayout()
-        close_button = PushIconButton(icon=qta.icon("msc.close"), label="Close")
+        close_button = PushIconButton(icon="msc.close", label="Close")
         # noinspection PyUnresolvedReferences
         close_button.clicked.connect(self.reject)
 
-        save_button = PushIconButton(icon=qta.icon("msc.save"), label="Save")
+        save_button = PushIconButton(icon="msc.save", label="Save")
         save_button.setObjectName("save_button")
 
         button_box.addStretch()

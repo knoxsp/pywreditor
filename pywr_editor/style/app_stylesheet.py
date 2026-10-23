@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QApplication
 # noinspection PyUnresolvedReferences
 from .assets import *
 from .color import Color
+from .theme import Theme
 
 
 def stylesheet_dict_to_str(stylesheet: dict, root_selector: str = "") -> str:
@@ -130,13 +131,13 @@ class AppStylesheet:
         return {
             "padding-right": "15px",
             "border-width": "3",
-            "background": "#FFF",
+            "background": Theme.color("base"),
             "border": f"1px solid {Color('gray', 300).hex}",
             "border-radius": "4px",
             "padding": "4px 6px",
             ":hover": {"background": Color("gray", 100).hex},
             ":focus": {"border": f"1px solid {Color('blue', 500).hex}"},
-            ":focus:hover": {"background": "#FFF"},
+            ":focus:hover": {"background": Theme.color("base")},
             "::up-button": {
                 "subcontrol-origin": "border",
                 "subcontrol-position": "top right",
@@ -191,12 +192,12 @@ class AppStylesheet:
                 },
             },
             "QPlainTextEdit": {
-                "background": "#FFF",
+                "background": Theme.color("base"),
                 "border": f"1px solid {Color('gray', 300).hex}",
                 "border-radius": "4px",
             },
             "QLineEdit, QTextEdit": {
-                "background": "#FFF",
+                "background": Theme.color("base"),
                 "border": f"1px solid {Color('gray', 300).hex}",
                 "border-radius": "4px",
                 "padding": "4px 6px",
@@ -205,9 +206,11 @@ class AppStylesheet:
             "QLineEdit:focus, QTextEdit:focus": {
                 "border": f"1px solid {Color('blue', 500).hex}",
             },
-            "QLineEdit:focus:hover, QTextEdit:focus:hover": {"background": "#FFF"},
+            "QLineEdit:focus:hover, QTextEdit:focus:hover": {
+                "background": Theme.color("base")
+            },
             "QDateEdit": {
-                "background": "#FFF",
+                "background": Theme.color("base"),
                 "border": f"1px solid {Color('gray', 300).hex}",
                 "padding": "2px",
                 "::drop-down": {
@@ -219,7 +222,7 @@ class AppStylesheet:
                 },
             },
             "QDialog": {
-                "background": "#FFF",
+                "background": Theme.color("base"),
                 "border": f"1px solid {Color('gray', 400).hex}",
                 "color": Color("gray", 600).hex,
             },
@@ -242,7 +245,7 @@ class AppStylesheet:
                 "border": f"1px solid {Color('gray', 300).hex}",
                 "border-radius": "4px",
             },
-            "QPushButton:pressed": {"color": "rgba(0, 0, 0, 150)"},
+            "QPushButton:pressed": {"color": Theme.overlay(150)},
             "QPushButton:hover": {
                 "background": Color("gray", 300).hex,
                 "border": f"1px solid {Color('gray', 400).hex}",

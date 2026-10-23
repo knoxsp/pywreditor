@@ -5,7 +5,6 @@ import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import qtawesome as qta
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout
 
@@ -95,7 +94,7 @@ class CheckSumWidget(AbstractStringComboBoxWidget):
         line_edit_layout.addWidget(self.line_edit)
 
         calculate_button = PushIconButton(
-            icon=qta.icon("msc.file-binary"), label="Calculate", small=True
+            icon="msc.file-binary", label="Calculate", small=True
         )
         calculate_button.setToolTip(
             "Calculate the file hash using the selected algorith"

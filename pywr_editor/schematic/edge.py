@@ -34,12 +34,15 @@ class Edge(QGraphicsItem):
         self.arrow_size: int = 7
         self.hide_arrow = hide_arrow
 
-        # edge color if available
-        self.edge_color = Color("gray", 400).qcolor
+        # edge color chosen by the user, if available and valid
+        self.custom_edge_color: QColor | None = None
         if edge_color_name is not None:
             # noinspection PyBroadException
             try:
-                self.edge_color = Color(edge_color_name, 500).qcolor
+                # user colours are not mirrored in the dark theme
+                self.custom_edge_color = Color(
+                    edge_color_name, 500, themed=False
+                ).qcolor
             except Exception:
                 pass
 
@@ -51,6 +54,17 @@ class Edge(QGraphicsItem):
         self.source.draw_edge(self)
         self.target.draw_edge(self)
         self.adjust()
+
+    @property
+    def edge_color(self) -> QColor:
+        """
+        Returns the edge color. The default color follows the active theme, while
+        the color set by the user is always returned as defined.
+        :return: The color.
+        """
+        if self.custom_edge_color is not None:
+            return self.custom_edge_color
+        return Color("gray", 400).qcolor
 
     def toggle_arrow(self) -> None:
         """
@@ -78,16 +92,18 @@ class Edge(QGraphicsItem):
         length = line.length()
         self.prepareGeometryChange()
 
-        min_distance = min(self.source.node.size) + min(self.target.node.size)
+        source_size = [d * self.source.node.scale() for d in self.source.node.size]
+        target_size = [d * self.target.node.scale() for d in self.target.node.size]
+        min_distance = min(source_size) + min(target_size)
         if length > min_distance:
             edge_offset_source = QPointF(
-                (line.dx() * self.source.node.size[0] / 2) / length,
-                (line.dy() * self.source.node.size[1] / 2) / length,
+                (line.dx() * source_size[0] / 2) / length,
+                (line.dy() * source_size[1] / 2) / length,
             )
             # add padding between the arrow and the target node
             edge_offset_target = QPointF(
-                (line.dx() * (self.target.node.size[0] / 2 + 1)) / length,
-                (line.dy() * (self.target.node.size[1] / 2 + 1)) / length,
+                (line.dx() * (target_size[0] / 2 + 1)) / length,
+                (line.dy() * (target_size[1] / 2 + 1)) / length,
             )
 
             self.source_point = line.p1() + edge_offset_source
