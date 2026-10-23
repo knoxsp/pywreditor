@@ -127,7 +127,9 @@ class SchematicMinimap(QFrame):
         # so the content is measured from the items
         content = QRectF()
         if nodes:
-            bbox = SchematicBBoxUtils(list(nodes.values())).min_max_bounding_box_coordinates
+            bbox = SchematicBBoxUtils(
+                list(nodes.values())
+            ).min_max_bounding_box_coordinates
             if bbox.min_x.value is not None:
                 content = QRectF(
                     bbox.min_x.value,
@@ -190,7 +192,9 @@ class SchematicMinimap(QFrame):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(QColor(Color("gray", 400).hex), 1))
         painter.setBrush(QColor(255, 255, 255, 225))
-        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
+        painter.drawRoundedRect(
+            QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4
+        )
 
         painter.setPen(QPen(QColor(Color("gray", 400).hex), 1))
         for line in self._edges:

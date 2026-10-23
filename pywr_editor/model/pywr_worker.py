@@ -65,6 +65,26 @@ def apply_solver(model_dict: dict, solver: str | None) -> dict:
     return model_dict
 
 
+def release_solver(model: Model | None) -> None:
+    """
+    Frees the solver of a model. GLPK keeps its memory allocator per thread, so the
+    solver must be freed by the thread that created it. Otherwise the garbage
+    collector frees it later in another thread (typically the GUI thread) and GLPK
+    aborts the process ("Error detected in file env/alloc.c"). This happens on Windows
+    and macOS. Dropping the last reference frees the solver straight away, with no need
+    to collect the garbage.
+    :param model: The pywr model.
+    :return: None
+    """
+    if model is None:
+        return
+    # noinspection PyBroadException
+    try:
+        model.solver = None
+    except Exception:
+        pass
+
+
 def load_pywr_model(
     model_dict: dict,
     model_file: str,
@@ -360,6 +380,7 @@ class PywrWorker(QObject):
 
         # do not force a garbage collection from this thread: it can destroy Qt
         # objects outside the GUI thread and crash the application
+        release_solver(self.pywr_model)
         del self.pywr_model
         self.finished.emit()
         self.pywr_model = None

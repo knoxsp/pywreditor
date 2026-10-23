@@ -35,7 +35,7 @@ class PythonPathsDialog(QDialog):
             "to the Python search path when the model is run, so the PYTHONPATH "
             "environment variable is not needed. A search path only makes modules "
             "importable: add below the modules that define custom parameters, nodes "
-            "and recorders (for example \"parameters\") so that they are imported "
+            'and recorders (for example "parameters") so that they are imported '
             "before the model is loaded."
         )
         description.setWordWrap(True)

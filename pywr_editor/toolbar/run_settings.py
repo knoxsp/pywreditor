@@ -64,7 +64,7 @@ class RunSettings(QWidget):
             str(default_output_dir(parent.model_config.json_file))
         )
         self.output_dir.setToolTip(
-            'The folder where the results are saved, each run in a timestamped '
+            "The folder where the results are saved, each run in a timestamped "
             'subfolder. Leave it empty to use the "outputs" folder next to the '
             "model. A relative path is relative to the model folder"
         )

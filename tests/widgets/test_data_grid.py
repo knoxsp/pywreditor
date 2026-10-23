@@ -2,7 +2,7 @@ import pytest
 from PySide6.QtCore import QItemSelection, QItemSelectionModel, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QSignalSpy, QTest
-from PySide6.QtWidgets import QAbstractItemDelegate, QInputDialog, QMenu
+from PySide6.QtWidgets import QAbstractItemDelegate, QInputDialog
 
 from pywr_editor.widgets.data_grid import DataGridModel, DataGridView, parse_clipboard
 
@@ -385,10 +385,10 @@ class TestCsv:
 
     def test_quoted_fields_round_trip(self, tmp_path):
         file = tmp_path / "t.csv"
-        grid = DataGridModel(["a", "b"], [['x,y', 'he said "hi"'], ["l1\nl2", ""]])
+        grid = DataGridModel(["a", "b"], [["x,y", 'he said "hi"'], ["l1\nl2", ""]])
         grid.to_csv(file)
         again = DataGridModel.from_csv(file)
-        assert again.rows == [['x,y', 'he said "hi"'], ["l1\nl2", ""]]
+        assert again.rows == [["x,y", 'he said "hi"'], ["l1\nl2", ""]]
 
     def test_non_ascii(self, tmp_path):
         file = tmp_path / "t.csv"
@@ -853,9 +853,7 @@ class TestContextMenuAndHeader:
 
     def test_header_double_click_renames(self, qtbot, monkeypatch):
         view = make_view(qtbot, ["A", "B"], [["1", "2"]])
-        monkeypatch.setattr(
-            QInputDialog, "getText", lambda *a, **k: ("Flow", True)
-        )
+        monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Flow", True))
         view.horizontalHeader().sectionDoubleClicked.emit(1)
         assert view.grid.headers == ["A", "Flow"]
         press(view, Qt.Key.Key_Z, CTRL)

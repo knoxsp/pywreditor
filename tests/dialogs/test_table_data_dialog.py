@@ -110,7 +110,9 @@ class TestLoading:
 
     def test_grid_has_focus(self, qtbot, tmp_path):
         dialog = make_dialog(qtbot, tmp_path / "t.csv")
-        qtbot.waitUntil(lambda: dialog.view.hasFocus() or dialog.focusWidget() is dialog.view)
+        qtbot.waitUntil(
+            lambda: dialog.view.hasFocus() or dialog.focusWidget() is dialog.view
+        )
 
 
 class TestTitle:
@@ -171,9 +173,7 @@ class TestSave:
         assert file.read_text() == "a,b\n1,2\n"
         assert boxes.shown[0][0] == "warning"
 
-    def test_save_error_is_reported_and_state_stays_dirty(
-        self, qtbot, tmp_path, boxes
-    ):
+    def test_save_error_is_reported_and_state_stays_dirty(self, qtbot, tmp_path, boxes):
         blocker = tmp_path / "file"
         blocker.write_text("x")
         dialog = make_dialog(qtbot, blocker / "t.csv")

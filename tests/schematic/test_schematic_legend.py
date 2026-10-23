@@ -246,4 +246,3 @@ class TestSchematicLegend:
         assert button.isChecked() is False
         assert schematic.legend.isHidden() is False
         assert window.editor_settings.are_legend_hidden is False
-
