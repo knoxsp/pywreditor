@@ -348,6 +348,8 @@ class Schematic(QGraphicsView):
             item.update()
         self.scene.update()
         self.viewport().update()
+        # the legend icons are pixmaps, so they must be rendered again
+        self.legend.refresh()
 
     def drawBackground(self, painter: QPainter, rect: QRectF | QRect) -> None:
         """
