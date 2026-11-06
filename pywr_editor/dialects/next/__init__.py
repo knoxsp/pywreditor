@@ -1,10 +1,18 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from pywr_editor.dialects.base import ModelDialect
+from pywr_editor.dialects.base import ComponentKind, ModelDialect
 
 if TYPE_CHECKING:
     from pywr_editor.model import ModelConfig
+
+
+def _parameters_dialog() -> type:
+    from pywr_editor.dialogs.next_components.components_dialog import (
+        NextParametersDialog,
+    )
+
+    return NextParametersDialog
 
 
 class NextDialect(ModelDialect):
@@ -84,7 +92,12 @@ class NextDialect(ModelDialect):
         :param model: The model configuration with the loaded dictionary.
         :return: None
         """
-        from pywr_editor.dialects.next.model import NextEdges, NextNodes, VirtualNodes
+        from pywr_editor.dialects.next.model import (
+            NamedComponents,
+            NextEdges,
+            NextNodes,
+            VirtualNodes,
+        )
         from pywr_editor.model import GisLayers, ModelFileInfo, Shapes
         from pywr_editor.model.constants import Constants
 
@@ -138,9 +151,10 @@ class NextDialect(ModelDialect):
         model.virtual_nodes = VirtualNodes(model=model)
         model.shapes = Shapes(model=model)
         model.gis_layers = GisLayers(model=model)
+        model.parameters = NamedComponents(model, "parameters", "parameter")
         # pywr v1 components that pywr-next does not have, or that are not
         # supported yet
-        model.parameters = model.recorders = model.tables = None
+        model.recorders = model.tables = None
         model.scenarios = model.includes = None
 
     def validate_model(self, model: "ModelConfig") -> list:
@@ -175,6 +189,24 @@ class NextDialect(ModelDialect):
             "The structure is checked against the schema of pywr "
             f"{schema_info()['pywr_version']} and by the editor."
         )
+
+    def component_kinds(self) -> list[ComponentKind]:
+        """
+        Returns the kinds of pywr-next components edited in their own dialog.
+        :return: The list of component kinds.
+        """
+        return [
+            ComponentKind(
+                key="parameter",
+                label="Parameters",
+                action_key="edit-parameters",
+                icon=":/toolbar/edit-parameters",
+                tooltip="Add, modify and delete the model parameters",
+                dialog_class=_parameters_dialog,
+                shortcut="Ctrl+P",
+                list_key="parameters",
+            ),
+        ]
 
     def node_dialog_class(self) -> type:
         """

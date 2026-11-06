@@ -54,3 +54,24 @@ def value_items(value: Any) -> list[QTreeWidgetItem]:
         item.addChildren(value_items(item_value))
         items.append(item)
     return items
+
+
+class TreeWidgetComponent(QTreeWidgetItem):
+    """A pywr-next component in a list of the network, such as a parameter."""
+
+    def __init__(self, component: dict, kind: str, tag: str = "type"):
+        """
+        :param component: The component dictionary.
+        :param kind: The key of the component kind, such as "parameter".
+        :param tag: The key with the component type.
+        """
+        super().__init__()
+        meta = component.get("meta") if isinstance(component, dict) else None
+        self.name = meta.get("name") if isinstance(meta, dict) else None
+        self.kind = kind
+        self.setText(0, str(self.name))
+        component_type = component.get(tag)
+        self.setText(1, str(component_type) if component_type else "")
+        self.setToolTip(0, str(self.name))
+        values = {k: v for k, v in component.items() if k not in ("meta", tag)}
+        self.addChildren(value_items(values))

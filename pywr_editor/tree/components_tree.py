@@ -23,6 +23,7 @@ from .tree_widget_node import TreeWidgetNode
 from .tree_widget_parameter import TreeWidgetParameter, TreeWidgetParameterName
 from .tree_widget_recorder import TreeWidgetRecorder, TreeWidgetRecorderName
 from .tree_widget_table import TreeWidgetTable
+from .tree_widget_value import TreeWidgetComponent
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -84,16 +85,20 @@ class ComponentsTree(QTreeWidget):
 
         self._populate_model_info()
         self._populate_nodes()
-        # only show the components of the model dialect
-        kinds = {kind.key for kind in self.model_config.dialect.component_kinds()}
-        for kind, populate in [
-            ("parameter", self._populate_parameters),
-            ("table", self._populate_tables),
-            ("recorder", self._populate_recorders),
-            ("scenario", self._populate_scenarios),
-        ]:
-            if kind in kinds:
-                populate()
+        # only show the components of the model dialect. The pywr-next components
+        # are listed generically
+        kinds = {kind.key: kind for kind in self.model_config.dialect.component_kinds()}
+        v1_populators = {
+            "parameter": self._populate_parameters,
+            "table": self._populate_tables,
+            "recorder": self._populate_recorders,
+            "scenario": self._populate_scenarios,
+        }
+        for key, kind in kinds.items():
+            if kind.list_key is not None:
+                self._populate_list(kind)
+            elif key in v1_populators:
+                v1_populators[key]()
         self.insertTopLevelItems(0, [group for group in self.items.values()])
 
         # do not let user sort columns
@@ -138,6 +143,7 @@ class ComponentsTree(QTreeWidget):
                 TreeWidgetParameterName,
                 TreeWidgetRecorderName,
                 TreeWidgetTable,
+                TreeWidgetComponent,
             ),
         )
 
@@ -286,6 +292,34 @@ class ComponentsTree(QTreeWidget):
         else:
             self.expanded_state.store_state(parent_item)
         self.items["parameters"] = parent_item
+
+    def _populate_list(self, kind) -> None:
+        """
+        Populates the tree widget with a list of pywr-next components.
+        :param kind: The ComponentKind, with the key of the list in the network.
+        :return: None
+        """
+        from pywr_editor.dialects.next.schema import bundled_schema
+
+        network = self.model_config.json.get("network", {})
+        components = network.get(kind.list_key) or []
+        parent_item = QTreeWidgetItem(self)
+        parent_item.setText(0, kind.label)
+        definitions = {"tables": "DataTable"}
+        definition = definitions.get(kind.list_key)
+        tag = bundled_schema().tag_key(definition) if definition else "type"
+        for component in components:
+            if not isinstance(component, dict):
+                continue
+            sub_item = TreeWidgetComponent(component, kind.key, tag)
+            self.expanded_state.store_state(sub_item)
+            parent_item.addChild(sub_item)
+
+        if self.init:
+            self.expanded_state.add(parent_item, True)
+        else:
+            self.expanded_state.store_state(parent_item)
+        self.items[kind.list_key] = parent_item
 
     def _populate_model_info(self) -> None:
         """
@@ -551,6 +585,17 @@ class ComponentsTree(QTreeWidget):
             edit_action.triggered.connect(
                 lambda *args, name=parameter_name: self.on_delete_parameter(
                     parameter_name
+                )
+            )
+            context_menu.exec(self.mapToGlobal(pos))
+        elif isinstance(item, TreeWidgetComponent):
+            context_menu = ContextualMenu()
+            context_menu.set_title(item.name)
+            edit_action = context_menu.addAction(edit_icon, "Edit")
+            # noinspection PyUnresolvedReferences
+            edit_action.triggered.connect(
+                lambda *args, kind=item.kind, name=item.name: (
+                    self.parent.open_component_dialog(kind, name)
                 )
             )
             context_menu.exec(self.mapToGlobal(pos))

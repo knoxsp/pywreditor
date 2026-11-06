@@ -389,3 +389,158 @@ class NextEdges(Edges):
         else:
             edge[key] = slot
         self.model.has_changed()
+
+
+class NamedComponents:
+    """
+    A list of named pywr-next components, such as the parameters or the tables of
+    the network, or the local parameters of a node. Each component has its name in
+    its "meta" and its type in "type" (or "format" for tables).
+    """
+
+    def __init__(
+        self,
+        model: "ModelConfig",
+        key: str,
+        kind: str,
+        owner: dict | None = None,
+    ):
+        """
+        :param model: The model configuration.
+        :param key: The key of the list, such as "parameters".
+        :param kind: The kind of the components for the references, such as
+        "parameter" (see references.py).
+        :param owner: The dictionary with the list. Defaults to the network; a node
+        for its local parameters.
+        """
+        self.model = model
+        self.key = key
+        self.kind = kind
+        self.owner = owner
+
+    def _owner(self) -> dict:
+        return self.owner if self.owner is not None else self.model.json["network"]
+
+    def get_all(self) -> list[dict]:
+        """
+        Returns the components. The list is added to the model when missing.
+        :return: The component dictionaries.
+        """
+        owner = self._owner()
+        if not isinstance(owner.get(self.key), list):
+            owner[self.key] = []
+        return owner[self.key]
+
+    @property
+    def names(self) -> list[str]:
+        """
+        Returns the names of the components.
+        :return: The list of names.
+        """
+        from pywr_editor.dialects.next.validation import component_name
+
+        names = (component_name(item) for item in self._owner().get(self.key) or [])
+        return [name for name in names if name is not None]
+
+    @property
+    def count(self) -> int:
+        return len(self.names)
+
+    def exists(self, name: str) -> bool:
+        return name in self.names
+
+    def find_index(self, name: str) -> int | None:
+        """
+        Returns the position of a component in the list.
+        :param name: The component name.
+        :return: The index, or None if there is no component with the name.
+        """
+        from pywr_editor.dialects.next.validation import component_name
+
+        for index, item in enumerate(self._owner().get(self.key) or []):
+            if component_name(item) == name:
+                return index
+        return None
+
+    def config(self, name: str) -> dict | None:
+        """
+        Returns the dictionary of a component.
+        :param name: The component name.
+        :return: The dictionary, or None if there is no component with the name.
+        """
+        index = self.find_index(name)
+        return None if index is None else self.get_all()[index]
+
+    def add(self, component: dict) -> None:
+        """
+        Adds a component.
+        :param component: The component dictionary, with its name in "meta".
+        :return: None
+        """
+        from pywr_editor.dialects.next.validation import component_name
+
+        name = component_name(component)
+        if name is None:
+            raise ValueError("The component must have a name in its meta")
+        if self.exists(name):
+            raise ValueError(f'A {self.kind} named "{name}" already exists')
+        self.get_all().append(component)
+        self.model.has_changed()
+
+    def update(self, name: str, component: dict) -> None:
+        """
+        Replaces a component. When its name changes, the references to it are
+        renamed too.
+        :param name: The current name of the component.
+        :param component: The new component dictionary.
+        :return: None
+        """
+        from pywr_editor.dialects.next.validation import component_name
+
+        index = self.find_index(name)
+        if index is None:
+            raise KeyError(f'There is no {self.kind} named "{name}"')
+        new_name = component_name(component)
+        if new_name != name:
+            self.rename_references(name, new_name)
+        self.get_all()[index] = component
+        self.model.has_changed()
+
+    def delete(self, name: str) -> None:
+        """
+        Deletes a component. The references to it are not changed.
+        :param name: The component name.
+        :return: None
+        """
+        index = self.find_index(name)
+        if index is not None:
+            components = self.get_all()
+            del components[index]
+            if not components:
+                # do not leave an empty list in the model
+                del self._owner()[self.key]
+            self.model.has_changed()
+
+    def references(self, name: str) -> list:
+        """
+        Returns the references to a component.
+        :param name: The component name.
+        :return: The list of Reference.
+        """
+        from pywr_editor.dialects.next.references import find_references
+
+        return find_references(self.model.json, kind=self.kind, name=name)
+
+    def rename_references(self, name: str, new_name: str) -> None:
+        """
+        Renames the references to a component.
+        :param name: The current name.
+        :param new_name: The new name.
+        :return: None
+        """
+        if self.kind == "local parameter":
+            # local parameter names are only unique within their node
+            return
+        from pywr_editor.dialects.next.references import rename_references
+
+        rename_references(self.model.json, self.kind, name, new_name)

@@ -95,13 +95,6 @@ class NextNodeDialog(QDialog):
         }
         if config_specs:
             fields["Configuration"] = field_configs(config_specs, values, model_config)
-        if local_specs:
-            local = field_configs(local_specs, values, model_config)
-            local[0]["help_text"] = (
-                "The parameters that belong to this node, as a list of parameters "
-                "in the pywr-next format"
-            )
-            fields["Local parameters"] = local
         if unknown:
             from pywr_editor.dialects.next.schema import FieldSpec
 
@@ -114,16 +107,55 @@ class NextNodeDialog(QDialog):
         self.form.load_fields()
         self.save_button.setEnabled(False)
 
+        # the local parameters are edited in the parameters dialog
+        local_box = QHBoxLayout()
+        self.local_parameters_label = QLabel()
+        self.local_parameters_button = PushIconButton(
+            icon="msc.symbol-variable", label="Edit local parameters"
+        )
+        # noinspection PyUnresolvedReferences
+        self.local_parameters_button.clicked.connect(self.on_edit_local_parameters)
+        local_box.addWidget(self.local_parameters_label)
+        local_box.addStretch()
+        local_box.addWidget(self.local_parameters_button)
+        self.local_parameters_button.setVisible(bool(local_specs))
+        self.local_parameters_label.setVisible(bool(local_specs))
+        self.update_local_parameters_label()
+
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignTop)
         layout.addWidget(self.title)
         layout.addWidget(self.description)
         layout.addWidget(self.form)
+        layout.addLayout(local_box)
         layout.addLayout(button_box)
 
         self.setWindowTitle(f"Edit node - {node_name}")
         self.setMinimumSize(750, 650)
         self.setWindowModality(Qt.WindowModality.WindowModal)
+
+    def update_local_parameters_label(self) -> None:
+        """
+        Shows how many local parameters the node has.
+        :return: None
+        """
+        node = self.model_config.nodes.config(self.node_name) or {}
+        count = len(node.get(LOCAL_PARAMETERS_KEY) or [])
+        self.local_parameters_label.setText(f"Local parameters: {count}")
+
+    @Slot()
+    def on_edit_local_parameters(self) -> None:
+        """
+        Opens the parameters dialog with the local parameters of the node.
+        :return: None
+        """
+        from pywr_editor.dialogs.next_components.components_dialog import (
+            open_local_parameters,
+        )
+
+        dialog = open_local_parameters(self.model_config, self.node_name, self)
+        # noinspection PyUnresolvedReferences
+        dialog.finished.connect(self.update_local_parameters_label)
 
     def check_name(self, name: str, label: str, value: str) -> Validation:
         """
@@ -155,7 +187,13 @@ class NextNodeDialog(QDialog):
             meta["comment"] = comment
         else:
             meta.pop("comment", None)
-        return {"meta": meta, "type": self.node_type, **form_data}
+        node = {"meta": meta, "type": self.node_type, **form_data}
+        # keep the local parameters as they are now in the model: they are edited
+        # in the parameters dialog
+        current = self.model_config.nodes.config(self.node_name) or {}
+        if LOCAL_PARAMETERS_KEY in current:
+            node[LOCAL_PARAMETERS_KEY] = current[LOCAL_PARAMETERS_KEY]
+        return node
 
     @Slot()
     def on_form_save(self) -> None:

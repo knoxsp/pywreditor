@@ -138,3 +138,29 @@ def test_window_opens_next_dialog(qtbot, tmp_path):
     # nodes without a position were placed on the schematic: do not ask to save
     window.model_config.reset_change_flag()
     window.close()
+
+
+def test_local_parameters_button(qtbot, tmp_path):
+    """
+    Tests that the local parameters are edited in the parameters dialog and kept
+    when the node is saved afterwards.
+    """
+    from pywr_editor.dialogs.next_components.components_dialog import (
+        NextParametersDialog,
+    )
+
+    model_file = tmp_path / "model.json"
+    shutil.copy(NEXT_MODELS / "local-parameter1.json", model_file)
+    model = ModelConfig(str(model_file))
+    dialog = open_dialog(qtbot, model, "demand1")
+    assert dialog.local_parameters_label.text() == "Local parameters: 1"
+
+    dialog.on_edit_local_parameters()
+    parameters_dialog = dialog.findChild(NextParametersDialog)
+    parameters_dialog.form.find_field("name").widget.line_edit.setText("renamed")
+    parameters_dialog.save()
+    parameters_dialog.close()
+
+    dialog.save()
+    local = model.nodes.config("demand1")["parameters"]
+    assert [p["meta"]["name"] for p in local] == ["renamed"]

@@ -37,14 +37,41 @@ class SearchModel(QAbstractListModel):
         self.model_config = model_config
         self.model_data = []
         # only list the components of the model dialect
-        kinds = {kind.key for kind in model_config.dialect.component_kinds()}
+        component_kinds = model_config.dialect.component_kinds()
+        kinds = {kind.key for kind in component_kinds if kind.list_key is None}
         if "table" in kinds:
             self._add_tables()
         if "parameter" in kinds:
             self._add_parameters()
         if "recorder" in kinds:
             self._add_recorders()
+        for kind in component_kinds:
+            if kind.list_key is not None:
+                self._add_list(kind)
         self._add_nodes()
+
+    def _add_list(self, kind) -> None:
+        """
+        Adds the components of a list of a pywr-next network to the search items.
+        :param kind: The ComponentKind, with the key of the list in the network.
+        :return: None
+        """
+        from pywr_editor.dialects.next.model import humanise_type
+
+        network = self.model_config.json.get("network", {})
+        for component in network.get(kind.list_key) or []:
+            meta = component.get("meta") if isinstance(component, dict) else None
+            if not isinstance(meta, dict) or not isinstance(meta.get("name"), str):
+                continue
+            component_type = component.get("type") or component.get("format")
+            self.model_data.append(
+                {
+                    "name": meta["name"],
+                    "icon": QIcon(),
+                    "comp_type": f"{humanise_type(component_type)} - {kind.key}",
+                    "type": kind.key,
+                }
+            )
 
     def _add_tables(self) -> None:
         """

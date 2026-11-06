@@ -41,6 +41,9 @@ class ComponentKind:
     """ The keyboard shortcut of the ribbon button, such as "Ctrl+P" """
     large_button: bool = True
     """ Whether the ribbon button is large or a small button in a column """
+    list_key: str | None = None
+    """ For pywr-next components, the key of their list in the network (such as
+    "parameters"). The components tree and the search then list them generically """
 
     def open_dialog(
         self,
