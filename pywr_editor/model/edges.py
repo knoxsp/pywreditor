@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Sequence
 
-from pywr_editor.model import NodeConfig
-
 if TYPE_CHECKING:
     from pywr_editor.model import ModelConfig
 
@@ -19,9 +17,9 @@ class EdgeRecord:
     """ The name of the source node """
     target: str
     """ The name of the target node """
-    source_slot: str | int | None = None
-    """ The slot of the source node, if any """
-    target_slot: str | int | None = None
+    source_slot: str | int | dict | None = None
+    """ The slot of the source node, if any. pywr-next slots are dictionaries """
+    target_slot: str | int | dict | None = None
     """ The slot of the target node, if any """
 
     @classmethod
@@ -104,11 +102,9 @@ class Edges:
         """
         edges = []
         node_names = self.model.nodes.names
-        for edge in self.get_all():
-            node_source = edge[0]
-            target_node = edge[1]
-            if target_node == node_name and node_source in node_names:
-                edges.append(edge[0])
+        for edge in self.records():
+            if edge.target == node_name and edge.source in node_names:
+                edges.append(edge.source)
 
         if len(edges) == 0:
             return None
@@ -123,11 +119,9 @@ class Edges:
         """
         edges = []
         node_names = self.model.nodes.names
-        for edge in self.get_all():
-            node_source = edge[0]
-            target_node = edge[1]
-            if node_source == node_name and target_node in node_names:
-                edges.append(edge[1])
+        for edge in self.records():
+            if edge.source == node_name and edge.target in node_names:
+                edges.append(edge.target)
 
         if len(edges) == 0:
             return None
@@ -205,6 +199,21 @@ class Edges:
         self.model.has_changed()
         self.model.json["edges"] = edges_to_keep
 
+    def rename_node(self, node_name: str, new_name: str) -> None:
+        """
+        Renames a node in the edges.
+        :param node_name: The node name to change.
+        :param new_name: The new node name.
+        :return: None
+        """
+        self.model.json["edges"] = [
+            [
+                new_name if i < 2 and item == node_name else item
+                for i, item in enumerate(e)
+            ]
+            for e in self.get_all()
+        ]
+
     def color(self, source_node_name: str) -> str | None:
         """
         Returns the color to use for the edge, if this is set in the edge_color
@@ -212,9 +221,9 @@ class Edges:
         :param source_node_name: The node name.
         :return: The color name to use if available, None otherwise.
         """
-        node_config = self.model.nodes.config(source_node_name)
+        node_config = self.model.nodes.config(source_node_name, as_dict=False)
         if node_config is not None:
-            return NodeConfig(node_config).edge_color
+            return node_config.edge_color
         return None
 
     def find(

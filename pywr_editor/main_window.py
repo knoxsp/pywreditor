@@ -97,8 +97,14 @@ class MainWindow(QMainWindow):
         self.model_file = model_file
         self.model_config = ModelConfig(model_file)
         # Show error if the JSON file does not load
-        if not self.model_config.is_valid():
-            self.error_message.emit(self.model_config.load_error, False)
+        load_error = self.model_config.load_error
+        if load_error is None and not self.model_config.dialect.can_open:
+            label = self.model_config.dialect.label
+            load_error = (
+                f"This is a {label} model. The editor cannot open {label} models yet"
+            )
+        if load_error is not None:
+            self.error_message.emit(load_error, False)
             # reopen the start screen. The reference is kept on the class as this
             # window is garbage collected and no window would otherwise be visible
             from pywr_editor.dialogs import StartScreen

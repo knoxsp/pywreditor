@@ -1,14 +1,18 @@
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pywr_editor.dialects.base import ModelDialect
+
+if TYPE_CHECKING:
+    from pywr_editor.model import ModelConfig
 
 
 class NextDialect(ModelDialect):
     key = "next"
     label = "pywr-next"
-    # the model layer for pywr-next is not implemented yet
+    # the schematic and the dialogs do not support pywr-next models yet
     can_open = False
+    time_key = "time"
 
     @classmethod
     def detect(cls, model_json: Any) -> bool:
@@ -73,3 +77,92 @@ class NextDialect(ModelDialect):
             },
             "network": {"nodes": [], "edges": []},
         }
+
+    def setup_model(self, model: "ModelConfig") -> None:
+        """
+        Checks the structure the editor relies on and adds the components of a
+        pywr-next model. The rest of the model is checked by the validation.
+        :param model: The model configuration with the loaded dictionary.
+        :return: None
+        """
+        from pywr_editor.dialects.next.model import NextEdges, NextNodes, VirtualNodes
+        from pywr_editor.model import GisLayers, ModelFileInfo, Shapes
+        from pywr_editor.model.constants import Constants
+
+        json = model.json
+        if self.is_multi_network(json):
+            model.load_error = (
+                "This is a pywr-next model with several networks. The editor cannot "
+                + "open these models yet"
+            )
+            return
+        if self.is_network_file(json):
+            model.load_error = (
+                "This file has a pywr-next network that is part of a model with "
+                + "several networks. Open the model file instead"
+            )
+            return
+
+        network = json["network"]
+        for key in ["nodes", "edges"]:
+            network.setdefault(key, [])
+            if not isinstance(network[key], list):
+                model.load_error = f'The "network.{key}" value must be a list'
+                return
+        for ni, node in enumerate(network["nodes"]):
+            meta = node.get("meta") if isinstance(node, dict) else None
+            if not isinstance(meta, dict) or not isinstance(meta.get("name"), str):
+                model.load_error = f"The node at position {ni + 1} has no name"
+                return
+            if not isinstance(node.get("type"), str):
+                model.load_error = f'The node "{meta["name"]}" has no type'
+                return
+        for ei, edge in enumerate(network["edges"]):
+            if not isinstance(edge, dict) or not all(
+                isinstance(edge.get(key), str) for key in ("from_node", "to_node")
+            ):
+                model.load_error = (
+                    f"The edge at position {ei + 1} must have a 'from_node' and a "
+                    + "'to_node'"
+                )
+                return
+        if not isinstance(json.get(self.time_key), dict):
+            json[self.time_key] = {}
+        if not isinstance(json.get("metadata"), dict):
+            json["metadata"] = {}
+        # the editor data (shapes, map...) while the model is open
+        json.setdefault(Constants.EDITOR_CONFIG_KEY.value, {})
+
+        model.file = ModelFileInfo(model.json_file)
+        model.nodes = NextNodes(model=model)
+        model.edges = NextEdges(model=model)
+        model.virtual_nodes = VirtualNodes(model=model)
+        model.shapes = Shapes(model=model)
+        model.gis_layers = GisLayers(model=model)
+        # pywr v1 components that pywr-next does not have, or that are not
+        # supported yet
+        model.parameters = model.recorders = model.tables = None
+        model.scenarios = model.includes = None
+
+    def timestep_days(self, time_section: dict) -> int | None:
+        """
+        Returns the time step when it is a number of days.
+        :param time_section: The "time" dictionary.
+        :return: The number of days, or None if the time step is in hours or is
+        a frequency.
+        """
+        timestep = time_section.get("timestep")
+        if isinstance(timestep, dict) and timestep.get("type") == "Days":
+            days = timestep.get("days")
+            if isinstance(days, int) and not isinstance(days, bool):
+                return days
+        return None
+
+    def set_timestep_days(self, time_section: dict, days: int) -> None:
+        """
+        Sets the time step to a number of days.
+        :param time_section: The "time" dictionary.
+        :param days: The number of days.
+        :return: None
+        """
+        time_section["timestep"] = {"type": "Days", "days": days}

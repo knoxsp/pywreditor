@@ -1,8 +1,11 @@
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pywr_editor.dialects.base import ComponentKind, ModelDialect
 from pywr_editor.model.constants import Constants
+
+if TYPE_CHECKING:
+    from pywr_editor.model import ModelConfig
 
 
 def _scenarios_dialog() -> type:
@@ -71,6 +74,36 @@ class V1Dialect(ModelDialect):
             shortcut="Ctrl+R",
         ),
     ]
+
+    time_key = "timestepper"
+
+    def setup_model(self, model: "ModelConfig") -> None:
+        """
+        Adds the missing sections, checks the model and adds its components.
+        :param model: The model configuration with the loaded dictionary.
+        :return: None
+        """
+        model.setup_v1_model()
+
+    def timestep_days(self, time_section: dict) -> int | None:
+        """
+        Returns the time step, which is a number of days in pywr v1.
+        :param time_section: The "timestepper" dictionary.
+        :return: The number of days or None if not set.
+        """
+        timestep = time_section.get("timestep")
+        if isinstance(timestep, int) and not isinstance(timestep, bool):
+            return timestep
+        return None
+
+    def set_timestep_days(self, time_section: dict, days: int) -> None:
+        """
+        Sets the time step.
+        :param time_section: The "timestepper" dictionary.
+        :param days: The number of days.
+        :return: None
+        """
+        time_section["timestep"] = days
 
     def component_kinds(self) -> list[ComponentKind]:
         """

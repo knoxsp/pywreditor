@@ -86,6 +86,36 @@ class ModelDialect(ABC):
         :return: The model dictionary.
         """
 
+    time_key: str
+    """ The key of the model section with the start and end dates """
+
+    @abstractmethod
+    def setup_model(self, model: "ModelConfig") -> None:
+        """
+        Checks the structure of a loaded model and adds its components (nodes,
+        edges...) to the ModelConfig. When the model cannot be used, this sets
+        model.load_error.
+        :param model: The model configuration with the loaded dictionary.
+        :return: None
+        """
+
+    @abstractmethod
+    def timestep_days(self, time_section: dict) -> int | None:
+        """
+        Returns the length of the time step in days.
+        :param time_section: The model section with the dates and the time step.
+        :return: The number of days or None if the time step is not in days.
+        """
+
+    @abstractmethod
+    def set_timestep_days(self, time_section: dict, days: int) -> None:
+        """
+        Sets the length of the time step in days.
+        :param time_section: The model section with the dates and the time step.
+        :param days: The number of days.
+        :return: None
+        """
+
     def component_kinds(self) -> list[ComponentKind]:
         """
         Returns the kinds of components edited in their own dialog, in the order

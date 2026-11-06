@@ -75,16 +75,16 @@ class TestModelConfigDialect:
         """
         assert ModelConfig().dialect.key == "v1"
 
-    def test_next_model_not_opened_yet(self):
+    def test_next_model_loads(self):
         """
-        Tests that a pywr-next model is recognised and not read as a v1 model.
+        Tests that a pywr-next model is loaded with the pywr-next model layer.
         """
         model = ModelConfig(
             resolve_model_path("pywr_next/reservoir_with_evaporation1.json")
         )
         assert model.dialect.key == "next"
-        assert model.is_valid() is False
-        assert "pywr-next model" in model.load_error
+        assert model.is_valid(), model.load_error
+        assert model.nodes.names == ["Catchment", "Reservoir", "Demand"]
 
 
 class V1WithoutRecorders(V1Dialect):
@@ -155,3 +155,25 @@ class TestDialectUi:
         # does nothing instead of opening the dialog
         window.open_component_dialog("recorder", "storage")
         assert not [d for d in window.findChildren(RecordersDialog) if d.isVisible()]
+
+
+def test_window_refuses_next_model_for_now(qtbot, monkeypatch):
+    """
+    Tests that the main window does not open a pywr-next model until the schematic
+    and the dialogs support it.
+    """
+    messages = []
+    monkeypatch.setattr(
+        "pywr_editor.main_window.QMessageBox.critical",
+        staticmethod(lambda parent, title, message: messages.append(message)),
+    )
+    monkeypatch.setattr("pywr_editor.dialogs.StartScreen", lambda: _NoWindow())
+    MainWindow(resolve_model_path("pywr_next/reservoir_with_evaporation1.json"))
+    assert messages == [
+        "This is a pywr-next model. The editor cannot open pywr-next models yet"
+    ]
+
+
+class _NoWindow:
+    def show(self) -> None:
+        pass
