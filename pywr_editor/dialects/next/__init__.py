@@ -14,14 +14,18 @@ class NextDialect(ModelDialect):
     def detect(cls, model_json: Any) -> bool:
         """
         pywr-next models keep the nodes in a "network" object. Models with several
-        networks list them in "networks".
+        networks list them in "networks", and the networks they reference may be in
+        their own files, with the nodes at the top level like in a pywr v1 model;
+        these are told apart by the name of the nodes, which is in their "meta".
         :param model_json: The content of the model file.
         :return: True if the model is a pywr-next model, False otherwise.
         """
         if not isinstance(model_json, dict):
             return False
-        return isinstance(model_json.get("network"), dict) or isinstance(
-            model_json.get("networks"), list
+        return (
+            isinstance(model_json.get("network"), dict)
+            or cls.is_multi_network(model_json)
+            or cls.is_network_file(model_json)
         )
 
     @staticmethod
@@ -32,6 +36,23 @@ class NextDialect(ModelDialect):
         :return: True if the model has several networks, False otherwise.
         """
         return isinstance(model_json.get("networks"), list)
+
+    @staticmethod
+    def is_network_file(model_json: dict) -> bool:
+        """
+        Checks whether the file has only a network, referenced by a multi-network
+        model.
+        :param model_json: The content of the file.
+        :return: True if the file is a pywr-next network, False otherwise.
+        """
+        nodes = model_json.get("nodes")
+        return (
+            "network" not in model_json
+            and "timestepper" not in model_json
+            and isinstance(nodes, list)
+            and len(nodes) > 0
+            and all(isinstance(node, dict) and "meta" in node for node in nodes)
+        )
 
     def empty_model(self) -> dict:
         """

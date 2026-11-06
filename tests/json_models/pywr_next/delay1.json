@@ -1,0 +1,93 @@
+{
+  "metadata": {
+    "title": "Delay 1",
+    "description": "A test of the DelayNode.",
+    "minimum_version": "0.1"
+  },
+  "time": {
+    "start": "2021-01-01",
+    "end": "2021-01-31",
+    "timestep": {
+      "type": "Days",
+      "days": 1
+    }
+  },
+  "network": {
+    "nodes": [
+      {
+        "meta": {
+          "name": "input1"
+        },
+        "type": "Catchment",
+        "flow": {
+          "type": "Literal",
+          "value": 15
+        }
+      },
+      {
+        "meta": {
+          "name": "link1"
+        },
+        "type": "Delay",
+        "delay": {
+          "type": "Literal",
+          "value": 3
+        },
+        "initial_value": {
+          "type": "Literal",
+          "value": 0.0
+        }
+      },
+      {
+        "meta": {
+          "name": "demand1"
+        },
+        "type": "Output",
+        "max_flow": {
+          "type": "Literal",
+          "value": 20.0
+        },
+        "cost": {
+          "type": "Literal",
+          "value": 1.0
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from_node": "input1",
+        "to_node": "link1"
+      },
+      {
+        "from_node": "link1",
+        "to_node": "demand1"
+      }
+    ],
+    "metric_sets": [
+      {
+        "meta": {"name": "nodes"},
+        "metrics": [
+          {
+            "type": "Node",
+            "name": "link1",
+            "attribute": "Inflow"
+          },
+          {
+            "type": "Node",
+            "name": "link1",
+            "attribute": "Outflow"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "meta": {"name": "nodes"},
+        "type": "CSV",
+        "format": "Long",
+        "filename": "delay1-expected.csv",
+        "metric_set": "nodes"
+      }
+    ]
+  }
+}

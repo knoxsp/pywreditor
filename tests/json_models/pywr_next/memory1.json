@@ -1,0 +1,125 @@
+{
+  "metadata": {
+    "title": "Simple 1",
+    "description": "A very simple example.",
+    "minimum_version": "0.1"
+  },
+  "scenarios": {
+    "groups": [
+      {
+        "name": "scenario1",
+        "size": 2
+      }
+    ]
+  },
+  "time": {
+    "start": "2015-01-01",
+    "end": "2015-12-31",
+    "timestep": {
+      "type": "Days",
+      "days": 1
+    }
+  },
+  "network": {
+    "nodes": [
+      {
+        "meta": {
+          "name": "supply1"
+        },
+        "type": "Input",
+        "max_flow": {
+          "type": "Literal",
+          "value": 15
+        }
+      },
+      {
+        "meta": {
+          "name": "link1"
+        },
+        "type": "Link"
+      },
+      {
+        "meta": {
+          "name": "demand1"
+        },
+        "type": "Output",
+        "max_flow": {
+          "type": "Parameter",
+          "name": "demand"
+        },
+        "cost": {
+          "type": "Literal",
+          "value": -10
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from_node": "supply1",
+        "to_node": "link1"
+      },
+      {
+        "from_node": "link1",
+        "to_node": "demand1"
+      }
+    ],
+    "parameters": [
+      {
+        "meta": {
+          "name": "demand"
+        },
+        "type": "Constant",
+        "value": {
+          "type": "Literal",
+          "value": 10.0
+        }
+      }
+    ],
+    "metric_sets": [
+      {
+        "meta": {"name": "nodes"},
+        "aggregator": {
+          "freq": {
+            "type": "Annual"
+          },
+          "func": {
+            "type": "CountNonZero"
+          },
+          "child": {
+            "freq": {
+              "type": "Days",
+              "days": 4
+            },
+            "func": {
+              "type": "Min"
+            }
+          }
+        },
+        "metrics": [
+          {
+            "type": "Node",
+            "name": "demand1"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "meta": {"name": "outputs"},
+        "type": "Memory",
+        "metric_set": "nodes",
+        "aggregation": {
+          "time": {
+            "type": "CountNonZero"
+          },
+          "metric": {
+            "type": "Max"
+          },
+          "scenario": {
+            "type": "Sum"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "metadata": {
+    "title": "Mutual exclusivity test 4",
+    "description": "Test mutual exclusivities work with simple link minimum flows",
+    "minimum_version": "0.1"
+  },
+  "time": {
+    "start": "2015-01-01",
+    "end": "2015-01-03",
+    "timestep": {
+      "type": "Days",
+      "days": 1
+    }
+  },
+  "network": {
+    "nodes": [
+      {
+        "meta": {
+          "name": "input1"
+        },
+        "type": "Input"
+      },
+      {
+        "meta": {
+          "name": "link1"
+        },
+        "type": "Link",
+        "min_flow": {
+          "type": "Literal",
+          "value": 10.0
+        }
+      },
+      {
+        "meta": {
+          "name": "demand1"
+        },
+        "type": "Output",
+        "cost": {
+          "type": "Literal",
+          "value": 5
+        }
+      },
+      {
+        "meta": {
+          "name": "link2"
+        },
+        "type": "Link",
+        "min_flow": {
+          "type": "Literal",
+          "value": 10.0
+        }
+      },
+      {
+        "meta": {
+          "name": "demand2"
+        },
+        "type": "Output",
+        "cost": {
+          "type": "Literal",
+          "value": 10
+        }
+      }
+    ],
+    "virtual_nodes": [
+      {
+        "meta": {
+          "name": "me"
+        },
+        "type": "Aggregated",
+        "nodes": [
+          {
+            "name": "link1"
+          },
+          {
+            "name": "link2"
+          }
+        ],
+        "relationship": {
+          "type": "Exclusive",
+          "min_active": 1
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from_node": "input1",
+        "to_node": "link1"
+      },
+      {
+        "from_node": "link1",
+        "to_node": "demand1"
+      },
+      {
+        "from_node": "input1",
+        "to_node": "link2"
+      },
+      {
+        "from_node": "link2",
+        "to_node": "demand2"
+      }
+    ],
+    "metric_sets": [
+      {
+        "meta": {"name": "nodes"},
+        "metrics": [
+          {
+            "type": "Node",
+            "name": "link1",
+            "attribute": "Inflow"
+          },
+          {
+            "type": "Node",
+            "name": "link1",
+            "attribute": "Outflow"
+          },
+          {
+            "type": "Node",
+            "name": "link2",
+            "attribute": "Inflow"
+          },
+          {
+            "type": "Node",
+            "name": "link2",
+            "attribute": "Outflow"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "meta": {"name": "node-outputs"},
+        "type": "CSV",
+        "format": "Long",
+        "filename": "mutual-exclusivity4.csv",
+        "metric_set": [
+          "nodes"
+        ]
+      }
+    ]
+  }
+}

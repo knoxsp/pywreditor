@@ -1,0 +1,145 @@
+{
+  "metadata": {
+    "title": "Storage max volumes",
+    "description": "Several examples of storage nodes with different max volumes.",
+    "minimum_version": "0.1"
+  },
+  "time": {
+    "start": "2015-01-01",
+    "end": "2015-12-31",
+    "timestep": {
+      "type": "Days",
+      "days": 1
+    }
+  },
+  "network": {
+    "nodes": [
+      {
+        "meta": {
+          "name": "supply1"
+        },
+        "type": "Input",
+        "max_flow": {
+          "type": "Literal",
+          "value": 15.0
+        }
+      },
+      {
+        "meta": {
+          "name": "storage1"
+        },
+        "type": "Storage",
+        "initial_volume": {
+          "type": "Proportional",
+          "proportion": 0.5
+        },
+        "max_volume": {
+          "type": "Literal",
+          "value": 10.0
+        }
+      },
+      {
+        "meta": {
+          "name": "storage2"
+        },
+        "type": "Storage",
+        "initial_volume": {
+          "type": "Proportional",
+          "proportion": 0.5
+        },
+        "max_volume": {
+          "type": "Parameter",
+          "name": "ten"
+        }
+      },
+      {
+        "meta": {
+          "name": "storage3"
+        },
+        "type": "Storage",
+        "initial_volume": {
+          "type": "Proportional",
+          "proportion": 0.5
+        },
+        "max_volume": {
+          "type": "Parameter",
+          "name": "fifteen"
+        }
+      },
+      {
+        "meta": {
+          "name": "output1"
+        },
+        "type": "Output"
+      }
+    ],
+    "edges": [
+      {
+        "from_node": "supply1",
+        "to_node": "storage1"
+      },
+      {
+        "from_node": "supply1",
+        "to_node": "storage2"
+      },
+      {
+        "from_node": "supply1",
+        "to_node": "storage3"
+      },
+      {
+        "from_node": "storage1",
+        "to_node": "output1"
+      },
+      {
+        "from_node": "storage2",
+        "to_node": "output1"
+      },
+      {
+        "from_node": "storage3",
+        "to_node": "output1"
+      }
+    ],
+    "parameters": [
+      {
+        "meta": {
+          "name": "ten"
+        },
+        "type": "Constant",
+        "value": {
+          "type": "Literal",
+          "value": 10.0
+        }
+      },
+      {
+        "meta": {
+          "name": "five"
+        },
+        "type": "Constant",
+        "value": {
+          "type": "Literal",
+          "value": 5.0
+        }
+      },
+      {
+        "meta": {
+          "name": "fifteen"
+        },
+        "type": "Aggregated",
+        "agg_func": {
+          "type": "Sum"
+        },
+        "phase": "Before",
+        "metrics": [
+          {
+            "type": "Parameter",
+            "name": "five"
+          },
+          {
+            "type": "Parameter",
+            "name": "ten"
+          }
+        ]
+      }
+    ]
+  }
+}
