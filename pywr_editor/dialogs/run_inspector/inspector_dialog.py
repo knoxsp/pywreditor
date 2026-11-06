@@ -1,10 +1,10 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Union
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QWindow
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout
-from pywr.core import Timestep
-from pywr.model import Model
 
 from pywr_editor.dialogs import InspectorTree
 from pywr_editor.form import FormTitle
@@ -13,6 +13,9 @@ from pywr_editor.style import AppStylesheet
 from pywr_editor.widgets import PushIconButton
 
 if TYPE_CHECKING:
+    from pywr.core import Timestep
+    from pywr.model import Model
+
     from pywr_editor import MainWindow
 
 """
@@ -25,7 +28,7 @@ class InspectorDialog(QDialog):
     def __init__(
         self,
         model_config: ModelConfig,
-        pywr_model: Model,
+        pywr_model: "Model",
         parent: Union[QWindow, "MainWindow", None] = None,
     ):
         """
@@ -41,7 +44,7 @@ class InspectorDialog(QDialog):
 
         # Dialog title
         # noinspection PyUnresolvedReferences
-        timestep: Timestep = pywr_model.timestepper.current
+        timestep: "Timestep" = pywr_model.timestepper.current
         title = FormTitle(
             f"Model inspector - timestep {timestep.day}/{timestep.month}/"
             + f"{timestep.year}"

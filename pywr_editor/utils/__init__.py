@@ -9,3 +9,4 @@ from .widget_tooltip import ModelComponentTooltip
 from .jump_list import JumpList
 from .qt import *
 from .settings import Settings
+from .pywr_version import installed_pywr_version, is_pywr_v1_installed

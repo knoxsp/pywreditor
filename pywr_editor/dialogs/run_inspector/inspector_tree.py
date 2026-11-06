@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 from typing import TYPE_CHECKING, Any, Tuple
 
@@ -5,9 +7,6 @@ import numpy as np
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QHeaderView, QTreeWidget, QTreeWidgetItem
-from pywr.model import Model
-from pywr.parameters import Parameter
-from pywr.recorders import Recorder
 
 from pywr_editor.model import ModelConfig, ParameterConfig
 from pywr_editor.node_shapes import get_node_icon, get_pixmap_from_type
@@ -17,6 +16,9 @@ from pywr_editor.widgets import ParameterIcon, RecorderIcon
 
 if TYPE_CHECKING:
     from inspector_dialog import InspectorDialog
+    from pywr.model import Model
+    from pywr.parameters import Parameter
+    from pywr.recorders import Recorder
 
 """
  Tree widget to display the attributes of pywr
@@ -247,6 +249,8 @@ class InspectorTree(QTreeWidget):
         # exclude private attributes
         if attr_raw_name.startswith("__") or attr_raw_name.endswith("__"):
             return
+
+        from pywr.parameters import Parameter
 
         # render nested parameter(s) (for example control_curves)
         if isinstance(attr_value, Parameter) or (

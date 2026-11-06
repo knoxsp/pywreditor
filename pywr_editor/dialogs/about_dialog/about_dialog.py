@@ -2,7 +2,6 @@ import sys
 from datetime import datetime
 from typing import TYPE_CHECKING, Union
 
-import pywr
 import qtawesome as qta
 from PySide6.QtCore import QSize
 from PySide6.QtGui import Qt
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from pywr_editor.style import Color
+from pywr_editor.utils import installed_pywr_version
 from pywr_editor.widgets import PushIconButton
 
 from .about_dialog_style_sheet import about_dialog_stylesheet
@@ -44,13 +44,15 @@ class AboutDialog(QDialog):
         # Text
         from pywr_editor import __build_date__, __version__
 
+        pywr_version = installed_pywr_version() or "not installed"
+
         build_date = datetime.strptime(__build_date__, "%Y-%m-%d").strftime("%d %b %Y")
 
         # flake8: noqa
         text = f"""<div style="font-weight:bold; font-size:16px">Pywr editor {__version__}</div>
         <div style="margin-top:5px">Build on: {build_date}</div>
         <div style="margin-top:5px">Runtime version: Python {sys.version}</div>
-        <div style="margin-top:2px;margin-bottom:25px">Pywr version: {pywr.__version__}</div>
+        <div style="margin-top:2px;margin-bottom:25px">Pywr version: {pywr_version}</div>
 
         <p>Copyright (C) 2021-{datetime.now().strftime('%Y')}  Stefano Simoncelli</p>
     
