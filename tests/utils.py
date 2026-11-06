@@ -35,8 +35,12 @@ def close_message_box(parent: QWidget = None):
         if widget is not None and isinstance(widget, QMessageBox):
             widget.close()
     else:
-        # noinspection PyTypeChecker
-        widget: QMessageBox = parent.findChild(QMessageBox)
+        try:
+            # noinspection PyTypeChecker
+            widget: QMessageBox = parent.findChild(QMessageBox)
+        except RuntimeError:
+            # the timer calling this outlived the test and the widget was deleted
+            return
         if widget is not None:
             widget.close()
 
