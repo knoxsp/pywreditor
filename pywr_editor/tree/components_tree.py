@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
 )
 
-from pywr_editor.dialogs import ParametersDialog, RecordersDialog, TablesDialog
 from pywr_editor.model import Constants, ModelConfig
 from pywr_editor.style import Color, stylesheet_dict_to_str
 from pywr_editor.utils import maybe_delete_component
@@ -84,10 +83,16 @@ class ComponentsTree(QTreeWidget):
 
         self._populate_model_info()
         self._populate_nodes()
-        self._populate_parameters()
-        self._populate_tables()
-        self._populate_recorders()
-        self._populate_scenarios()
+        # only show the components of the model dialect
+        kinds = {kind.key for kind in self.model_config.dialect.component_kinds()}
+        for kind, populate in [
+            ("parameter", self._populate_parameters),
+            ("table", self._populate_tables),
+            ("recorder", self._populate_recorders),
+            ("scenario", self._populate_scenarios),
+        ]:
+            if kind in kinds:
+                populate()
         self.insertTopLevelItems(0, [group for group in self.items.values()])
 
         # do not let user sort columns
@@ -600,10 +605,7 @@ class ComponentsTree(QTreeWidget):
         :param table_name: The table name to edit.
         :return: None
         """
-        dialog = TablesDialog(
-            model=self.model_config, selected_name=table_name, parent=self.parent
-        )
-        dialog.show()
+        self.parent.open_component_dialog("table", table_name)
 
     @Slot()
     def on_delete_table(self, table_name: str) -> None:
@@ -630,12 +632,7 @@ class ComponentsTree(QTreeWidget):
         :param parameter_name: The parameter name to edit.
         :return: None
         """
-        dialog = ParametersDialog(
-            model=self.model_config,
-            selected_name=parameter_name,
-            parent=self.parent,
-        )
-        dialog.show()
+        self.parent.open_component_dialog("parameter", parameter_name)
 
     @Slot()
     def on_delete_parameter(self, parameter_name: str) -> None:
@@ -662,12 +659,7 @@ class ComponentsTree(QTreeWidget):
         :param recorder_name: The recorder name to edit.
         :return: None
         """
-        dialog = RecordersDialog(
-            model=self.model_config,
-            selected_name=recorder_name,
-            parent=self.parent,
-        )
-        dialog.show()
+        self.parent.open_component_dialog("recorder", recorder_name)
 
     @Slot()
     def on_delete_recorder(self, recorder_name: str) -> None:

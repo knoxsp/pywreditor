@@ -10,12 +10,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pywr_editor.dialogs import (
-    NodeDialog,
-    ParametersDialog,
-    RecordersDialog,
-    TablesDialog,
-)
+from pywr_editor.dialogs import NodeDialog
 from pywr_editor.model import ModelConfig
 from pywr_editor.style import Color, stylesheet_dict_to_str
 
@@ -117,25 +112,14 @@ class SearchDialog(QDialog):
         """
         comp_name = index.data(Qt.ItemDataRole.EditRole)
         comp_type = index.data(Qt.ItemDataRole.UserRole)
-        dialog = None
-
         if comp_type == ItemType.NODE.value:
-            dialog = NodeDialog(
+            NodeDialog(
                 model_config=self.model, node_name=comp_name, parent=self.app
-            )
-        elif comp_type == ItemType.RECORDER.value:
-            dialog = RecordersDialog(
-                model=self.model, selected_name=comp_name, parent=self.app
-            )
-        elif comp_type == ItemType.PARAMETER.value:
-            dialog = ParametersDialog(
-                model=self.model, selected_name=comp_name, parent=self.app
-            )
-        elif comp_type == ItemType.TABLE.value:
-            dialog = TablesDialog(
-                model=self.model, selected_name=comp_name, parent=self.app
-            )
+            ).show()
+            self.close()
+            return
 
-        if dialog:
-            dialog.show()
+        kind = self.model.dialect.component_kind(comp_type)
+        if kind is not None:
+            kind.open_dialog(model=self.model, selected_name=comp_name, parent=self.app)
             self.close()

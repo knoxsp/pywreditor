@@ -1,7 +1,16 @@
 import pytest
 
+from pywr_editor import MainWindow
 from pywr_editor.dialects import detect_dialect, get_dialect
 from pywr_editor.dialects.next import NextDialect
+from pywr_editor.dialects.v1 import V1Dialect
+from pywr_editor.dialogs import (
+    ParametersDialog,
+    RecordersDialog,
+    ScenariosDialog,
+    TablesDialog,
+)
+from pywr_editor.dialogs.search.search_model import SearchModel
 from pywr_editor.model import ModelConfig
 from tests.utils import resolve_model_path
 
@@ -76,3 +85,73 @@ class TestModelConfigDialect:
         assert model.dialect.key == "next"
         assert model.is_valid() is False
         assert "pywr-next model" in model.load_error
+
+
+class V1WithoutRecorders(V1Dialect):
+    """A dialect like v1 but without recorders, as pywr-next will be."""
+
+    def component_kinds(self) -> list:
+        return [k for k in super().component_kinds() if k.key != "recorder"]
+
+
+class TestDialectUi:
+    @pytest.fixture
+    def window(self, qtbot, monkeypatch, request):
+        """
+        Opens a v1 model, optionally with a dialect that has no recorders.
+        """
+        if getattr(request, "param", None) == "no-recorders":
+            monkeypatch.setattr(
+                "pywr_editor.model.model_config.detect_dialect",
+                lambda _: V1WithoutRecorders(),
+            )
+        window = MainWindow(resolve_model_path("model_1.json"))
+        window.hide()
+        yield window
+        window.model_config.reset_change_flag()
+        window.close()
+
+    def test_v1_component_dialogs(self, qtbot, window):
+        """
+        Tests that the v1 dialect adds a ribbon button for each component kind and
+        that each opens its dialog.
+        """
+        expected = {
+            "scenario": ScenariosDialog,
+            "table": TablesDialog,
+            "parameter": ParametersDialog,
+            "recorder": RecordersDialog,
+        }
+        for key, dialog_class in expected.items():
+            kind = window.model_config.dialect.component_kind(key)
+            assert window.app_actions.get(kind.action_key) is not None
+            window.app_actions.get(kind.action_key).trigger()
+            dialogs = [d for d in window.findChildren(dialog_class) if d.isVisible()]
+            assert len(dialogs) == 1, key
+            dialogs[0].close()
+
+    def test_show_component_selects_name(self, qtbot, window):
+        """
+        Tests that a component dialog opens with the component selected.
+        """
+        window.show_component("recorder", "storage")
+        dialog = [d for d in window.findChildren(RecordersDialog) if d.isVisible()][0]
+        assert dialog.pages.currentWidget().name == "storage"
+        dialog.close()
+
+    @pytest.mark.parametrize("window", ["no-recorders"], indirect=True)
+    def test_dialect_without_recorders(self, qtbot, window):
+        """
+        Tests that the recorders are not shown when the dialect has none.
+        """
+        assert "edit-recorders" not in window.app_actions.registry
+        assert "recorders" not in window.components_tree.items
+        assert "parameters" in window.components_tree.items
+        search_types = {
+            row["type"] for row in SearchModel(window.model_config).model_data
+        }
+        assert "recorder" not in search_types
+        assert "parameter" in search_types
+        # does nothing instead of opening the dialog
+        window.open_component_dialog("recorder", "storage")
+        assert not [d for d in window.findChildren(RecordersDialog) if d.isVisible()]

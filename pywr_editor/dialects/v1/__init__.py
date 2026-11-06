@@ -1,13 +1,83 @@
 from datetime import datetime
 from typing import Any
 
-from pywr_editor.dialects.base import ModelDialect
+from pywr_editor.dialects.base import ComponentKind, ModelDialect
 from pywr_editor.model.constants import Constants
+
+
+def _scenarios_dialog() -> type:
+    from pywr_editor.dialogs import ScenariosDialog
+
+    return ScenariosDialog
+
+
+def _tables_dialog() -> type:
+    from pywr_editor.dialogs import TablesDialog
+
+    return TablesDialog
+
+
+def _parameters_dialog() -> type:
+    from pywr_editor.dialogs import ParametersDialog
+
+    return ParametersDialog
+
+
+def _recorders_dialog() -> type:
+    from pywr_editor.dialogs import RecordersDialog
+
+    return RecordersDialog
 
 
 class V1Dialect(ModelDialect):
     key = "v1"
     label = "pywr v1"
+
+    _component_kinds = [
+        ComponentKind(
+            key="scenario",
+            label="Scenarios",
+            action_key="edit-scenarios",
+            icon=":/toolbar/edit-scenarios",
+            tooltip="Change the model scenarios",
+            dialog_class=_scenarios_dialog,
+            large_button=False,
+        ),
+        ComponentKind(
+            key="table",
+            label="Tables",
+            action_key="edit-tables",
+            icon=":/toolbar/edit-tables",
+            tooltip="Add, modify and delete the model tables",
+            dialog_class=_tables_dialog,
+            shortcut="Ctrl+T",
+        ),
+        ComponentKind(
+            key="parameter",
+            label="Parameters",
+            action_key="edit-parameters",
+            icon=":/toolbar/edit-parameters",
+            tooltip="Add, modify and delete the model parameters",
+            dialog_class=_parameters_dialog,
+            shortcut="Ctrl+P",
+        ),
+        ComponentKind(
+            key="recorder",
+            label="Recorders",
+            action_key="edit-recorders",
+            icon=":/toolbar/edit-recorders",
+            tooltip="Add, modify and delete the model recorders",
+            dialog_class=_recorders_dialog,
+            shortcut="Ctrl+R",
+        ),
+    ]
+
+    def component_kinds(self) -> list[ComponentKind]:
+        """
+        Returns the kinds of components edited in their own dialog.
+        :return: The scenarios, tables, parameters and recorders.
+        """
+        return list(self._component_kinds)
 
     @classmethod
     def detect(cls, model_json: Any) -> bool:

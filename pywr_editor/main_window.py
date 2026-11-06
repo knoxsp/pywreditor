@@ -18,14 +18,10 @@ from pywr_editor.dialogs import (
     JsonCodeViewer,
     MetadataDialog,
     NodeDataPanel,
-    ParametersDialog,
     PythonPathsDialog,
-    RecordersDialog,
     ResultsDialog,
-    ScenariosDialog,
     SearchDialog,
     StartScreen,
-    TablesDialog,
     ValidationDialog,
 )
 from pywr_editor.model import ModelConfig
@@ -321,15 +317,18 @@ class MainWindow(QMainWindow):
                 connection=self.open_metadata_dialog,
             )
         )
-        self.app_actions.add(
-            Action(
-                key="edit-scenarios",
-                name="Scenarios",
-                icon=":/toolbar/edit-scenarios",
-                tooltip="Change the model scenarios",
-                connection=self.open_scenarios_dialog,
+        # the buttons to edit the components depend on the model dialect
+        for kind in self.model_config.dialect.component_kinds():
+            self.app_actions.add(
+                Action(
+                    key=kind.action_key,
+                    name=kind.label,
+                    icon=kind.icon,
+                    tooltip=kind.tooltip,
+                    shortcut=QKeySequence(kind.shortcut) if kind.shortcut else None,
+                    connection=lambda *_, key=kind.key: self.open_component_dialog(key),
+                )
             )
-        )
         self.app_actions.add(
             Action(
                 key="edit-imports",
@@ -357,36 +356,6 @@ class MainWindow(QMainWindow):
                 icon=":/toolbar/edit-slots",
                 tooltip="Change the name of the nodes' slots",
                 connection=self.open_edge_slots_dialog,
-            )
-        )
-        self.app_actions.add(
-            Action(
-                key="edit-tables",
-                name="Tables",
-                icon=":/toolbar/edit-tables",
-                tooltip="Add, modify and delete the model tables",
-                shortcut=QKeySequence("Ctrl+T"),
-                connection=self.open_tables_dialog,
-            )
-        )
-        self.app_actions.add(
-            Action(
-                key="edit-parameters",
-                name="Parameters",
-                icon=":/toolbar/edit-parameters",
-                tooltip="Add, modify and delete the model parameters",
-                shortcut=QKeySequence("Ctrl+P"),
-                connection=self.open_parameters_dialog,
-            )
-        )
-        self.app_actions.add(
-            Action(
-                key="edit-recorders",
-                name="Recorders",
-                icon=":/toolbar/edit-recorders",
-                tooltip="Add, modify and delete the model recorders",
-                shortcut=QKeySequence("Ctrl+R"),
-                connection=self.open_recorders_dialog,
             )
         )
 
@@ -746,17 +715,22 @@ class MainWindow(QMainWindow):
 
         settings_panel = model_tab.add_panel("Settings")
         settings_panel.add_button(self.app_actions.get("edit-metadata"))
+        component_kinds = self.model_config.dialect.component_kinds()
         settings_panel.add_vertical_small_buttons(
             [
-                self.app_actions.get("edit-scenarios"),
+                self.app_actions.get(kind.action_key)
+                for kind in component_kinds
+                if not kind.large_button
+            ]
+            + [
                 self.app_actions.get("edit-imports"),
                 self.app_actions.get("edit-slots"),
             ]
         )
         settings_panel.add_button(self.app_actions.get("edit-python-paths"))
-        settings_panel.add_button(self.app_actions.get("edit-tables"))
-        settings_panel.add_button(self.app_actions.get("edit-parameters"))
-        settings_panel.add_button(self.app_actions.get("edit-recorders"))
+        for kind in component_kinds:
+            if kind.large_button:
+                settings_panel.add_button(self.app_actions.get(kind.action_key))
 
         validation_panel = model_tab.add_panel("Validation", layout="vertical")
         validation_panel.add_button(
@@ -1115,8 +1089,7 @@ class MainWindow(QMainWindow):
         Opens the dialog to edit the model tables.
         :return: None
         """
-        dialog = TablesDialog(model=self.model_config, parent=self)
-        dialog.show()
+        self.open_component_dialog("table")
 
     @Slot()
     def open_validation_dialog(self) -> None:
@@ -1147,17 +1120,24 @@ class MainWindow(QMainWindow):
             self.schematic.select_node_by_name(name)
             return
 
-        dialogs = {
-            "parameter": ParametersDialog,
-            "recorder": RecordersDialog,
-            "table": TablesDialog,
-        }
-        if kind in dialogs:
-            dialogs[kind](
-                model=self.model_config, selected_name=name, parent=self
-            ).show()
-        elif kind == "scenario":
-            self.open_scenarios_dialog()
+        self.open_component_dialog(kind, name)
+
+    def open_component_dialog(self, kind: str, name: str | None = None) -> None:
+        """
+        Opens the dialog of a kind of component of the model dialect.
+        :param kind: The component kind, such as "parameter" or "table".
+        :param name: The name of the component to select. Optional.
+        :return: None
+        """
+        component_kind = self.model_config.dialect.component_kind(kind)
+        if component_kind is None:
+            self.logger.debug(
+                f"The {self.model_config.dialect.label} models have no {kind} dialog"
+            )
+            return
+        component_kind.open_dialog(
+            model=self.model_config, selected_name=name, parent=self
+        )
 
     @Slot()
     def open_gis_layers_dialog(self) -> None:
@@ -1183,8 +1163,7 @@ class MainWindow(QMainWindow):
         Opens the dialog to edit the model parameters.
         :return: None
         """
-        dialog = ParametersDialog(model=self.model_config, parent=self)
-        dialog.show()
+        self.open_component_dialog("parameter")
 
     @Slot()
     def open_recorders_dialog(self) -> None:
@@ -1192,8 +1171,7 @@ class MainWindow(QMainWindow):
         Opens the dialog to edit the model recorders.
         :return: None
         """
-        dialog = RecordersDialog(model=self.model_config, parent=self)
-        dialog.show()
+        self.open_component_dialog("recorder")
 
     @Slot()
     def open_scenarios_dialog(self) -> None:
@@ -1201,8 +1179,7 @@ class MainWindow(QMainWindow):
         Opens the dialog to edit the model scenarios.
         :return: None
         """
-        dialog = ScenariosDialog(model=self.model_config, parent=self)
-        dialog.show()
+        self.open_component_dialog("scenario")
 
     @Slot(str)
     def on_status_message(self, message: str) -> None:
@@ -1270,13 +1247,10 @@ class MainWindow(QMainWindow):
 
         # disable toolbar buttons
         to_disable = [
+            *[kind.action_key for kind in self.model_config.dialect.component_kinds()],
             "edit-metadata",
-            "edit-scenarios",
             "edit-imports",
             "edit-slots",
-            "edit-tables",
-            "edit-parameters",
-            "edit-recorders",
             "validate-model",
             "find-orphaned-nodes",
             "find-orphaned-parameters",
