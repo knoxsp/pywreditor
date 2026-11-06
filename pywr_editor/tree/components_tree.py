@@ -672,17 +672,17 @@ class ComponentsTree(QTreeWidget):
     @Slot()
     def on_delete_recorder(self, recorder_name: str) -> None:
         """
-        Deletes the selected parameter.
+        Deletes the selected recorder.
         :param recorder_name: The recorder name to delete.
         :return: None
         """
-        # check if parameter is being used and warn before deleting
-        total_components = self.model_config.parameters.is_used(recorder_name)
+        # check if the recorder is being used and warn before deleting
+        total_components = self.model_config.recorders.is_used(recorder_name)
 
         # ask before deleting
         if maybe_delete_component(recorder_name, total_components, self):
-            # delete the parameter from the model configuration
-            self.model_config.parameters.delete(recorder_name)
+            # delete the recorder from the model configuration
+            self.model_config.recorders.delete(recorder_name)
             # update tree and status bar
             self.reload()
             self.parent.statusBar().showMessage(f'Deleted recorder "{recorder_name}"')
