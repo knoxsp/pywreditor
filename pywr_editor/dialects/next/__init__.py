@@ -10,8 +10,6 @@ if TYPE_CHECKING:
 class NextDialect(ModelDialect):
     key = "next"
     label = "pywr-next"
-    # the schematic and the dialogs do not support pywr-next models yet
-    can_open = False
     time_key = "time"
 
     @classmethod
@@ -143,6 +141,68 @@ class NextDialect(ModelDialect):
         # supported yet
         model.parameters = model.recorders = model.tables = None
         model.scenarios = model.includes = None
+
+    def validate_model(self, model: "ModelConfig") -> list:
+        """
+        Runs the checks pywr-next makes when it loads a network and the schema cannot
+        express (unique names, valid edges).
+        :param model: The model configuration.
+        :return: The list of Diagnostic.
+        """
+        from pywr_editor.dialects.next.validation import validate_network
+
+        return validate_network(model.clean_json)
+
+    def validate_schema(self, model_dict: dict) -> list:
+        """
+        Validates a model against the bundled pywr-next schema.
+        :param model_dict: The model dictionary, without the editor data.
+        :return: The list of Diagnostic.
+        """
+        from pywr_editor.dialects.next.validation import validate_schema
+
+        return validate_schema(model_dict)
+
+    def validation_note(self) -> str:
+        """
+        Describes the checks against the pywr-next schema.
+        :return: The text.
+        """
+        from pywr_editor.dialects.next.validation import schema_info
+
+        return (
+            "The structure is checked against the schema of pywr "
+            f"{schema_info()['pywr_version']} and by the editor."
+        )
+
+    def node_types(self) -> dict[str, str]:
+        """
+        Returns the pywr-next node types from the bundled schema.
+        :return: The humanised name of each type, by type.
+        """
+        from pywr_editor.dialects.next.model import humanise_type
+        from pywr_editor.dialects.next.schema import bundled_schema
+
+        return {
+            node_type: humanise_type(node_type)
+            for node_type in bundled_schema().types("Node")
+            # a placeholder stands for a node that another tool fills in
+            if node_type != "Placeholder"
+        }
+
+    def create_node(
+        self, name: str, node_type: str, position: tuple[float, float]
+    ) -> dict:
+        """
+        Returns the dictionary of a new pywr-next node.
+        :param name: The node name.
+        :param node_type: The node type, such as "Link".
+        :param position: The schematic position.
+        :return: The node dictionary.
+        """
+        from pywr_editor.dialects.next.model import NextNodeConfig
+
+        return NextNodeConfig.create(name=name, node_type=node_type, position=position)
 
     def timestep_days(self, time_section: dict) -> int | None:
         """

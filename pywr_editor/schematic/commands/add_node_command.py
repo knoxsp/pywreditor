@@ -41,7 +41,7 @@ class AddNodeCommand(QUndoCommand):
         if self.node_config is None:
             self.model_config.nodes.add(self.added_node_dict)
             self.node_config = self.model_config.nodes.config(
-                self.added_node_dict["name"], as_dict=False
+                self.model_config.nodes.node(self.added_node_dict).name, as_dict=False
             )
             # add the node to the schematic and model config
             self.schematic.add_node(node_props=self.added_node_dict)

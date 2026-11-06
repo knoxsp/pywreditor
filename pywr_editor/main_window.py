@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
         self.toolbar = ToolbarWidget(self)
         self.addToolBar(self.toolbar)
         self.setup_toolbar()
+        self.hide_unsupported_actions()
         # noinspection PyTypeChecker
         self.run_widget: RunWidget = self.toolbar.findChild(RunWidget)
 
@@ -785,7 +786,14 @@ class MainWindow(QMainWindow):
         time_stepper_panel.add_widget(TimeStepperWidget(self))
 
         nodes_panel = run.add_panel("Controls")
-        nodes_panel.add_widget(RunWidget(self))
+        run_widget = RunWidget(self)
+        nodes_panel.add_widget(run_widget)
+        dialect = self.model_config.dialect
+        if not dialect.supports("run"):
+            run_widget.setEnabled(False)
+            run_widget.setToolTip(
+                f"Running {dialect.label} models is not available yet"
+            )
 
         results_panel = run.add_panel("Results")
         results_panel.add_button(self.app_actions.get("run-results"))
@@ -798,6 +806,11 @@ class MainWindow(QMainWindow):
             "Show or hide the dockable IPython console to run the model and look at "
             "the results interactively"
         )
+        if not dialect.supports("console"):
+            toggle_console_action.setEnabled(False)
+            toggle_console_action.setToolTip(
+                f"The console is not available yet for {dialect.label} models"
+            )
         console_panel = run.add_panel("Console")
         console_panel.add_button(toggle_console_action)
 
@@ -1140,6 +1153,48 @@ class MainWindow(QMainWindow):
             return
 
         self.open_component_dialog(kind, name)
+
+    FEATURE_ACTIONS = {
+        "imports": ["edit-imports"],
+        "python-paths": ["edit-python-paths"],
+        "slots": ["edit-slots"],
+        "orphaned-parameters": ["find-orphaned-parameters"],
+        "run": ["run-results", "run-inspector"],
+    }
+    """ The ribbon actions of the editor features that a dialect may not have """
+
+    def hide_unsupported_actions(self) -> None:
+        """
+        Hides the ribbon actions of the features the model dialect does not have.
+        :return: None
+        """
+        dialect = self.model_config.dialect
+        for feature, action_keys in self.FEATURE_ACTIONS.items():
+            if dialect.supports(feature):
+                continue
+            for key in action_keys:
+                action = self.app_actions.get(key)
+                action.setVisible(False)
+                action.setEnabled(False)
+
+    def open_node_dialog(self, node_name: str) -> None:
+        """
+        Opens the dialog to edit a node.
+        :param node_name: The node name.
+        :return: None
+        """
+        if not self.model_config.dialect.supports("node-dialog"):
+            self.statusBar().showMessage(
+                f"Editing {self.model_config.dialect.label} nodes is not available "
+                + "yet",
+                5000,
+            )
+            return
+        from pywr_editor.dialogs import NodeDialog
+
+        NodeDialog(
+            node_name=node_name, model_config=self.model_config, parent=self
+        ).show()
 
     def open_component_dialog(self, kind: str, name: str | None = None) -> None:
         """

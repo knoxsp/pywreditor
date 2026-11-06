@@ -145,10 +145,7 @@ class LibraryPanel(QGraphicsView):
         self.node_dict = {}
 
         # built-in nodes
-        self.built_in_node_dict = {
-            item["class"]: item["name"]
-            for node_type, item in self.window.model_config.pywr_node_data.data.items()  # noqa: E501
-        }
+        self.built_in_node_dict = self.window.model_config.dialect.node_types()
         # store available nodes for the first time
         self.update_available_nodes()
 
@@ -184,6 +181,9 @@ class LibraryPanel(QGraphicsView):
         :return: None
         """
         self.node_dict = self.built_in_node_dict.copy()
+        model_config = self.window.model_config
+        if not model_config.dialect.supports_custom_nodes:
+            return
 
         # add custom imported nodes and the generic custom node to let user add
         # not-imported custom nodes to the schematic

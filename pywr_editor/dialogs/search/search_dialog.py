@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pywr_editor.dialogs import NodeDialog
 from pywr_editor.model import ModelConfig
 from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
@@ -114,9 +113,7 @@ class SearchDialog(QDialog):
         comp_name = index.data(Qt.ItemDataRole.EditRole)
         comp_type = index.data(Qt.ItemDataRole.UserRole)
         if comp_type == ItemType.NODE.value:
-            NodeDialog(
-                model_config=self.model, node_name=comp_name, parent=self.app
-            ).show()
+            self.app.open_node_dialog(comp_name)
             self.close()
             return
 

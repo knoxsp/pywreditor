@@ -18,7 +18,6 @@ from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.utils import maybe_delete_component
 from pywr_editor.widgets import ContextualMenu, ExtensionIcon
 
-from ..dialogs.node.node_dialog import NodeDialog
 from .expanded_item_states import ExpandedItemStates
 from .tree_widget_node import TreeWidgetNode
 from .tree_widget_parameter import TreeWidgetParameter, TreeWidgetParameterName
@@ -220,7 +219,7 @@ class ComponentsTree(QTreeWidget):
         """
         # initialise the node list
         nodes = {
-            **{node_name: [] for node_name in self.model_config.pywr_node_data.names},
+            **{name: [] for name in self.model_config.dialect.node_types().values()},
             **{Constants.CUSTOM_NODE_GROUP_NAME.value: []},
         }
 
@@ -234,7 +233,8 @@ class ComponentsTree(QTreeWidget):
             )
             self.expanded_state.store_state(item)
 
-            nodes[group].append(item)
+            # a type the editor does not know gets its own group
+            nodes.setdefault(group, []).append(item)
 
         # add groups
         parent_item = QTreeWidgetItem(self)
@@ -582,12 +582,7 @@ class ComponentsTree(QTreeWidget):
         :param node_name: The node name to edit.
         :return: None
         """
-        dialog = NodeDialog(
-            node_name=node_name,
-            model_config=self.model_config,
-            parent=self.parent,
-        )
-        dialog.show()
+        self.parent.open_node_dialog(node_name)
 
     @Slot(str)
     def on_delete_node(self, node_name: str) -> None:

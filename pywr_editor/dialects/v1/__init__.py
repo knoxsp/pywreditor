@@ -76,6 +76,78 @@ class V1Dialect(ModelDialect):
     ]
 
     time_key = "timestepper"
+    features = frozenset(
+        [
+            "node-dialog",
+            "imports",
+            "python-paths",
+            "slots",
+            "orphaned-parameters",
+            "run",
+            "console",
+        ]
+    )
+    supports_custom_nodes = True
+
+    def validate_model(self, model: "ModelConfig") -> list:
+        """
+        Runs the checks of the editor on a pywr v1 model.
+        :param model: The model configuration.
+        :return: The list of Diagnostic.
+        """
+        from pywr_editor.model.validation import validate_model
+
+        return validate_model(model)
+
+    def validate_schema(self, model_dict: dict) -> list:
+        """
+        Validates a model against the bundled pywr-v1-schema.
+        :param model_dict: The model dictionary, without the editor data.
+        :return: The list of Diagnostic.
+        """
+        from pywr_editor.model.validation import validate_schema
+
+        return validate_schema(model_dict)
+
+    def validation_note(self) -> str:
+        """
+        Describes the checks against the pywr-v1-schema.
+        :return: The text.
+        """
+        from pywr_editor.model.validation import schema_info
+
+        info = schema_info()
+        return (
+            "The structure is checked against the pywr-v1-schema "
+            f"{info['pywr_v1_schema_version']} "
+            f"(for pywr {info['target_pywr_version']}) "
+            "and by the editor."
+        )
+
+    def node_types(self) -> dict[str, str]:
+        """
+        Returns the pywr v1 nodes.
+        :return: The node names, by node class.
+        """
+        from pywr_editor.model import PywrNodesData
+
+        return {item["class"]: item["name"] for item in PywrNodesData().data.values()}
+
+    def create_node(
+        self, name: str, node_type: str, position: tuple[float, float]
+    ) -> dict:
+        """
+        Returns the dictionary of a new pywr v1 node. pywr v1 types are lowercase.
+        :param name: The node name.
+        :param node_type: The node class, such as "Link".
+        :param position: The schematic position.
+        :return: The node dictionary.
+        """
+        from pywr_editor.model import NodeConfig
+
+        return NodeConfig.create(
+            name=name, node_type=node_type.lower(), position=position
+        )
 
     def setup_model(self, model: "ModelConfig") -> None:
         """

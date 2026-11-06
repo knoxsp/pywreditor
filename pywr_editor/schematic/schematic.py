@@ -36,7 +36,6 @@ from pywr_editor.model import (
     EdgeRecord,
     LineArrowShape,
     ModelConfig,
-    NodeConfig,
     RectangleShape,
     TextShape,
 )
@@ -1159,7 +1158,7 @@ class Schematic(QGraphicsView):
 
         names, known = [], {}
         for node_props in self.model_config.nodes.get_all():
-            name = node_props["name"]
+            name = self.model_config.nodes.node(node_props).name
             names.append(name)
             point = self.geo_point(
                 self.model_config.nodes.node(node_props).geographic_position
@@ -2220,9 +2219,9 @@ class Schematic(QGraphicsView):
                     self.app.undo_stack.push(command)
             else:
                 # add the new node to the model
-                node_props = NodeConfig.create(
+                node_props = self.model_config.dialect.create_node(
                     name=f"Node {QUuid().createUuid().toString()[1:7]}",
-                    node_type=mime_type.lower(),
+                    node_type=mime_type,
                     position=position,
                 )
 

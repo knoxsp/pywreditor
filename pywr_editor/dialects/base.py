@@ -116,6 +116,70 @@ class ModelDialect(ABC):
         :return: None
         """
 
+    features: frozenset[str] = frozenset()
+    """ The editor features available for the models of this dialect:
+     - "node-dialog": the node dialog and the node data panel;
+     - "imports": importing custom components from Python files;
+     - "python-paths": folders added to the Python path to run the model;
+     - "slots": the dialog to name the slots of the edges;
+     - "orphaned-parameters": finding the parameters that nothing uses;
+     - "run": running the model from the editor;
+     - "console": the IPython console with the model loaded """
+
+    def supports(self, feature: str) -> bool:
+        """
+        Checks whether an editor feature is available for this dialect.
+        :param feature: The feature, such as "run" (see features).
+        :return: True if the feature is available, False otherwise.
+        """
+        return feature in self.features
+
+    supports_custom_nodes: bool = False
+    """ Whether models can have custom node types imported from Python files """
+
+    @abstractmethod
+    def node_types(self) -> dict[str, str]:
+        """
+        Returns the built-in node types, for the node library.
+        :return: The label of each node type, by the type written in the model.
+        """
+
+    @abstractmethod
+    def create_node(
+        self, name: str, node_type: str, position: tuple[float, float]
+    ) -> dict:
+        """
+        Returns the dictionary of a new node.
+        :param name: The node name.
+        :param node_type: The node type, as returned by node_types().
+        :param position: The schematic position.
+        :return: The node dictionary.
+        """
+
+    @abstractmethod
+    def validate_model(self, model: "ModelConfig") -> list:
+        """
+        Runs the checks of the editor, which are quick.
+        :param model: The model configuration.
+        :return: The list of Diagnostic.
+        """
+
+    @abstractmethod
+    def validate_schema(self, model_dict: dict) -> list:
+        """
+        Validates a model against the JSON Schema of the dialect. This may take a few
+        seconds and is run in a thread.
+        :param model_dict: The model dictionary, without the editor data.
+        :return: The list of Diagnostic.
+        """
+
+    @abstractmethod
+    def validation_note(self) -> str:
+        """
+        Describes what the validation checks, for the validation dialog.
+        :return: The text.
+        """
+
     def component_kinds(self) -> list[ComponentKind]:
         """
         Returns the kinds of components edited in their own dialog, in the order

@@ -155,25 +155,3 @@ class TestDialectUi:
         # does nothing instead of opening the dialog
         window.open_component_dialog("recorder", "storage")
         assert not [d for d in window.findChildren(RecordersDialog) if d.isVisible()]
-
-
-def test_window_refuses_next_model_for_now(qtbot, monkeypatch):
-    """
-    Tests that the main window does not open a pywr-next model until the schematic
-    and the dialogs support it.
-    """
-    messages = []
-    monkeypatch.setattr(
-        "pywr_editor.main_window.QMessageBox.critical",
-        staticmethod(lambda parent, title, message: messages.append(message)),
-    )
-    monkeypatch.setattr("pywr_editor.dialogs.StartScreen", lambda: _NoWindow())
-    MainWindow(resolve_model_path("pywr_next/reservoir_with_evaporation1.json"))
-    assert messages == [
-        "This is a pywr-next model. The editor cannot open pywr-next models yet"
-    ]
-
-
-class _NoWindow:
-    def show(self) -> None:
-        pass
