@@ -386,6 +386,16 @@ class MainWindow(QMainWindow):
 
         self.app_actions.add(
             Action(
+                key="manage-pywr-next",
+                name="pywr-next",
+                icon=":/toolbar/run",
+                tooltip="Install, locate or remove the pywr-next version used for "
+                "pywr-next models",
+                connection=self.open_pywr_next_environment,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="validate-model",
                 name="Validate model",
                 icon=":/toolbar/find-orphaned-parameters",
@@ -884,6 +894,8 @@ class MainWindow(QMainWindow):
         map_panel = settings_tab.add_panel("Schematic -> Map")
         self.map_settings = MapSettings(self)
         map_panel.add_widget(self.map_settings)
+        environments_panel = settings_tab.add_panel("Application -> pywr-next")
+        environments_panel.add_button(self.app_actions.get("manage-pywr-next"))
 
     def add_status_bar(self) -> None:
         """
@@ -1200,6 +1212,22 @@ class MainWindow(QMainWindow):
             return
         dialog_class(
             node_name=node_name, model_config=self.model_config, parent=self
+        ).show()
+
+    @Slot()
+    def open_pywr_next_environment(self) -> None:
+        """
+        Opens the dialog showing the pywr-next environment, where it can be
+        installed or removed.
+        :return: None
+        """
+        from pywr_editor.dialogs.environments.install_dialog import (
+            InstallEnvironmentDialog,
+        )
+        from pywr_editor.environments import pywr_next_environment
+
+        InstallEnvironmentDialog(
+            pywr_next_environment(), "run and convert pywr-next models", self
         ).show()
 
     def open_component_dialog(self, kind: str, name: str | None = None) -> None:
