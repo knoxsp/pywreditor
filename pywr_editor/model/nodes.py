@@ -239,8 +239,8 @@ class Nodes:
         :return: A list of orphaned node names or None if there are not any.
         """
         nodes_in_edges = set()
-        for edge in self.model.edges.get_all():
-            nodes_in_edges = nodes_in_edges.union(set(edge))
+        for edge in self.model.edges.records():
+            nodes_in_edges.update((edge.source, edge.target))
 
         orphaned_node_names = []
         for node_dict in self.get_all():

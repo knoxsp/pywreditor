@@ -146,7 +146,7 @@ class TestAddNodes:
         assert model_config.nodes.find_node_index_by_name(new_new_node_name) is None
         edge, _ = model_config.edges.find(*new_edge[0:2])
         assert edge is None
-        assert undo_command.deleted_edges[0] == new_edge
+        assert undo_command.deleted_edges[0].to_v1() == new_edge
 
         # node and edges are removed from schematic
         assert new_node_name not in schematic.node_items.keys()
@@ -172,7 +172,7 @@ class TestAddNodes:
         assert model_config.nodes.config(new_new_node_name) == node_dict
         edge, _ = model_config.edges.find(*new_edge[0:2])
         assert edge == new_edge
-        assert undo_command.deleted_edges[0] == new_edge
+        assert undo_command.deleted_edges[0].to_v1() == new_edge
 
         # node and edges are restored from schematic
         assert new_new_node_name in schematic.node_items.keys()

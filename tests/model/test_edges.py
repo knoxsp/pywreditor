@@ -1,6 +1,6 @@
 import pytest
 
-from pywr_editor.model import Edges, ModelConfig
+from pywr_editor.model import EdgeRecord, Edges, ModelConfig
 from tests.utils import resolve_model_path
 
 
@@ -216,3 +216,42 @@ class TestEdges:
         )
         edge, _ = edges.find(source, target)
         assert edge == [source, target] + expected_slots
+
+
+class TestEdgeRecord:
+    @pytest.mark.parametrize(
+        "v1_edge, expected",
+        [
+            (["A", "B"], EdgeRecord("A", "B")),
+            (["A", "B", "s1"], EdgeRecord("A", "B", source_slot="s1")),
+            (["A", "B", "s1", 2], EdgeRecord("A", "B", "s1", 2)),
+            (["A", "B", None, "t"], EdgeRecord("A", "B", target_slot="t")),
+        ],
+    )
+    def test_v1_round_trip(self, v1_edge, expected):
+        """
+        Tests the conversion of v1 edges to records and back.
+        """
+        record = EdgeRecord.from_v1(v1_edge)
+        assert record == expected
+        assert record.to_v1() == v1_edge
+
+    def test_records_and_find_record(self):
+        """
+        Tests that the edges are returned as records.
+        """
+        edges = TestEdges.edges("model_2.json")
+        records = edges.records()
+        assert len(records) == edges.count
+        assert all(isinstance(record, EdgeRecord) for record in records)
+        assert edges.find_record("Reservoir", "Link") == EdgeRecord("Reservoir", "Link")
+        assert edges.find_record("Reservoir", "Missing") is None
+
+    def test_add_record(self):
+        """
+        Tests that a record with slots is added as a v1 edge.
+        """
+        edges = TestEdges.edges("model_2.json")
+        edges.delete("Reservoir", "Link")
+        assert edges.add_record(EdgeRecord("Reservoir", "Link", None, "slot"))
+        assert edges.find("Reservoir", "Link")[0] == ["Reservoir", "Link", None, "slot"]

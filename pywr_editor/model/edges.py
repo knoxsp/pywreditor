@@ -1,10 +1,51 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 from pywr_editor.model import NodeConfig
 
 if TYPE_CHECKING:
     from pywr_editor.model import ModelConfig
+
+
+@dataclass(frozen=True)
+class EdgeRecord:
+    """
+    An edge between two nodes, independent of how the model file stores it. Code
+    outside the model layer reads edges as records so that it does not depend on the
+    format of the model file.
+    """
+
+    source: str
+    """ The name of the source node """
+    target: str
+    """ The name of the target node """
+    source_slot: str | int | None = None
+    """ The slot of the source node, if any """
+    target_slot: str | int | None = None
+    """ The slot of the target node, if any """
+
+    @classmethod
+    def from_v1(cls, edge: Sequence) -> "EdgeRecord":
+        """
+        Creates the record from a pywr v1 edge, a list with the source and target
+        node names, optionally followed by the source and target slots.
+        :param edge: The v1 edge.
+        :return: The edge record.
+        """
+        slots = list(edge[2:4]) + [None] * (4 - max(len(edge), 2))
+        return cls(edge[0], edge[1], slots[0], slots[1])
+
+    def to_v1(self) -> list:
+        """
+        Converts the record to a pywr v1 edge. Slots are only included when set.
+        :return: The v1 edge.
+        """
+        edge = [self.source, self.target]
+        if self.target_slot is not None:
+            edge += [self.source_slot, self.target_slot]
+        elif self.source_slot is not None:
+            edge.append(self.source_slot)
+        return edge
 
 
 @dataclass
@@ -14,10 +55,38 @@ class Edges:
 
     def get_all(self) -> list[list[str]]:
         """
-        Returns the list of edges.
+        Returns the list of edges as stored in the model file. Code outside the model
+        layer should use records() instead.
         :return: The edge list. Each list item contains the edges as list.
         """
         return self.model.json["edges"]
+
+    def records(self) -> list[EdgeRecord]:
+        """
+        Returns the edges as records.
+        :return: The list of edge records.
+        """
+        return [EdgeRecord.from_v1(edge) for edge in self.get_all()]
+
+    def find_record(
+        self, source_node_name: str, target_node_name: str
+    ) -> EdgeRecord | None:
+        """
+        Finds the edge between two nodes.
+        :param source_node_name: The name of the source node.
+        :param target_node_name: The name of the target node.
+        :return: The edge record or None if the nodes are not connected.
+        """
+        edge, _ = self.find(source_node_name, target_node_name)
+        return None if edge is None else EdgeRecord.from_v1(edge)
+
+    def add_record(self, edge: EdgeRecord) -> bool:
+        """
+        Adds an edge from a record.
+        :param edge: The edge record.
+        :return: True if the edge is added, False otherwise.
+        """
+        return self.add(edge.source, edge.target, edge.source_slot, edge.target_slot)
 
     @property
     def count(self) -> int:

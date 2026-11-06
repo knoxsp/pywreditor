@@ -90,7 +90,7 @@ class TestSchematicConnectNodes:
         qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
         assert undo_button.isEnabled() is False
         assert redo_button.isEnabled() is True
-        assert undo_command.edge_config == ["Link3", "Reservoir", 1]
+        assert undo_command.edge_config.to_v1() == ["Link3", "Reservoir", 1]
         assert model_config.edges.find("Link3", "Reservoir") == (
             None,
             None,

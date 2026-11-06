@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QUndoCommand
 
-from pywr_editor.model import NodeConfig
+from pywr_editor.model import EdgeRecord, NodeConfig
 from pywr_editor.utils import Logging
 
 from ..edge import Edge
@@ -40,7 +40,7 @@ class DisconnectNodeCommand(QUndoCommand):
         )
         # To properly restore, if the edge is changed (for ex. a Slot is added),
         # store the edge configuration for the undo command
-        self.edge_config: list[str | int] | None = None
+        self.edge_config: EdgeRecord | None = None
         self.setText("disconnect node")
 
     def redo(self) -> None:
@@ -49,7 +49,7 @@ class DisconnectNodeCommand(QUndoCommand):
         :return: None
         """
         # store the edge so that it can be restored later
-        self.edge_config, _ = self.model_config.edges.find(
+        self.edge_config = self.model_config.edges.find_record(
             source_node_name=self.source_node.name,
             target_node_name=self.target_node.name,
         )
@@ -89,7 +89,7 @@ class DisconnectNodeCommand(QUndoCommand):
         """
         # restore edge
         if self.edge_config:
-            if self.model_config.edges.add(*self.edge_config):
+            if self.model_config.edges.add_record(self.edge_config):
                 self.logger.debug(f"Restored edge: {self.edge_config}")
             else:
                 # When a node is renamed, its edge cannot be restored.

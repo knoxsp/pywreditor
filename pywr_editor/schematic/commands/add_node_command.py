@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QUndoCommand
 
-from pywr_editor.model import NodeConfig
+from pywr_editor.model import EdgeRecord, NodeConfig
 from pywr_editor.utils import Logging
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ class AddNodeCommand(QUndoCommand):
         self.added_node_dict = added_node_dict
         self.node_config: NodeConfig | None = None
         self.model_config = self.schematic.model_config
-        self.deleted_edges: list[list[str | int]] = []
+        self.deleted_edges: list[EdgeRecord] = []
         self.setText("add new node")
 
     def redo(self) -> None:
@@ -59,7 +59,7 @@ class AddNodeCommand(QUndoCommand):
             # add edges
             restored_edges = 0
             for edge in self.deleted_edges:
-                if self.model_config.edges.add(*edge):
+                if self.model_config.edges.add_record(edge):
                     self.logger.debug(f"Restored edge: {edge}")
                     restored_edges += 1
 
