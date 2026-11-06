@@ -10,10 +10,12 @@ from pywr_editor.form.form_widget import FormWidget
 from pywr_editor.form.validation import Validation
 from pywr_editor.form.widgets.boolean_widget import BooleanWidget
 from pywr_editor.form.widgets.float_widget import FloatWidget
+from pywr_editor.form.widgets.metric_widget import MetricWidget
 from pywr_editor.form.widgets.text_widget import TextWidget
 
 if TYPE_CHECKING:
     from pywr_editor.form import FormField
+    from pywr_editor.model import ModelConfig
 
 """
  Builds form fields from the description of the properties of a pywr-next component
@@ -197,7 +199,10 @@ class NumberListWidget(FormWidget):
         return Validation()
 
 
-REF_WIDGETS: dict[str, Type[FormWidget]] = {}
+REF_WIDGETS: dict[str, Type[FormWidget]] = {
+    "Metric": MetricWidget,
+    "IndexMetric": MetricWidget,
+}
 """ The widget editing the values of a schema definition, by definition name """
 
 
@@ -206,17 +211,21 @@ def register_ref_widget(ref: str, widget: Type[FormWidget]) -> None:
     Sets the widget used for the values of a schema definition.
     :param ref: The definition name, such as "Metric".
     :param widget: The widget class. It is created with the field name, value and
-    parent field, plus a "spec" argument with the FieldSpec.
+    parent field, plus a "spec" argument with the FieldSpec and a "model_config"
+    argument with the model (or None).
     :return: None
     """
     REF_WIDGETS[ref] = widget
 
 
-def field_config(spec: FieldSpec, values: dict) -> FieldConfig:
+def field_config(
+    spec: FieldSpec, values: dict, model_config: "ModelConfig | None" = None
+) -> FieldConfig:
     """
     Builds the configuration of the form field of a property.
     :param spec: The description of the property.
     :param values: The current values of the component.
+    :param model_config: The model, for the widgets that list its components.
     :return: The field configuration.
     """
     value = values.get(spec.name)
@@ -231,7 +240,7 @@ def field_config(spec: FieldSpec, values: dict) -> FieldConfig:
 
     if spec.kind == "ref" and spec.ref in REF_WIDGETS:
         config["field_type"] = REF_WIDGETS[spec.ref]
-        config["field_args"] = {"spec": spec}
+        config["field_args"] = {"spec": spec, "model_config": model_config}
     elif spec.kind == "enum":
         config["field_type"] = EnumWidget
         config["field_args"] = {"options": spec.options, "required": spec.required}
@@ -261,11 +270,14 @@ def field_config(spec: FieldSpec, values: dict) -> FieldConfig:
     return config
 
 
-def field_configs(specs: list[FieldSpec], values: dict) -> list[FieldConfig]:
+def field_configs(
+    specs: list[FieldSpec], values: dict, model_config: "ModelConfig | None" = None
+) -> list[FieldConfig]:
     """
     Builds the form fields of a component.
     :param specs: The descriptions of the component properties.
     :param values: The current values of the component.
+    :param model_config: The model, for the widgets that list its components.
     :return: The field configurations, in the order of the descriptions.
     """
-    return [field_config(spec, values) for spec in specs]
+    return [field_config(spec, values, model_config) for spec in specs]
