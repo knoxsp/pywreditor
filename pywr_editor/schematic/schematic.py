@@ -33,10 +33,9 @@ from pywr_editor.dialogs import InspectorTree
 from pywr_editor.model import (
     BaseShape,
     Constants,
-    Edges,
+    EdgeRecord,
     LineArrowShape,
     ModelConfig,
-    NodeConfig,
     RectangleShape,
     TextShape,
 )
@@ -433,7 +432,6 @@ class Schematic(QGraphicsView):
         self.update_geo_view_banner()
 
         # draw the edges
-        model_edges = Edges(self.model_config)
         for source_node_name, source_node_obj in self.node_items.items():
             target_nodes = self.model_config.edges.targets(source_node_name)
             if target_nodes is not None:
@@ -442,7 +440,7 @@ class Schematic(QGraphicsView):
                     edge = Edge(
                         source=source_node_obj,
                         target=target_node_obj,
-                        edge_color_name=model_edges.color(source_node_name),
+                        edge_color_name=self.model_config.edges.color(source_node_name),
                         hide_arrow=self.editor_settings.are_edge_arrows_hidden,
                     )
                     edge.setVisible(
@@ -499,7 +497,7 @@ class Schematic(QGraphicsView):
 
         return node_obj
 
-    def delete_node(self, node_name: str) -> list[list[str | int]]:
+    def delete_node(self, node_name: str) -> list[EdgeRecord]:
         """
         Deletes the provided node and its edges from the schematic and model
         configuration.
@@ -508,7 +506,7 @@ class Schematic(QGraphicsView):
         """
         # find the node shape on the schematic
         node_item = self.node_items[node_name]
-        deleted_edges: list[list[str]] = []
+        deleted_edges: list[EdgeRecord] = []
 
         # delete edges on the schematic when node is source node
         for c_node in node_item.connected_nodes["target_nodes"]:
@@ -559,7 +557,7 @@ class Schematic(QGraphicsView):
         del self.shape_items[shape_id]
         self.scene.removeItem(shape_item)
 
-    def delete_edge(self, edge_item: Edge) -> list[str | int]:
+    def delete_edge(self, edge_item: Edge) -> EdgeRecord | None:
         """
         Deletes the edge from the schematic and model configuration.
         :param edge_item: The schematic Edge instance.
@@ -567,10 +565,10 @@ class Schematic(QGraphicsView):
         """
         self.scene.removeItem(edge_item)
         # delete edge from model config and returned deleted model edge
-        edge, _ = self.model_config.edges.find(
+        edge = self.model_config.edges.find_record(
             edge_item.source.name, edge_item.target.name
         )
-        self.model_config.edges.delete(edge)
+        self.model_config.edges.delete(edge_item.source.name, edge_item.target.name)
         return edge
 
     def add_abort_node_connection_button(self) -> None:
@@ -1160,7 +1158,7 @@ class Schematic(QGraphicsView):
 
         names, known = [], {}
         for node_props in self.model_config.nodes.get_all():
-            name = node_props["name"]
+            name = self.model_config.nodes.node(node_props).name
             names.append(name)
             point = self.geo_point(
                 self.model_config.nodes.node(node_props).geographic_position
@@ -1175,7 +1173,7 @@ class Schematic(QGraphicsView):
         xs = [p[0] for p in known.values()] or [0.0]
         ys = [p[1] for p in known.values()] or [0.0]
         extent = max(max(xs) - min(xs), max(ys) - min(ys))
-        edges = [(edge[0], edge[1]) for edge in self.model_config.edges.get_all()]
+        edges = [(e.source, e.target) for e in self.model_config.edges.records()]
         inferred = infer_positions(known, names, edges, spread=extent / 150)
         if len(inferred) == 0:
             self.app.statusBar().showMessage(
@@ -1217,7 +1215,7 @@ class Schematic(QGraphicsView):
             name: (item.pos().x(), item.pos().y())
             for name, item in self.node_items.items()
         }
-        edges = [(edge[0], edge[1]) for edge in self.model_config.edges.get_all()]
+        edges = [(e.source, e.target) for e in self.model_config.edges.records()]
         snap = self.editor_settings.is_snap_to_grid_enabled
         grid_size = max(self.editor_settings.grid_size, 1)
         # keep the nodes a few cells apart so that snapping does not crowd them
@@ -2221,9 +2219,9 @@ class Schematic(QGraphicsView):
                     self.app.undo_stack.push(command)
             else:
                 # add the new node to the model
-                node_props = NodeConfig.create(
+                node_props = self.model_config.dialect.create_node(
                     name=f"Node {QUuid().createUuid().toString()[1:7]}",
-                    node_type=mime_type.lower(),
+                    node_type=mime_type,
                     position=position,
                 )
 

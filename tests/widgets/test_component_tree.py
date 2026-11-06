@@ -70,3 +70,25 @@ class TestComponentTree:
         tree_widget.on_item_click(tree_item)
         # node must be selected
         assert window.schematic.node_items[tree_item.text(0)].isSelected() is True
+
+    def test_delete_recorder(self, monkeypatch, init_window):
+        """
+        Checks that deleting a recorder from the tree deletes the recorder and not a
+        parameter with the same name.
+        """
+        window, tree = init_window
+        model_config = window.model_config
+        # a parameter with the same name as the recorder
+        model_config.parameters.update("storage", {"type": "constant", "value": 1})
+        monkeypatch.setattr(
+            "pywr_editor.tree.components_tree.maybe_delete_component",
+            lambda *args: True,
+        )
+
+        tree.on_delete_recorder("storage")
+
+        assert model_config.recorders.exists("storage") is False
+        assert model_config.parameters.exists("storage") is True
+        # do not ask to save the changes
+        model_config.reset_change_flag()
+        window.close()

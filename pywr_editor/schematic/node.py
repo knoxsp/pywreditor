@@ -17,7 +17,6 @@ from pywr_editor.style import Color
 from pywr_editor.utils import ModelComponentTooltip
 from pywr_editor.widgets import ContextualMenu
 
-from ..model import NodeConfig
 from .abstract_schematic_item import AbstractSchematicItem
 from .commands.add_node_command import AddNodeCommand
 from .commands.disconnect_node_command import DisconnectNodeCommand
@@ -615,7 +614,9 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :return: None
         """
         # add new name and shift the coordinates
-        new_node_props = NodeConfig(self.model_node.props, deepcopy=True)
+        new_node_props = self.view.model_config.nodes.node(
+            self.model_node.props, deepcopy=True
+        )
         new_node_props.change_name(f"Node {QUuid().createUuid().toString()[1:7]}")
         new_node_props.change_position([self.x + 100, self.y])
 
@@ -656,14 +657,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         Edits a node configuration.
         :return: None
         """
-        from pywr_editor.dialogs import NodeDialog
-
-        dialog = NodeDialog(
-            node_name=self.name,
-            model_config=self.view.model_config,
-            parent=self.view.app,
-        )
-        dialog.show()
+        self.view.app.open_node_dialog(self.name)
 
     @Slot()
     def on_show_node_data(self) -> None:
@@ -671,7 +665,12 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         Shows the node configuration in the dockable node data panel.
         :return: None
         """
-        self.view.app.node_data_panel.show_node(self.name)
+        app = self.view.app
+        if not app.model_config.dialect.supports("node-data-panel"):
+            # the panel shows the v1 node form: open the node dialog instead
+            app.open_node_dialog(self.name)
+            return
+        app.node_data_panel.show_node(self.name)
 
 
 class SchematicLabel(QGraphicsTextItem):

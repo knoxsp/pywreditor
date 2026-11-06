@@ -15,7 +15,13 @@ from PySide6.QtGui import (
     Qt,
     QUndoStack,
 )
-from PySide6.QtWidgets import QDockWidget, QFileDialog, QMainWindow, QMessageBox
+from PySide6.QtWidgets import (
+    QDockWidget,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QWidget,
+)
 
 from pywr_editor.console import ConsolePanel
 from pywr_editor.dialogs import (
@@ -26,14 +32,10 @@ from pywr_editor.dialogs import (
     JsonCodeViewer,
     MetadataDialog,
     NodeDataPanel,
-    ParametersDialog,
     PythonPathsDialog,
-    RecordersDialog,
     ResultsDialog,
-    ScenariosDialog,
     SearchDialog,
     StartScreen,
-    TablesDialog,
     ValidationDialog,
 )
 from pywr_editor.model import ModelConfig
@@ -78,11 +80,12 @@ class MainWindow(QMainWindow):
     ]
     """ List of class attributes pointing to widgets whose geometry must be saved """
 
-    def __init__(self, model_file: str | None = None):
+    def __init__(self, model_file: str | None = None, new_dialect: str = "v1"):
         """
         Initialises the editor.
         :param model_file: The path to the model file. Ignore this to start
         a new empty model.
+        :param new_dialect: The dialect of a new empty model ("v1" or "next").
         """
         super().__init__()
         self.logger = Logging().logger(self.__class__.__name__)
@@ -108,10 +111,16 @@ class MainWindow(QMainWindow):
 
         # load configurations
         self.model_file = model_file
-        self.model_config = ModelConfig(model_file)
+        self.model_config = ModelConfig(model_file, new_dialect=new_dialect)
         # Show error if the JSON file does not load
-        if not self.model_config.is_valid():
-            self.error_message.emit(self.model_config.load_error, False)
+        load_error = self.model_config.load_error
+        if load_error is None and not self.model_config.dialect.can_open:
+            label = self.model_config.dialect.label
+            load_error = (
+                f"This is a {label} model. The editor cannot open {label} models yet"
+            )
+        if load_error is not None:
+            self.error_message.emit(load_error, False)
             # reopen the start screen. The reference is kept on the class as this
             # window is garbage collected and no window would otherwise be visible
             from pywr_editor.dialogs import StartScreen
@@ -200,6 +209,7 @@ class MainWindow(QMainWindow):
         self.toolbar = ToolbarWidget(self)
         self.addToolBar(self.toolbar)
         self.setup_toolbar()
+        self.hide_unsupported_actions()
         # noinspection PyTypeChecker
         self.run_widget: RunWidget = self.toolbar.findChild(RunWidget)
 
@@ -332,15 +342,18 @@ class MainWindow(QMainWindow):
                 connection=self.open_metadata_dialog,
             )
         )
-        self.app_actions.add(
-            Action(
-                key="edit-scenarios",
-                name="Scenarios",
-                icon=":/toolbar/edit-scenarios",
-                tooltip="Change the model scenarios",
-                connection=self.open_scenarios_dialog,
+        # the buttons to edit the components depend on the model dialect
+        for kind in self.model_config.dialect.component_kinds():
+            self.app_actions.add(
+                Action(
+                    key=kind.action_key,
+                    name=kind.label,
+                    icon=kind.icon,
+                    tooltip=kind.tooltip,
+                    shortcut=QKeySequence(kind.shortcut) if kind.shortcut else None,
+                    connection=lambda *_, key=kind.key: self.open_component_dialog(key),
+                )
             )
-        )
         self.app_actions.add(
             Action(
                 key="edit-imports",
@@ -370,37 +383,17 @@ class MainWindow(QMainWindow):
                 connection=self.open_edge_slots_dialog,
             )
         )
-        self.app_actions.add(
-            Action(
-                key="edit-tables",
-                name="Tables",
-                icon=":/toolbar/edit-tables",
-                tooltip="Add, modify and delete the model tables",
-                shortcut=QKeySequence("Ctrl+T"),
-                connection=self.open_tables_dialog,
-            )
-        )
-        self.app_actions.add(
-            Action(
-                key="edit-parameters",
-                name="Parameters",
-                icon=":/toolbar/edit-parameters",
-                tooltip="Add, modify and delete the model parameters",
-                shortcut=QKeySequence("Ctrl+P"),
-                connection=self.open_parameters_dialog,
-            )
-        )
-        self.app_actions.add(
-            Action(
-                key="edit-recorders",
-                name="Recorders",
-                icon=":/toolbar/edit-recorders",
-                tooltip="Add, modify and delete the model recorders",
-                shortcut=QKeySequence("Ctrl+R"),
-                connection=self.open_recorders_dialog,
-            )
-        )
 
+        self.app_actions.add(
+            Action(
+                key="manage-pywr-next",
+                name="pywr-next",
+                icon=":/toolbar/run",
+                tooltip="Install, locate or remove the pywr-next version used for "
+                "pywr-next models",
+                connection=self.open_pywr_next_environment,
+            )
+        )
         self.app_actions.add(
             Action(
                 key="validate-model",
@@ -757,17 +750,22 @@ class MainWindow(QMainWindow):
 
         settings_panel = model_tab.add_panel("Settings")
         settings_panel.add_button(self.app_actions.get("edit-metadata"))
+        component_kinds = self.model_config.dialect.component_kinds()
         settings_panel.add_vertical_small_buttons(
             [
-                self.app_actions.get("edit-scenarios"),
+                self.app_actions.get(kind.action_key)
+                for kind in component_kinds
+                if not kind.large_button
+            ]
+            + [
                 self.app_actions.get("edit-imports"),
                 self.app_actions.get("edit-slots"),
             ]
         )
         settings_panel.add_button(self.app_actions.get("edit-python-paths"))
-        settings_panel.add_button(self.app_actions.get("edit-tables"))
-        settings_panel.add_button(self.app_actions.get("edit-parameters"))
-        settings_panel.add_button(self.app_actions.get("edit-recorders"))
+        for kind in component_kinds:
+            if kind.large_button:
+                settings_panel.add_button(self.app_actions.get(kind.action_key))
 
         validation_panel = model_tab.add_panel("Validation", layout="vertical")
         validation_panel.add_button(
@@ -805,7 +803,14 @@ class MainWindow(QMainWindow):
         time_stepper_panel.add_widget(TimeStepperWidget(self))
 
         nodes_panel = run.add_panel("Controls")
-        nodes_panel.add_widget(RunWidget(self))
+        run_widget = RunWidget(self)
+        nodes_panel.add_widget(run_widget)
+        dialect = self.model_config.dialect
+        if not dialect.supports("run"):
+            run_widget.setEnabled(False)
+            run_widget.setToolTip(
+                f"Running {dialect.label} models is not available yet"
+            )
 
         results_panel = run.add_panel("Results")
         results_panel.add_button(self.app_actions.get("run-results"))
@@ -818,6 +823,11 @@ class MainWindow(QMainWindow):
             "Show or hide the dockable IPython console to run the model and look at "
             "the results interactively"
         )
+        if not dialect.supports("console"):
+            toggle_console_action.setEnabled(False)
+            toggle_console_action.setToolTip(
+                f"The console is not available yet for {dialect.label} models"
+            )
         console_panel = run.add_panel("Console")
         console_panel.add_button(toggle_console_action)
 
@@ -884,6 +894,8 @@ class MainWindow(QMainWindow):
         map_panel = settings_tab.add_panel("Schematic -> Map")
         self.map_settings = MapSettings(self)
         map_panel.add_widget(self.map_settings)
+        environments_panel = settings_tab.add_panel("Application -> pywr-next")
+        environments_panel.add_button(self.app_actions.get("manage-pywr-next"))
 
     def add_status_bar(self) -> None:
         """
@@ -892,7 +904,8 @@ class MainWindow(QMainWindow):
         """
         if self.model_config.load_error is None:
             self.statusBar().showMessage(
-                f"Loaded {self.model_config.file.file_name} with "
+                f"Loaded {self.model_config.file.file_name} "
+                + f"({self.model_config.dialect.label} model) with "
                 + f"{self.model_config.nodes.count} nodes and "
                 + f"{self.model_config.edges.count} edges"
             )
@@ -967,7 +980,7 @@ class MainWindow(QMainWindow):
                 + (f" ({folder})" if folder else "")
             )
         else:
-            title = "New empty model"
+            title = f"New empty {self.model_config.dialect.label} model"
         self.setWindowTitle(title)
 
     def set_zoom(self, scene_scale_factor: float) -> None:
@@ -1128,8 +1141,7 @@ class MainWindow(QMainWindow):
         Opens the dialog to edit the model tables.
         :return: None
         """
-        dialog = TablesDialog(model=self.model_config, parent=self)
-        dialog.show()
+        self.open_component_dialog("table")
 
     @Slot()
     def open_validation_dialog(self) -> None:
@@ -1160,17 +1172,80 @@ class MainWindow(QMainWindow):
             self.schematic.select_node_by_name(name)
             return
 
-        dialogs = {
-            "parameter": ParametersDialog,
-            "recorder": RecordersDialog,
-            "table": TablesDialog,
-        }
-        if kind in dialogs:
-            dialogs[kind](
-                model=self.model_config, selected_name=name, parent=self
-            ).show()
-        elif kind == "scenario":
-            self.open_scenarios_dialog()
+        self.open_component_dialog(kind, name)
+
+    FEATURE_ACTIONS = {
+        "imports": ["edit-imports"],
+        "python-paths": ["edit-python-paths"],
+        "slots": ["edit-slots"],
+        "orphaned-parameters": ["find-orphaned-parameters"],
+        "run": ["run-results", "run-inspector"],
+    }
+    """ The ribbon actions of the editor features that a dialect may not have """
+
+    def hide_unsupported_actions(self) -> None:
+        """
+        Hides the ribbon actions of the features the model dialect does not have.
+        :return: None
+        """
+        dialect = self.model_config.dialect
+        for feature, action_keys in self.FEATURE_ACTIONS.items():
+            if dialect.supports(feature):
+                continue
+            for key in action_keys:
+                action = self.app_actions.get(key)
+                action.setVisible(False)
+                action.setEnabled(False)
+
+    def open_node_dialog(self, node_name: str) -> None:
+        """
+        Opens the dialog to edit a node.
+        :param node_name: The node name.
+        :return: None
+        """
+        dialect = self.model_config.dialect
+        dialog_class = dialect.node_dialog_class()
+        if not dialect.supports("node-dialog") or dialog_class is None:
+            self.statusBar().showMessage(
+                f"Editing {dialect.label} nodes is not available yet", 5000
+            )
+            return
+        dialog_class(
+            node_name=node_name, model_config=self.model_config, parent=self
+        ).show()
+
+    @Slot()
+    def open_pywr_next_environment(self) -> None:
+        """
+        Opens the dialog showing the pywr-next environment, where it can be
+        installed or removed.
+        :return: None
+        """
+        from pywr_editor.dialogs.environments.install_dialog import (
+            InstallEnvironmentDialog,
+        )
+        from pywr_editor.environments import pywr_next_environment
+
+        InstallEnvironmentDialog(
+            pywr_next_environment(), "run and convert pywr-next models", self
+        ).show()
+
+    def open_component_dialog(self, kind: str, name: str | None = None) -> None:
+        """
+        Opens the dialog of a kind of component of the model dialect.
+        :param kind: The component kind, such as "parameter" or "table".
+        :param name: The name of the component to select. Optional.
+        :return: None
+        """
+        component_kind = self.model_config.dialect.component_kind(kind)
+        if component_kind is None:
+            self.logger.debug(
+                f"The {self.model_config.dialect.label} models have no {kind} dialog"
+            )
+            return
+        component_kind.open_dialog(
+            model=self.model_config, selected_name=name, parent=self
+        )
 
     @Slot()
     def open_gis_layers_dialog(self) -> None:
@@ -1196,8 +1271,7 @@ class MainWindow(QMainWindow):
         Opens the dialog to edit the model parameters.
         :return: None
         """
-        dialog = ParametersDialog(model=self.model_config, parent=self)
-        dialog.show()
+        self.open_component_dialog("parameter")
 
     @Slot()
     def open_recorders_dialog(self) -> None:
@@ -1205,8 +1279,7 @@ class MainWindow(QMainWindow):
         Opens the dialog to edit the model recorders.
         :return: None
         """
-        dialog = RecordersDialog(model=self.model_config, parent=self)
-        dialog.show()
+        self.open_component_dialog("recorder")
 
     @Slot()
     def open_scenarios_dialog(self) -> None:
@@ -1214,8 +1287,7 @@ class MainWindow(QMainWindow):
         Opens the dialog to edit the model scenarios.
         :return: None
         """
-        dialog = ScenariosDialog(model=self.model_config, parent=self)
-        dialog.show()
+        self.open_component_dialog("scenario")
 
     @Slot(str)
     def on_status_message(self, message: str) -> None:
@@ -1293,13 +1365,10 @@ class MainWindow(QMainWindow):
 
         # disable toolbar buttons
         to_disable = [
+            *[kind.action_key for kind in self.model_config.dialect.component_kinds()],
             "edit-metadata",
-            "edit-scenarios",
             "edit-imports",
             "edit-slots",
-            "edit-tables",
-            "edit-parameters",
-            "edit-recorders",
             "validate-model",
             "find-orphaned-nodes",
             "find-orphaned-parameters",
@@ -1396,10 +1465,13 @@ class MainWindow(QMainWindow):
     @Slot()
     def new_empty_model() -> None:
         """
-        Opens a new editor instance to start a new empty model.
+        Opens a new editor instance to start a new empty model, after asking for
+        its format.
         :return: None
         """
-        MainWindow()
+        dialect = ask_new_model_dialect()
+        if dialect is not None:
+            MainWindow(new_dialect=dialect)
 
     @staticmethod
     @Slot()
@@ -1461,3 +1533,23 @@ class MainWindow(QMainWindow):
                     MainWindow(self.model_file)
         except Exception:
             pass
+
+
+def ask_new_model_dialect(parent: QWidget | None = None) -> str | None:
+    """
+    Asks for the format of a new model.
+    :param parent: The parent widget. Optional.
+    :return: The dialect key ("v1" or "next"), or None if cancelled.
+    """
+    from PySide6.QtWidgets import QInputDialog
+
+    from pywr_editor.dialects import DIALECTS
+
+    dialects = [d for d in reversed(DIALECTS) if d.can_open]
+    labels = [f"{d.label} model" for d in dialects]
+    label, ok = QInputDialog.getItem(
+        parent, "New model", "Format of the new model", labels, 0, False
+    )
+    if not ok or label not in labels:
+        return None
+    return dialects[labels.index(label)].key

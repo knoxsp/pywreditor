@@ -28,10 +28,14 @@ class RunSettings(QWidget):
         super().__init__(parent)
         self.editor_settings = parent.editor_settings
 
-        # noinspection PyUnresolvedReferences
-        from pywr.solvers import solver_registry
+        try:
+            # noinspection PyUnresolvedReferences
+            from pywr.solvers import solver_registry
 
-        names = [solver.name for solver in solver_registry if solver.name != "null"]
+            names = [solver.name for solver in solver_registry if solver.name != "null"]
+        except ImportError:
+            # pywr v1 is not installed in the editor's environment
+            names = []
         current = self.editor_settings.solver
 
         layout = QGridLayout()

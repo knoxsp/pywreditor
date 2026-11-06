@@ -54,7 +54,7 @@ a = Analysis(
         # (pywr_dist.as_posix(), pywr_dist.name),
         # pyproj's PROJ datum/grid data is not picked up automatically
         (pyproj.datadir.get_data_dir(), "pyproj/proj_dir/share/proj"),
-        # the pywr-v1-schema JSON Schema documents used to validate a model
+        # the pywr v1 and pywr-next JSON Schema documents used to validate a model
         ("pywr_editor/model/schemas", "pywr_editor/model/schemas"),
     ]
     # jsonschema loads the JSON Schema meta-schemas from these packages

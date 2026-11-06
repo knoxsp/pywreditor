@@ -491,13 +491,14 @@ class Form(QScrollArea):
                 if not self._validate_field(name, value, field):
                     is_valid = False
 
-                # do not export if the value is empty or the default value
+                # do not export if the value is empty or the default value. An
+                # empty list or dictionary is kept when it has a meaning
+                keep_empty = self.field_config[name].get("keep_empty", False)
                 if (
                     value == default_value
                     or value is None
                     or value == ""
-                    or value == []
-                    or value == {}
+                    or (value in ([], {}) and not keep_empty)
                 ):
                     self.logger.debug(f"Ignoring {name} with value '{value}'")
                     continue

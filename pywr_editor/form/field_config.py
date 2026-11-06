@@ -33,3 +33,6 @@ class FieldConfig(TypedDict):
     """ only available when field_type is integer to add a suffix to the QSpinBox """
     help_text: NotRequired[str]
     """ A string that describes the field """
+    keep_empty: NotRequired[bool]
+    """ Whether to save an empty list or dictionary instead of leaving the field out.
+    Default to False """
