@@ -1,13 +1,13 @@
 import json
 import os
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
 
 import pyproj
 from pandas import period_range
 from PySide6.QtCore import QObject, Signal
 
+from pywr_editor.dialects import ModelDialect, detect_dialect, get_dialect
 from pywr_editor.model import (
     Constants,
     Edges,
@@ -221,25 +221,10 @@ class ModelConfig(QObject):
     @staticmethod
     def empty_model() -> dict:
         """
-        Returns the configuration for an empty model.
+        Returns the configuration for an empty pywr v1 model.
         :return: The model configuration.
         """
-        current_time = datetime.now().strftime("%d/%m/%Y %H:%M")
-        return {
-            "metadata": {
-                "minimum_version": 0.1,
-                "title": "New model",
-                "description": f"Model created on {current_time}",
-            },
-            "includes": [],
-            "timestepper": {"start": "2000-1-1", "end": "2000-12-31", "timestep": 1},
-            "scenarios": [],
-            "nodes": [],
-            "edges": [],
-            "tables": {},
-            "recorders": {},
-            Constants.EDITOR_CONFIG_KEY.value: {Constants.SHAPES_KEY.value: []},
-        }
+        return get_dialect("v1").empty_model()
 
     def load_model(self) -> None:
         """
@@ -247,6 +232,8 @@ class ModelConfig(QObject):
         :return: None.
         """
         self.json = self.empty_model()
+        self.dialect: ModelDialect = get_dialect("v1")
+        """ The dialect of the model (pywr v1 or pywr-next) """
 
         if not self.json_file:
             return
@@ -270,6 +257,14 @@ class ModelConfig(QObject):
                 "The JSON file contains the following syntax error and "
                 + f"cannot be loaded:\n\n{type(e).__name__}: {e}\n\n"
                 + "Please fix the error by manually editing the JSON file"
+            )
+            return
+
+        self.dialect = detect_dialect(self.json)
+        if not self.dialect.can_open:
+            self.load_error = (
+                f"This is a {self.dialect.label} model. The editor cannot open "
+                + f"{self.dialect.label} models yet"
             )
             return
 
