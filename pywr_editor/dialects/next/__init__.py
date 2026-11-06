@@ -11,6 +11,7 @@ class NextDialect(ModelDialect):
     key = "next"
     label = "pywr-next"
     time_key = "time"
+    features = frozenset(["node-dialog"])
 
     @classmethod
     def detect(cls, model_json: Any) -> bool:
@@ -174,6 +175,15 @@ class NextDialect(ModelDialect):
             "The structure is checked against the schema of pywr "
             f"{schema_info()['pywr_version']} and by the editor."
         )
+
+    def node_dialog_class(self) -> type:
+        """
+        Returns the dialog to edit a pywr-next node, generated from the schema.
+        :return: The dialog class.
+        """
+        from pywr_editor.dialogs.node.next_node_dialog import NextNodeDialog
+
+        return NextNodeDialog
 
     def node_types(self) -> dict[str, str]:
         """

@@ -666,8 +666,8 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :return: None
         """
         app = self.view.app
-        if not app.model_config.dialect.supports("node-dialog"):
-            # the panel shows the node form, which pywr-next nodes do not have yet
+        if not app.model_config.dialect.supports("node-data-panel"):
+            # the panel shows the v1 node form: open the node dialog instead
             app.open_node_dialog(self.name)
             return
         app.node_data_panel.show_node(self.name)

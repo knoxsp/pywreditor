@@ -53,9 +53,8 @@ def test_v1_features_are_not_offered(window):
         assert window.app_actions.get(key).isVisible() is False
         assert window.app_actions.get(key).isEnabled() is False
 
-    # the v1 node dialog is not opened
-    window.open_node_dialog("Reservoir")
-    assert "not available" in window.statusBar().currentMessage()
+    # the node data panel shows the v1 node form
+    assert window.model_config.dialect.supports("node-data-panel") is False
 
 
 def test_node_library_lists_next_types(window):

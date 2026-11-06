@@ -79,6 +79,7 @@ class V1Dialect(ModelDialect):
     features = frozenset(
         [
             "node-dialog",
+            "node-data-panel",
             "imports",
             "python-paths",
             "slots",
@@ -123,6 +124,15 @@ class V1Dialect(ModelDialect):
             f"(for pywr {info['target_pywr_version']}) "
             "and by the editor."
         )
+
+    def node_dialog_class(self) -> type:
+        """
+        Returns the dialog to edit a pywr v1 node.
+        :return: The dialog class.
+        """
+        from pywr_editor.dialogs import NodeDialog
+
+        return NodeDialog
 
     def node_types(self) -> dict[str, str]:
         """

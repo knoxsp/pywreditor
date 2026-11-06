@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Type
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QPlainTextEdit
 
-from pywr_editor.dialects.next.schema import FieldSpec
+from pywr_editor.dialects.next.schema import FieldSpec, bundled_schema
 from pywr_editor.form.field_config import FieldConfig
 from pywr_editor.form.form_widget import FormWidget
 from pywr_editor.form.validation import Validation
@@ -240,6 +240,11 @@ def field_config(
 
     if spec.kind == "ref" and spec.ref in REF_WIDGETS:
         config["field_type"] = REF_WIDGETS[spec.ref]
+        config["field_args"] = {"spec": spec, "model_config": model_config}
+    elif spec.kind == "ref" and bundled_schema().types(spec.ref):
+        # a choice between types, such as an initial volume that is "Absolute" or
+        # "Proportional": the metric widget edits any such choice
+        config["field_type"] = MetricWidget
         config["field_args"] = {"spec": spec, "model_config": model_config}
     elif spec.kind == "enum":
         config["field_type"] = EnumWidget

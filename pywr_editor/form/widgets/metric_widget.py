@@ -25,7 +25,9 @@ if TYPE_CHECKING:
  Edits a pywr-next metric: a literal value, or a reference to a parameter, a node
  attribute, a table value, a time series... The types of metric and their fields are
  read from the bundled schema ("Metric", or "IndexMetric" for index values), so the
- widget follows the pywr-next version the editor bundles.
+ widget follows the pywr-next version the editor bundles. It also edits any other
+ choice between types described by the schema (for example the initial volume of a
+ storage, "Absolute" or "Proportional").
 """
 
 PICKERS = {

@@ -1183,16 +1183,14 @@ class MainWindow(QMainWindow):
         :param node_name: The node name.
         :return: None
         """
-        if not self.model_config.dialect.supports("node-dialog"):
+        dialect = self.model_config.dialect
+        dialog_class = dialect.node_dialog_class()
+        if not dialect.supports("node-dialog") or dialog_class is None:
             self.statusBar().showMessage(
-                f"Editing {self.model_config.dialect.label} nodes is not available "
-                + "yet",
-                5000,
+                f"Editing {dialect.label} nodes is not available yet", 5000
             )
             return
-        from pywr_editor.dialogs import NodeDialog
-
-        NodeDialog(
+        dialog_class(
             node_name=node_name, model_config=self.model_config, parent=self
         ).show()
 

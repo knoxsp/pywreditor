@@ -118,7 +118,8 @@ class ModelDialect(ABC):
 
     features: frozenset[str] = frozenset()
     """ The editor features available for the models of this dialect:
-     - "node-dialog": the node dialog and the node data panel;
+     - "node-dialog": the dialog to edit a node (see node_dialog_class());
+     - "node-data-panel": the dockable panel with the form of a node;
      - "imports": importing custom components from Python files;
      - "python-paths": folders added to the Python path to run the model;
      - "slots": the dialog to name the slots of the edges;
@@ -133,6 +134,13 @@ class ModelDialect(ABC):
         :return: True if the feature is available, False otherwise.
         """
         return feature in self.features
+
+    def node_dialog_class(self) -> type | None:
+        """
+        Returns the class of the dialog to edit a node.
+        :return: The dialog class, or None if nodes cannot be edited.
+        """
+        return None
 
     supports_custom_nodes: bool = False
     """ Whether models can have custom node types imported from Python files """
