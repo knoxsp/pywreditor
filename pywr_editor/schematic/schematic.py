@@ -66,7 +66,7 @@ from pywr_editor.schematic.layout import (
     infer_positions,
     snap_to_grid,
 )
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.toolbar import LibraryPanel
 from pywr_editor.utils import Logging
 
@@ -324,13 +324,32 @@ class Schematic(QGraphicsView):
         not a scene item, so it never visually grows or shrinks when zooming).
         :return: None
         """
-        self.scene.setBackgroundBrush(Qt.GlobalColor.white)
+        self.scene.setBackgroundBrush(Color("gray", 300).qcolor)
+        # follow the theme
+        Theme.on_change(self, lambda view: view.on_theme_change())
         # kept only for schematic.py's size tracking and run-mode dimming - it no
         # longer draws anything (see SchematicCanvas.paint)
         self.canvas = SchematicCanvas(
             width=self.schematic_width, height=self.schematic_height
         )
         self.scene.addItem(self.canvas)
+
+    def on_theme_change(self) -> None:
+        """
+        Updates the scene when the theme changes. The background is set again and the
+        items are repainted (and their cached rendering discarded). Colours set by the
+        user in the model are not changed.
+        :return: None
+        """
+        self.scene.setBackgroundBrush(Color("gray", 300).qcolor)
+        for item in self.scene.items():
+            if hasattr(item, "apply_theme"):
+                item.apply_theme()
+            item.update()
+        self.scene.update()
+        self.viewport().update()
+        # the legend icons are pixmaps, so they must be rendered again
+        self.legend.refresh()
 
     def drawBackground(self, painter: QPainter, rect: QRectF | QRect) -> None:
         """
@@ -562,8 +581,9 @@ class Schematic(QGraphicsView):
             "Select the node to connect. Press ESC or click here to abort"
         )
         button.setObjectName("abort-button")
-        button.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            button,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "#abort-button": {
                         "background": Color("blue", 100).hex,
@@ -576,7 +596,7 @@ class Schematic(QGraphicsView):
                         },
                     }
                 }
-            )
+            ),
         )
         # noinspection PyUnresolvedReferences
         button.clicked.connect(self.on_connect_node_end)
@@ -1710,7 +1730,9 @@ class Schematic(QGraphicsView):
 
         if len(file_name) > 0:
             self.scene.clearSelection()
-            pixmap = self.grab()
+            # images are always exported in the light theme
+            with Theme.temporary_mode("light"):
+                pixmap = self.grab()
             pixmap.save(file_name)
             self.app.statusBar().showMessage(f"Exported current view as {file_name}")
         else:

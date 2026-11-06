@@ -32,6 +32,7 @@ class Settings:
     show_grid_key = "schematic/show_grid"
     recent_projects_key = "recent_projects"
     run_to_date_key = "run_to_date"
+    theme_key = "appearance/theme"
     python_paths_key = "python/paths"
     solver_key = "run/solver"
     output_dir_key = "run/output_dir"
@@ -91,6 +92,26 @@ class Settings:
         """
         return QSettings(
             self.storage_format, QSettings.Scope.UserScope, self.org_name, ""
+        )
+
+    @property
+    def theme(self) -> str:
+        """
+        Returns the saved theme preference. This is not connected to the model file.
+        :return: "light", "dark" or "system". System is the default.
+        """
+        value = self.global_instance.value(self.theme_key, defaultValue="system")
+        return value if value in ("light", "dark", "system") else "system"
+
+    def save_theme(self, theme: str) -> None:
+        """
+        Saves the theme preference. This is not connected to the model file.
+        :param theme: "light", "dark" or "system". Any other value is saved as
+        system.
+        :return: None
+        """
+        self.global_instance.setValue(
+            self.theme_key, theme if theme in ("light", "dark", "system") else "system"
         )
 
     def save_window_attributes(self, window: "MainWindow") -> None:

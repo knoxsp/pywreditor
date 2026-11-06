@@ -78,7 +78,8 @@ class SvgIcon(QGraphicsItem):
 
         # svg_data = svg_data.replace('currentFill', self.fill.hex)
         # svg_data = svg_data.replace('currentStroke', self.outline.hex)
-        svg_data = svg_data.replace("currentColor", self.fill.hex)
+        fill = BaseNode.refresh_color(self.fill)
+        svg_data = svg_data.replace("currentColor", fill.hex)
         # noinspection PyTypeChecker
         renderer = QSvgRenderer(QByteArray(svg_data))
         _RENDERERS[key] = renderer

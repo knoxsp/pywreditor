@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, Any, List, Literal, Union
 
-import qtawesome as qta
 from PySide6.QtCore import QModelIndex, Slot
 from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QVBoxLayout
 
@@ -125,23 +124,19 @@ class AbstractModelComponentsListPickerWidget(FormWidget):
 
         # Action buttons
         buttons_layout = QHBoxLayout()
-        self.add_button = PushIconButton(
-            icon=qta.icon("msc.add"), label="Add", small=True
-        )
+        self.add_button = PushIconButton(icon="msc.add", label="Add", small=True)
         # noinspection PyUnresolvedReferences
         self.add_button.clicked.connect(self.on_add_new_component)
         self.add_button.setToolTip(f"Add a new {component_type}")
 
-        self.edit_button = PushIconButton(
-            icon=qta.icon("msc.edit"), label="Edit", small=True
-        )
+        self.edit_button = PushIconButton(icon="msc.edit", label="Edit", small=True)
         self.edit_button.setEnabled(False)
         # noinspection PyUnresolvedReferences
         self.edit_button.clicked.connect(self.on_edit_selected_component)
         self.edit_button.setToolTip(f"Edit the selected {component_type}")
 
         self.delete_button = PushIconButton(
-            icon=qta.icon("msc.remove"), label="Delete", small=True
+            icon="msc.remove", label="Delete", small=True
         )
         self.delete_button.setDisabled(True)
         self.delete_button.setToolTip(f"Delete the selected {component_type}")
@@ -149,7 +144,7 @@ class AbstractModelComponentsListPickerWidget(FormWidget):
         self.delete_button.clicked.connect(self.on_delete)
 
         self.move_up = PushIconButton(
-            icon=qta.icon("msc.chevron-up"), label="Move up", small=True
+            icon="msc.chevron-up", label="Move up", small=True
         )
         self.move_up.setToolTip(f"Move the {component_type} up in the list")
         self.move_up.setEnabled(False)
@@ -157,7 +152,7 @@ class AbstractModelComponentsListPickerWidget(FormWidget):
         self.move_up.clicked.connect(self.on_move_up)
 
         self.move_down = PushIconButton(
-            icon=qta.icon("msc.chevron-down"), label="Move down", small=True
+            icon="msc.chevron-down", label="Move down", small=True
         )
         self.move_down.setToolTip(f"Move the {component_type} down in the list")
         self.move_down.setEnabled(False)

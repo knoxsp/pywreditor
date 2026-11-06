@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 
 from pywr_editor.dialogs.base.component_pages import ComponentPages
 from pywr_editor.form import FormTitle
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 from pywr_editor.widgets import PushIconButton
 
 
@@ -39,7 +39,7 @@ class ComponentEmptyPage(QWidget):
 
         page_description = QLabel()
         page_description.setText(description)
-        page_description.setStyleSheet(f"color :{Color('gray', 500).hex}")
+        Theme.bind(page_description, lambda w: f"color :{Color('gray', 500).hex}")
         page_description.setWordWrap(True)
 
         icon_layout = QHBoxLayout()

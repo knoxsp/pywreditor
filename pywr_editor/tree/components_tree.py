@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from pywr_editor.model import Constants, ModelConfig
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.utils import maybe_delete_component
 from pywr_editor.widgets import ContextualMenu, ExtensionIcon
 
@@ -70,7 +70,9 @@ class ComponentsTree(QTreeWidget):
         # the value column fills the remaining width of the surrounding panel
         self.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.header().setStretchLastSection(True)
-        self.setStyleSheet(self.stylesheet())
+        Theme.bind(self, lambda w: w.stylesheet())
+        # item colours and icons are set when the tree is populated
+        Theme.on_change(self, lambda w: None if w.init else w.reload())
 
     def draw(self) -> None:
         """

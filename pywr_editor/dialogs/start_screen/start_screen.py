@@ -2,7 +2,7 @@ import PySide6
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QWidget
 
-from pywr_editor.style import AppStylesheet, Color, stylesheet_dict_to_str
+from pywr_editor.style import AppStylesheet, Color, Theme, stylesheet_dict_to_str
 
 from .left_widget import StartScreenLeftWidget
 from .right_widget import StartScreenRightWidget
@@ -25,7 +25,7 @@ class StartScreen(QDialog):
         self.setLayout(layout)
         self.setMinimumSize(700, 400)
         self.setMaximumSize(700, 400)
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
 
         # remove the window title
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)

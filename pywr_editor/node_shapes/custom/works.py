@@ -2,9 +2,9 @@ from typing import TYPE_CHECKING
 
 import PySide6
 from PySide6.QtCore import QPointF, QRectF
-from PySide6.QtGui import QPen, Qt
+from PySide6.QtGui import QColor, QPen, Qt
 
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 
 from ..circle import Circle
 
@@ -53,7 +53,7 @@ class Works(Circle):
 
         painter.setBrush(Qt.GlobalColor.transparent)
         painter.setPen(pen)
-        painter.setBrush(Qt.GlobalColor.white)
+        painter.setBrush(QColor(Theme.color("base")))
         painter.drawEllipse(QPointF(0, 0), self.radius, self.radius)
 
         # slices

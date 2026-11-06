@@ -2,7 +2,6 @@ import os
 import traceback
 
 import pandas as pd
-import qtawesome as qta
 from pandas import read_csv, read_excel, read_hdf
 from PySide6.QtCore import Signal, SignalInstance, Slot
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QMessageBox
@@ -133,20 +132,18 @@ class UrlWidget(FormWidget):
 
         # browse button
         self.browse_button = PushIconButton(
-            icon=qta.icon("msc.folder-opened"), label="Browse...", small=True
+            icon="msc.folder-opened", label="Browse...", small=True
         )
 
         # open file
-        self.open_button = PushIconButton(
-            icon=qta.icon("msc.table"), label="Open", small=True
-        )
+        self.open_button = PushIconButton(icon="msc.table", label="Open", small=True)
         self.open_button.setToolTip(
             "Open the file externally with the associated application"
         )
 
         # reload button
         self.reload_button = PushIconButton(
-            icon=qta.icon("msc.refresh"), label="Reload", small=True
+            icon="msc.refresh", label="Reload", small=True
         )
         self.reload_button.setToolTip(
             "Reload the table file in case its content changed"

@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, Any, Literal
 
-import qtawesome as qta
 from PySide6.QtCore import Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit
@@ -114,16 +113,14 @@ class AbstractModelComponentLineEditWidget(FormWidget):
         self.line_edit.setReadOnly(True)
 
         # buttons
-        self.select_button = PushIconButton(
-            icon=qta.icon("msc.inspect"), label="Select"
-        )
+        self.select_button = PushIconButton(icon="msc.inspect", label="Select")
         self.select_button.setToolTip(
             f"Select an existing model {self.component_type} or define a new one"
         )
         # noinspection PyUnresolvedReferences
         self.select_button.clicked.connect(self.open_picker_dialog)
 
-        self.clear_button = PushIconButton(icon=qta.icon("msc.remove"), label="Clear")
+        self.clear_button = PushIconButton(icon="msc.remove", label="Clear")
         self.clear_button.setToolTip("Empty the field")
         # noinspection PyUnresolvedReferences
         self.clear_button.clicked.connect(self.reset)

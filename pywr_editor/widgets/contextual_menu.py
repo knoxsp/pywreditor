@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QMenu, QSizePolicy, QWidgetAction
 
-from pywr_editor.style import AppStylesheet, stylesheet_dict_to_str
+from pywr_editor.style import AppStylesheet, Theme, stylesheet_dict_to_str
 
 
 class ContextualMenu(QMenu):
@@ -10,7 +10,7 @@ class ContextualMenu(QMenu):
         Initialises the widget.
         """
         super().__init__()
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
 
         # disable default frame and background
         # noinspection PyUnresolvedReferences

@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QDialog, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 from .recent_files_list_widget import RecentFileListWidget
 
@@ -21,7 +21,7 @@ class StartScreenLeftWidget(QWidget):
         layout.addSpacing(10)
         layout.addWidget(RecentFileListWidget(self))
 
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
         self.setLayout(layout)
         self.dialog = self.parent()
 
@@ -52,15 +52,16 @@ class WindowTitle(QLabel):
         self.setText("Pywr editor")
         self.setMaximumHeight(25)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        self.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            self,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "QLabel": {
                         "color": Color("sky", 700).hex,
                         "font-size": "20px",
                     }
                 }
-            )
+            ),
         )
 
 
@@ -75,13 +76,14 @@ class WindowSubTitle(QLabel):
         self.setText("Recent projects")
         self.setMaximumHeight(25)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        self.setStyleSheet(
-            stylesheet_dict_to_str(
+        Theme.bind(
+            self,
+            lambda w: stylesheet_dict_to_str(
                 {
                     "QLabel": {
                         "color": Color("gray", 600).hex,
                         "font-size": "15px",
                     }
                 }
-            )
+            ),
         )

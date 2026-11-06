@@ -6,7 +6,15 @@ from typing import Literal
 
 import PySide6
 from PySide6.QtCore import QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, Qt, QUndoStack
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QGuiApplication,
+    QIcon,
+    QKeySequence,
+    Qt,
+    QUndoStack,
+)
 from PySide6.QtWidgets import QDockWidget, QFileDialog, QMainWindow, QMessageBox
 
 from pywr_editor.console import ConsolePanel
@@ -26,8 +34,9 @@ from pywr_editor.dialogs import (
 )
 from pywr_editor.model import ModelConfig
 from pywr_editor.schematic import Schematic, get_scaling_factor
-from pywr_editor.style import AppStylesheet
+from pywr_editor.style import AppStylesheet, Theme
 from pywr_editor.toolbar import (
+    AppearanceSettings,
     GridSettings,
     MapSettings,
     ModelNavigationSettings,
@@ -75,7 +84,7 @@ class MainWindow(QMainWindow):
         self.logger = Logging().logger(self.__class__.__name__)
         self.warning_info_message.connect(self.on_alert_info_message)
         self.error_message.connect(self.on_error_message)
-        self.setStyleSheet(AppStylesheet().get())
+        Theme.bind(self, lambda w: AppStylesheet().get())
 
         # check the model file
         if model_file is not None and not os.path.exists(model_file):
@@ -146,7 +155,8 @@ class MainWindow(QMainWindow):
         self.set_window_title()
         self.resize(1000, 900)
         self.setAutoFillBackground(True)
-        self.setPalette(Qt.GlobalColor.white)
+        self.setPalette(QColor(Theme.color("window")))
+        Theme.on_change(self, lambda w: w.setPalette(QColor(Theme.color("window"))))
         # nesting lets docked panels share the height or the width of an area
         self.setDockNestingEnabled(True)
         self.setCentralWidget(self.schematic)
@@ -181,6 +191,7 @@ class MainWindow(QMainWindow):
         # Actions
         self.undo_stack = QUndoStack(self)
         self.app_actions = Actions(window=self)
+        Theme.on_change(self, lambda w: w.app_actions.refresh_icons())
         self.register_model_actions()
         self.register_nodes_actions()
         self.register_schematic_actions()
@@ -848,6 +859,8 @@ class MainWindow(QMainWindow):
         run_panel.add_widget(RunSettings(self))
         grid_panel = settings_tab.add_panel("Schematic -> Grid")
         grid_panel.add_widget(GridSettings(self))
+        appearance_panel = settings_tab.add_panel("Application -> Appearance")
+        appearance_panel.add_widget(AppearanceSettings(self))
         map_panel = settings_tab.add_panel("Schematic -> Map")
         self.map_settings = MapSettings(self)
         map_panel.add_widget(self.map_settings)
@@ -1195,6 +1208,16 @@ class MainWindow(QMainWindow):
         :return: None
         """
         self.statusBar().showMessage(message)
+
+    @Slot(str)
+    def set_theme(self, preference: str) -> None:
+        """
+        Changes the theme and saves the choice.
+        :param preference: "light", "dark" or "system".
+        :return: None
+        """
+        self.editor_settings.save_theme(preference)
+        Theme.apply_preference(preference)
 
     @Slot(str, str, str)
     def on_alert_info_message(

@@ -44,6 +44,14 @@ class JsonHighlighter(QtGui.QSyntaxHighlighter):
     def __init__(self, parent: QtGui.QTextDocument):
         super().__init__(parent)
         self.rules = Rules()
+        self.set_rules()
+
+    def set_rules(self) -> None:
+        """
+        Sets the highlighting rules. The colours depend on the active theme.
+        :return: None
+        """
+        self.rules = Rules()
 
         # braces
         braces = ["{", "}", r"\[", r"\]"]
@@ -64,6 +72,14 @@ class JsonHighlighter(QtGui.QSyntaxHighlighter):
         self.rules.add('("[^"]*")\\s*\\:', Color("blue", 800), "bold")
         # value
         self.rules.add(':+(?:[: []*)("[^"]*")', Color("emerald", 800))
+
+    def refresh(self) -> None:
+        """
+        Applies the colours of the active theme and highlights the text again.
+        :return: None
+        """
+        self.set_rules()
+        self.rehighlight()
 
     def highlightBlock(self, text: str) -> None:
         """

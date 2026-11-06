@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import qtawesome as qta
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit
 
@@ -62,7 +61,7 @@ class FileBrowserWidget(FormWidget):
 
         # browse button
         self.browse_button = PushIconButton(
-            icon=qta.icon("msc.folder-opened"), label="Browse...", small=True
+            icon="msc.folder-opened", label="Browse...", small=True
         )
         # noinspection PyUnresolvedReferences
         self.browse_button.clicked.connect(self.on_browse)

@@ -1,3 +1,4 @@
+from .appearance_settings import AppearanceSettings
 from .grid_settings import GridSettings
 from .map_settings import MapSettings
 from .run_settings import RunSettings

@@ -2,7 +2,7 @@ import PySide6
 from PySide6.QtGui import QBrush, QColor, QPen, Qt, QTextCharFormat
 from PySide6.QtWidgets import QCalendarWidget, QMenu, QWidget
 
-from pywr_editor.style import AppStylesheet, Color, stylesheet_dict_to_str
+from pywr_editor.style import AppStylesheet, Color, Theme, stylesheet_dict_to_str
 
 """
  Provide a widget with a calendar to
@@ -25,19 +25,27 @@ class CalendarWidget(QCalendarWidget):
         )
 
         # change style of weekend's days
-        w_format = QTextCharFormat()
-        w_format.setForeground(
-            QBrush(Color("gray", 800).qcolor, Qt.BrushStyle.SolidPattern)
-        )
-        self.setWeekdayTextFormat(Qt.DayOfWeek.Saturday, w_format)
-        self.setWeekdayTextFormat(Qt.DayOfWeek.Sunday, w_format)
-        self.setStyleSheet(self.stylesheet)
+        self.set_weekend_format()
+        Theme.on_change(self, lambda w: w.set_weekend_format())
+        Theme.bind(self, lambda w: w.stylesheet)
 
         # remove shadow from month selector
         # noinspection PyTypeChecker
         month_menu: QMenu = self.findChild(QMenu)
         # noinspection PyUnresolvedReferences
         month_menu.setWindowFlags(month_menu.windowFlags() | Qt.NoDropShadowWindowHint)
+
+    def set_weekend_format(self) -> None:
+        """
+        Sets the text format of the weekend's days.
+        :return: None
+        """
+        w_format = QTextCharFormat()
+        w_format.setForeground(
+            QBrush(Color("gray", 800).qcolor, Qt.BrushStyle.SolidPattern)
+        )
+        self.setWeekdayTextFormat(Qt.DayOfWeek.Saturday, w_format)
+        self.setWeekdayTextFormat(Qt.DayOfWeek.Sunday, w_format)
 
     def paintCell(
         self,
@@ -56,7 +64,7 @@ class CalendarWidget(QCalendarWidget):
             painter.save()
             painter.fillRect(
                 rect,
-                QColor("white"),
+                QColor(Theme.color("base")),
             )
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(Color("blue", 400).qcolor)
@@ -112,7 +120,7 @@ class CalendarWidget(QCalendarWidget):
                     "QSpinBox": spin_box,
                     # days
                     "QAbstractItemView": {
-                        "background-color": "white",
+                        "background-color": Theme.color("base"),
                         "selection-background-color": Color("blue", 400).hex,
                         "selection-color": "white",
                     },

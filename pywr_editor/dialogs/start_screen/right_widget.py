@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 from .action_button import StartScreenActionButton
 from .recent_files_list_widget import RecentFileListWidget
@@ -76,7 +76,7 @@ class StartScreenRightWidget(QFrame):
             QSpacerItem(10, 10, QSizePolicy.Minimum, QSizePolicy.MinimumExpanding)
         )
         self.setLayout(layout)
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
 
     @property
     def stylesheet(self) -> str:
@@ -86,7 +86,7 @@ class StartScreenRightWidget(QFrame):
         """
         style = {
             "StartScreenRightWidget": {
-                "background-color": "white",
+                "background-color": Theme.color("base"),
                 "border": f'1px solid {Color("gray", 400).hex}',
             },
         }
@@ -175,6 +175,8 @@ class SvgCloseIcon(QSvgWidget):
 
         self.icon = icon
         self.renderer().load(self.svg_bytes)
+        # the icon colour is replaced when the SVG is loaded
+        Theme.on_change(self, lambda w: w.renderer().load(w.svg_bytes))
         self.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
 
     @property

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 import pywr_editor
 import pywr_editor.node_shapes
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.widgets import PushIconButton
 
 from .library_item import LibraryItem
@@ -43,7 +43,7 @@ class SchematicItemsLibrary(QWidget):
             icon=":toolbar/scroll-up", icon_size=QSize(10, 10)
         )
         self.scroll_up.setMinimumHeight(25)
-        self.scroll_up.setStyleSheet(self.button_stylesheet)
+        Theme.bind(self.scroll_up, lambda w: SchematicItemsLibrary.button_stylesheet())
         self.scroll_up.setEnabled(False)
         self.scroll_up.clicked.connect(partial(self.on_scroll, "up"))
 
@@ -51,7 +51,9 @@ class SchematicItemsLibrary(QWidget):
             icon=":toolbar/scroll-down", icon_size=QSize(10, 10)
         )
         self.scroll_down.setMinimumHeight(25)
-        self.scroll_down.setStyleSheet(self.button_stylesheet)
+        Theme.bind(
+            self.scroll_down, lambda w: SchematicItemsLibrary.button_stylesheet()
+        )
         self.scroll_down.clicked.connect(partial(self.on_scroll, "down"))
 
         buttons_layout = QVBoxLayout()
@@ -99,8 +101,8 @@ class SchematicItemsLibrary(QWidget):
             self.scroll_down.setEnabled(True)
             self.scroll_up.setEnabled(True)
 
-    @property
-    def button_stylesheet(self) -> str:
+    @staticmethod
+    def button_stylesheet() -> str:
         """
         Returns the button stylesheet as string.
         :return: The style sheet.
@@ -112,9 +114,9 @@ class SchematicItemsLibrary(QWidget):
                 "padding": "0px 1px",
                 "margin-top": "6px",
                 ":disabled": {
-                    "background": "rgba(0, 0, 0, 5)",
-                    "border": "1px solid rgba(0, 0, 0, 5)",
-                    "color": "rgba(0, 0, 0, 80)",
+                    "background": Theme.overlay(5),
+                    "border": f"1px solid {Theme.overlay(5)}",
+                    "color": Theme.overlay(80),
                 },
             },
         }
@@ -166,7 +168,9 @@ class LibraryPanel(QGraphicsView):
         )
         self.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
+        # the items are drawn once, so they are created again on theme change
+        Theme.on_change(self, lambda w: w.reload())
 
         # draw the scene
         self.scene = QGraphicsScene(parent=self)

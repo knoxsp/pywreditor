@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QToolBar
 
-from pywr_editor.style import Color, stylesheet_dict_to_str
+from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 
 from .tab import Tab
 
@@ -15,7 +15,7 @@ class ToolbarWidget(QToolBar):
         super().__init__(parent)
 
         # load the toolbar style
-        self.setStyleSheet(self.stylesheet)
+        Theme.bind(self, lambda w: w.stylesheet)
         self.tabs: dict[str, Tab] = {}
 
         self.setObjectName("toolbar")

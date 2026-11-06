@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING
 
 import PySide6
 from PySide6.QtCore import QPointF, QRectF, Slot
-from PySide6.QtGui import QBrush, QPainter, QPainterPath, QPen, Qt
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, Qt
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem
 
 from pywr_editor.form import ColorPickerWidget, FieldConfig, IntegerWidget
 from pywr_editor.model import RectangleShape
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 from pywr_editor.widgets import ContextualMenu
 
 from ..commands.resize_shape_command import ResizeShapeCommand
@@ -423,14 +423,21 @@ class SchematicRectangle(AbstractSchematicShape, QGraphicsRectItem):
         :param widget: The widget.
         :return: None
         """
-        painter.setPen(self.pen)
-        painter.setBrush(self.brush)
+        pen = QPen(self.pen)
+        brush = QBrush(self.brush)
+        # only the defaults follow the theme. Colours set by the user are kept
+        if "border_color" not in self.shape_obj.shape_dict:
+            pen.setColor(Color("gray", 800).qcolor)
+        if "background_color" not in self.shape_obj.shape_dict:
+            brush.setColor(QColor(Theme.color("base")))
+        painter.setPen(pen)
+        painter.setBrush(brush)
         painter.drawRoundedRect(self.rect(), 6, 6)
 
         # handles
         handle_color = Color("gray", 700).qcolor
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(Qt.GlobalColor.white)
+        painter.setBrush(QColor(Theme.color("base")))
         painter.setPen(
             QPen(
                 handle_color,

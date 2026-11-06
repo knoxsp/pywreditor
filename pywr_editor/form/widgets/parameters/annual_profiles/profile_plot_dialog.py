@@ -5,7 +5,7 @@ from pyqtgraph import mkBrush, mkPen
 from PySide6.QtGui import QFont, Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QWidget
 
-from pywr_editor.style import Color
+from pywr_editor.style import Color, Theme
 
 
 class ChartOptions:
@@ -17,9 +17,9 @@ class ChartOptions:
         x_tick_spacing: list[int, int] | None = None,
         show_points: bool = False,
         step_mode: bool = False,
-        background: str | Color = Color("gray", 50).qcolor,
-        foreground: str | Color = "k",
-        line_color: str | Color = Color("teal", 600).qcolor,
+        background: str | Color | None = None,
+        foreground: str | Color | None = None,
+        line_color: str | Color | None = None,
         line_width: int = 3,
     ):
         """
@@ -31,9 +31,12 @@ class ChartOptions:
         :param x_tick_spacing: Explicitly set the spacing of major ticks on the x-axis.
         :param show_points: Show the points.
         :param step_mode: Whether to plot the data as a step-wise function.
-        :param background: The chart background colour.
-        :param foreground: The chart foreground colour.
-        :param line_color: The line colour.
+        :param background: The chart background colour. Optional to use the one of
+        the active theme.
+        :param foreground: The chart foreground colour. Optional to use the one of
+        the active theme.
+        :param line_color: The line colour. Optional to use the one of the active
+        theme.
         :param line_width: The line width.
         """
         self.x_major_ticks = x_major_ticks
@@ -49,9 +52,16 @@ class ChartOptions:
         self.x_tick_spacing = x_tick_spacing
         self.show_points = show_points
         self.step_mode = step_mode
+        # resolve the defaults here, so that they follow the active theme
         self.background = background
+        if self.background is None:
+            self.background = Color("gray", 50).qcolor
         self.foreground = foreground
+        if self.foreground is None:
+            self.foreground = Theme.color("text")
         self.line_color = line_color
+        if self.line_color is None:
+            self.line_color = Color("teal", 600).qcolor
         self.line_width = line_width
 
 
