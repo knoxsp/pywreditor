@@ -7,12 +7,51 @@ if TYPE_CHECKING:
     from pywr_editor.model import ModelConfig
 
 
-def _parameters_dialog() -> type:
-    from pywr_editor.dialogs.next_components.components_dialog import (
-        NextParametersDialog,
-    )
+ICONS = {
+    "table": ":/toolbar/edit-tables",
+    "time series": ":/toolbar/edit-tables",
+    "parameter": ":/toolbar/edit-parameters",
+    "metric set": ":/toolbar/edit-recorders",
+    "output": ":/toolbar/edit-recorders",
+}
+""" The ribbon icons of the kinds of components """
 
-    return NextParametersDialog
+
+def _list_kind(
+    key: str,
+    label: str,
+    list_key: str,
+    definition: str,
+    dialog: str,
+    shortcut: str | None = None,
+) -> ComponentKind:
+    """
+    Returns a kind of component kept in a list of the network.
+    :param key: The kind key, such as "parameter".
+    :param label: The plural label, such as "Parameters".
+    :param list_key: The key of the list in the network.
+    :param definition: The schema definition of the components.
+    :param dialog: The name of the dialog class in components_dialog.py.
+    :param shortcut: The keyboard shortcut. Optional.
+    :return: The component kind.
+    """
+
+    def dialog_class() -> type:
+        from pywr_editor.dialogs.next_components import components_dialog
+
+        return getattr(components_dialog, dialog)
+
+    return ComponentKind(
+        key=key,
+        label=label,
+        action_key=f"edit-{list_key.replace('_', '-')}",
+        icon=ICONS[key],
+        tooltip=f"Add, modify and delete the model {label.lower()}",
+        dialog_class=dialog_class,
+        shortcut=shortcut,
+        list_key=list_key,
+        definition=definition,
+    )
 
 
 class NextDialect(ModelDialect):
@@ -152,10 +191,13 @@ class NextDialect(ModelDialect):
         model.shapes = Shapes(model=model)
         model.gis_layers = GisLayers(model=model)
         model.parameters = NamedComponents(model, "parameters", "parameter")
+        model.tables = NamedComponents(model, "tables", "table")
+        model.time_series = NamedComponents(model, "time_series", "time series")
+        model.metric_sets = NamedComponents(model, "metric_sets", "metric set")
+        model.outputs = NamedComponents(model, "outputs", "output")
         # pywr v1 components that pywr-next does not have, or that are not
         # supported yet
-        model.recorders = model.tables = None
-        model.scenarios = model.includes = None
+        model.recorders = model.scenarios = model.includes = None
 
     def validate_model(self, model: "ModelConfig") -> list:
         """
@@ -196,16 +238,32 @@ class NextDialect(ModelDialect):
         :return: The list of component kinds.
         """
         return [
-            ComponentKind(
-                key="parameter",
-                label="Parameters",
-                action_key="edit-parameters",
-                icon=":/toolbar/edit-parameters",
-                tooltip="Add, modify and delete the model parameters",
-                dialog_class=_parameters_dialog,
-                shortcut="Ctrl+P",
-                list_key="parameters",
+            _list_kind(
+                "table", "Tables", "tables", "DataTable", "NextTablesDialog", "Ctrl+T"
             ),
+            _list_kind(
+                "time series",
+                "Time series",
+                "time_series",
+                "TimeSeries",
+                "NextTimeSeriesDialog",
+            ),
+            _list_kind(
+                "parameter",
+                "Parameters",
+                "parameters",
+                "Parameter",
+                "NextParametersDialog",
+                "Ctrl+P",
+            ),
+            _list_kind(
+                "metric set",
+                "Metric sets",
+                "metric_sets",
+                "MetricSet",
+                "NextMetricSetsDialog",
+            ),
+            _list_kind("output", "Outputs", "outputs", "Output", "NextOutputsDialog"),
         ]
 
     def node_dialog_class(self) -> type:

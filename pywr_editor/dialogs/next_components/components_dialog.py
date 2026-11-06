@@ -57,7 +57,9 @@ class NextComponentsDialog(QDialog):
         self.model = model
         self.components = components or self.components_of(model)
         self.schema = bundled_schema()
-        self.tag = self.schema.tag_key(self.definition)
+        # a kind of component with one shape (such as the metric sets) has no type
+        self.single_type = not self.schema.types(self.definition)
+        self.tag = None if self.single_type else self.schema.tag_key(self.definition)
         self.current: str | None = None
         self.form: Form | None = None
 
@@ -140,9 +142,10 @@ class NextComponentsDialog(QDialog):
         """
         Returns the type of a component.
         :param component: The component dictionary.
-        :return: The type, such as "Constant".
+        :return: The type, such as "Constant", or None for a kind of component
+        with one shape.
         """
-        return component.get(self.tag)
+        return None if self.tag is None else component.get(self.tag)
 
     def reload_list(self, selected_name: str | None = None) -> None:
         """
@@ -156,7 +159,7 @@ class NextComponentsDialog(QDialog):
             component_type = self.type_of(self.components.config(name))
             item = QListWidgetItem(name)
             item.setData(Qt.ItemDataRole.UserRole, name)
-            item.setToolTip(humanise_type(component_type))
+            item.setToolTip(humanise_type(component_type) if component_type else "")
             self.list.addItem(item)
         self.list.blockSignals(False)
         self.apply_filter(self.filter.text())
@@ -252,17 +255,25 @@ class NextComponentsDialog(QDialog):
             return
 
         component_type = self.type_of(component)
-        known = component_type in self.schema.types(self.definition)
-        self.heading.setText(f"{name} ({humanise_type(component_type)})")
-        self.description.setText(
-            (self.schema.description(self.definition, component_type) or "")
-            if known
-            else f"The type {component_type!r} is not in the bundled pywr-next schema"
-        )
-
         meta = component.get("meta") or {}
         values = {k: v for k, v in component.items() if k not in ("meta", self.tag)}
-        specs = self.schema.fields(self.definition, component_type) if known else []
+        if self.single_type:
+            definition = self.schema.defs[self.definition]
+            self.heading.setText(name)
+            self.description.setText(
+                (definition.get("description") or "").split("\n\n")[0]
+            )
+            specs = self.schema.object_fields(definition, skip=("meta",))
+        else:
+            known = component_type in self.schema.types(self.definition)
+            self.heading.setText(f"{name} ({humanise_type(component_type)})")
+            self.description.setText(
+                (self.schema.description(self.definition, component_type) or "")
+                if known
+                else f"The type {component_type!r} is not in the bundled pywr-next "
+                + "schema"
+            )
+            specs = self.schema.fields(self.definition, component_type) if known else []
         described = {spec.name for spec in specs}
         unknown = {k: v for k, v in values.items() if k not in described}
 
@@ -326,7 +337,9 @@ class NextComponentsDialog(QDialog):
             meta["comment"] = comment
         else:
             meta.pop("comment", None)
-        component = {"meta": meta, self.tag: self.type_of(old), **form_data}
+        component = {"meta": meta, **form_data}
+        if self.tag is not None:
+            component = {"meta": meta, self.tag: self.type_of(old), **form_data}
 
         self.components.update(self.current, component)
         self.after_change(f'Saved {self.components.kind} "{meta["name"]}"')
@@ -357,23 +370,30 @@ class NextComponentsDialog(QDialog):
         )
         return types[labels.index(label)] if ok and label in labels else None
 
-    def new_component(self, component_type: str, name: str) -> dict:
+    def new_component(self, component_type: str | None, name: str) -> dict:
         """
         Returns a new component with the required fields left for the user to fill.
-        :param component_type: The component type.
+        :param component_type: The component type, None for a kind of component
+        with one shape.
         :param name: The component name.
         :return: The component dictionary.
         """
+        if self.tag is None:
+            return {"meta": {"name": name}}
         return {"meta": {"name": name}, self.tag: component_type}
 
     @Slot()
     def on_add(self) -> None:
         if not self.confirm_discard():
             return
-        component_type = self.ask_type()
-        if component_type is None:
-            return
-        name = self.unique_name(f"New {humanise_type(component_type).lower()}")
+        if self.single_type:
+            component_type = None
+            name = self.unique_name(f"New {self.components.kind}")
+        else:
+            component_type = self.ask_type()
+            if component_type is None:
+                return
+            name = self.unique_name(f"New {humanise_type(component_type).lower()}")
         self.components.add(self.new_component(component_type, name))
         self.after_change(f'Added {self.components.kind} "{name}"')
         self.reload_list(name)
@@ -439,6 +459,42 @@ class NextComponentsDialog(QDialog):
             event.ignore()
             return
         super().closeEvent(event)
+
+
+class NextTablesDialog(NextComponentsDialog):
+    definition = "DataTable"
+    title = "Tables"
+
+    @staticmethod
+    def components_of(model: "ModelConfig") -> NamedComponents:
+        return model.tables
+
+
+class NextTimeSeriesDialog(NextComponentsDialog):
+    definition = "TimeSeries"
+    title = "Time series"
+
+    @staticmethod
+    def components_of(model: "ModelConfig") -> NamedComponents:
+        return model.time_series
+
+
+class NextMetricSetsDialog(NextComponentsDialog):
+    definition = "MetricSet"
+    title = "Metric sets"
+
+    @staticmethod
+    def components_of(model: "ModelConfig") -> NamedComponents:
+        return model.metric_sets
+
+
+class NextOutputsDialog(NextComponentsDialog):
+    definition = "Output"
+    title = "Outputs"
+
+    @staticmethod
+    def components_of(model: "ModelConfig") -> NamedComponents:
+        return model.outputs
 
 
 class NextParametersDialog(NextComponentsDialog):

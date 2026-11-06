@@ -305,9 +305,7 @@ class ComponentsTree(QTreeWidget):
         components = network.get(kind.list_key) or []
         parent_item = QTreeWidgetItem(self)
         parent_item.setText(0, kind.label)
-        definitions = {"tables": "DataTable"}
-        definition = definitions.get(kind.list_key)
-        tag = bundled_schema().tag_key(definition) if definition else "type"
+        tag = bundled_schema().tag_key(kind.definition) if kind.definition else "type"
         for component in components:
             if not isinstance(component, dict):
                 continue

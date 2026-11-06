@@ -57,18 +57,23 @@ class SearchModel(QAbstractListModel):
         :return: None
         """
         from pywr_editor.dialects.next.model import humanise_type
+        from pywr_editor.dialects.next.schema import bundled_schema
 
+        schema = bundled_schema()
+        has_types = bool(kind.definition and schema.types(kind.definition))
+        tag = schema.tag_key(kind.definition) if has_types else None
         network = self.model_config.json.get("network", {})
         for component in network.get(kind.list_key) or []:
             meta = component.get("meta") if isinstance(component, dict) else None
             if not isinstance(meta, dict) or not isinstance(meta.get("name"), str):
                 continue
-            component_type = component.get("type") or component.get("format")
+            component_type = component.get(tag) if tag else None
+            prefix = f"{humanise_type(component_type)} - " if component_type else ""
             self.model_data.append(
                 {
                     "name": meta["name"],
                     "icon": QIcon(),
-                    "comp_type": f"{humanise_type(component_type)} - {kind.key}",
+                    "comp_type": f"{prefix}{kind.key}",
                     "type": kind.key,
                 }
             )

@@ -44,6 +44,9 @@ class ComponentKind:
     list_key: str | None = None
     """ For pywr-next components, the key of their list in the network (such as
     "parameters"). The components tree and the search then list them generically """
+    definition: str | None = None
+    """ For pywr-next components, their definition in the schema (such as
+    "Parameter"), which gives the key with their type """
 
     def open_dialog(
         self,

@@ -199,6 +199,35 @@ class NumberListWidget(FormWidget):
         return Validation()
 
 
+class NamePickerWidget(FormWidget):
+    """A name of another component, picked from the model or typed."""
+
+    def __init__(
+        self, name: str, value: str | None, parent: "FormField", names: list[str]
+    ):
+        super().__init__(name, value, parent)
+        self.combo_box = QComboBox()
+        self.combo_box.setObjectName(f"{name}_combo_box")
+        self.combo_box.setEditable(True)
+        self.combo_box.addItems([""] + names)
+        self.combo_box.setCurrentText(value if isinstance(value, str) else "")
+        self.field_value_changed: Signal = self.combo_box.currentTextChanged
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.combo_box)
+
+    def get_value(self) -> str | None:
+        """
+        Returns the name.
+        :return: The name or None if empty.
+        """
+        return self.combo_box.currentText().strip() or None
+
+
+NAME_PICKERS = {"metric_set": "metric_sets", "table": "tables"}
+""" The string properties naming another component, with the network list """
+
 REF_WIDGETS: dict[str, Type[FormWidget]] = {
     "Metric": MetricWidget,
     "IndexMetric": MetricWidget,
@@ -262,6 +291,13 @@ def field_config(
         if spec.name not in values:
             # a switch cannot be empty: do not save an unset flag
             config["default_value"] = bool(spec.default)
+    elif spec.kind == "string" and spec.name in NAME_PICKERS and model_config:
+        from pywr_editor.form.widgets.metric_widget import network_names
+
+        config["field_type"] = NamePickerWidget
+        config["field_args"] = {
+            "names": network_names(model_config, NAME_PICKERS[spec.name])
+        }
     elif spec.kind == "string":
         config["field_type"] = TextWidget
     elif spec.kind == "number_list":
