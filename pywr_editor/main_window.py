@@ -15,7 +15,13 @@ from PySide6.QtGui import (
     Qt,
     QUndoStack,
 )
-from PySide6.QtWidgets import QDockWidget, QFileDialog, QMainWindow, QMessageBox
+from PySide6.QtWidgets import (
+    QDockWidget,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QWidget,
+)
 
 from pywr_editor.console import ConsolePanel
 from pywr_editor.dialogs import (
@@ -74,11 +80,12 @@ class MainWindow(QMainWindow):
     ]
     """ List of class attributes pointing to widgets whose geometry must be saved """
 
-    def __init__(self, model_file: str | None = None):
+    def __init__(self, model_file: str | None = None, new_dialect: str = "v1"):
         """
         Initialises the editor.
         :param model_file: The path to the model file. Ignore this to start
         a new empty model.
+        :param new_dialect: The dialect of a new empty model ("v1" or "next").
         """
         super().__init__()
         self.logger = Logging().logger(self.__class__.__name__)
@@ -104,7 +111,7 @@ class MainWindow(QMainWindow):
 
         # load configurations
         self.model_file = model_file
-        self.model_config = ModelConfig(model_file)
+        self.model_config = ModelConfig(model_file, new_dialect=new_dialect)
         # Show error if the JSON file does not load
         load_error = self.model_config.load_error
         if load_error is None and not self.model_config.dialect.can_open:
@@ -885,7 +892,8 @@ class MainWindow(QMainWindow):
         """
         if self.model_config.load_error is None:
             self.statusBar().showMessage(
-                f"Loaded {self.model_config.file.file_name} with "
+                f"Loaded {self.model_config.file.file_name} "
+                + f"({self.model_config.dialect.label} model) with "
                 + f"{self.model_config.nodes.count} nodes and "
                 + f"{self.model_config.edges.count} edges"
             )
@@ -960,7 +968,7 @@ class MainWindow(QMainWindow):
                 + (f" ({folder})" if folder else "")
             )
         else:
-            title = "New empty model"
+            title = f"New empty {self.model_config.dialect.label} model"
         self.setWindowTitle(title)
 
     def set_zoom(self, scene_scale_factor: float) -> None:
@@ -1429,10 +1437,13 @@ class MainWindow(QMainWindow):
     @Slot()
     def new_empty_model() -> None:
         """
-        Opens a new editor instance to start a new empty model.
+        Opens a new editor instance to start a new empty model, after asking for
+        its format.
         :return: None
         """
-        MainWindow()
+        dialect = ask_new_model_dialect()
+        if dialect is not None:
+            MainWindow(new_dialect=dialect)
 
     @staticmethod
     @Slot()
@@ -1494,3 +1505,23 @@ class MainWindow(QMainWindow):
                     MainWindow(self.model_file)
         except Exception:
             pass
+
+
+def ask_new_model_dialect(parent: QWidget | None = None) -> str | None:
+    """
+    Asks for the format of a new model.
+    :param parent: The parent widget. Optional.
+    :return: The dialect key ("v1" or "next"), or None if cancelled.
+    """
+    from PySide6.QtWidgets import QInputDialog
+
+    from pywr_editor.dialects import DIALECTS
+
+    dialects = [d for d in reversed(DIALECTS) if d.can_open]
+    labels = [f"{d.label} model" for d in dialects]
+    label, ok = QInputDialog.getItem(
+        parent, "New model", "Format of the new model", labels, 0, False
+    )
+    if not ok or label not in labels:
+        return None
+    return dialects[labels.index(label)].key

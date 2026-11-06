@@ -124,3 +124,35 @@ def test_validation_uses_next_schema(window, qtbot):
     assert dialog.model_diagnostics == []
     assert dialog.schema_diagnostics == []
     dialog.close()
+
+
+@pytest.mark.parametrize(
+    "label, key", [("pywr v1 model", "v1"), ("pywr-next model", "next")]
+)
+def test_new_model_dialect(qtbot, monkeypatch, label, key):
+    """
+    Tests that a new model is created in the format chosen by the user.
+    """
+    from pywr_editor.main_window import ask_new_model_dialect
+
+    monkeypatch.setattr(
+        "PySide6.QtWidgets.QInputDialog.getItem", staticmethod(lambda *a: (label, True))
+    )
+    assert ask_new_model_dialect() == key
+    window = MainWindow(new_dialect=key)
+    window.hide()
+    assert window.model_config.dialect.key == key
+    assert window.model_config.is_valid()
+    assert window.model_config.nodes.names == []
+    assert window.model_config.dialect.label in window.windowTitle()
+    window.model_config.reset_change_flag()
+    window.close()
+
+
+def test_new_model_cancelled(monkeypatch):
+    from pywr_editor.main_window import ask_new_model_dialect
+
+    monkeypatch.setattr(
+        "PySide6.QtWidgets.QInputDialog.getItem", staticmethod(lambda *a: ("", False))
+    )
+    assert ask_new_model_dialect() is None

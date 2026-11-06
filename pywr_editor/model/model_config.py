@@ -39,13 +39,16 @@ class ModelConfig(QObject):
     model_changed = Signal()
     """ Signal emitted when a change is applied to the model configuration """
 
-    def __init__(self, json_file: str | None = None):
+    def __init__(self, json_file: str | None = None, new_dialect: str = "v1"):
         """
         Initialise the class.
         :param json_file: The path to the model file
+        :param new_dialect: The dialect of a new model, when there is no model file
+        ("v1" or "next"). The dialect of a model file is detected.
         """
         super().__init__()
         self.json_file = json_file
+        self.new_dialect = new_dialect
 
         # load the model
         self.json = dict()
@@ -233,9 +236,9 @@ class ModelConfig(QObject):
         Loads the model configuration as dictionary.
         :return: None.
         """
-        self.json = self.empty_model()
-        self.dialect: ModelDialect = get_dialect("v1")
+        self.dialect: ModelDialect = get_dialect(self.new_dialect)
         """ The dialect of the model (pywr v1 or pywr-next) """
+        self.json = self.dialect.empty_model()
 
         if not self.json_file:
             return
