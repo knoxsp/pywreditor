@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+import traceback
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +9,7 @@ import pandas as pd
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal, Slot
 from PySide6.QtNetwork import QLocalSocket
 
+from pywr_editor.dialects.next import results
 from pywr_editor.dialects.next import runner_protocol as protocol
 from pywr_editor.model.pywr_worker import PywrProgress
 from pywr_editor.model.results import TIMESTAMP_FORMAT
@@ -363,7 +365,11 @@ class NextRunWorker(QObject):
         self._send(
             protocol.initialise_command(
                 run_name=Path(self.model_file).stem if self.model_file else "model",
-                model=self.model_dict,
+                model=(
+                    results.with_editor_results(self.model_dict)
+                    if self.results_dir
+                    else self.model_dict
+                ),
                 output_path=str(self.output_dir),
                 data_path=(
                     str(Path(self.model_file).parent) if self.model_file else None
@@ -559,16 +565,26 @@ class NextRunWorker(QObject):
 
     def _report_results(self) -> None:
         """
-        Tells the user where the outputs of the model were written.
+        Converts the results the service wrote to the format of the results viewer, and
+        tells the user where they are.
         :return: None
         """
         if self._temporary_output or self.output_dir is None or self._failed:
             return
         try:
+            results.convert_run(
+                self.output_dir,
+                self.model_dict,
+                self.model_file,
+                completed=self.progress is not None and self.progress.is_finished,
+                solver=self.solver,
+                python=self.python,
+            )
             if self.output_dir.exists() and any(self.output_dir.iterdir()):
                 self.results_saved.emit(str(self.output_dir))
-        except OSError as error:
-            self.results_error.emit(str(error))
+        except Exception:
+            self.logger.debug(f"The results failed: {traceback.format_exc()}")
+            self.results_error.emit(traceback.format_exc())
 
     def _finish(self) -> None:
         """

@@ -47,11 +47,13 @@ def test_v1_features_are_not_offered(window):
         "edit-python-paths",
         "edit-slots",
         "find-orphaned-parameters",
-        "run-results",
         "run-inspector",
     ]:
         assert window.app_actions.get(key).isVisible() is False
         assert window.app_actions.get(key).isEnabled() is False
+
+    # the results of a run are converted to what the results viewer reads
+    assert window.app_actions.get("run-results").isVisible()
 
     # the node data panel shows the v1 node form
     assert window.model_config.dialect.supports("node-data-panel") is False

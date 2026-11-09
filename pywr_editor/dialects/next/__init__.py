@@ -58,7 +58,7 @@ class NextDialect(ModelDialect):
     key = "next"
     label = "pywr-next"
     time_key = "time"
-    features = frozenset(["node-dialog", "run", "metric-sets"])
+    features = frozenset(["node-dialog", "run", "run-results", "metric-sets"])
 
     @classmethod
     def detect(cls, model_json: Any) -> bool:

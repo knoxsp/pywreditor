@@ -509,6 +509,14 @@ def test_real_runner_service(qtbot, tmp_path):
         assert recorder.count("model_error") == 0, recorder.texts("model_error")
         run_dir = Path(recorder.texts("results_saved")[0])
         assert (run_dir / "reservoir_with_evaporation1-expected.csv").is_file()
+        # the results of all the nodes can be shown by the results viewer
+        from pywr_editor.model.results import ResultsRun
+
+        run = ResultsRun(run_dir)
+        assert {"Catchment", "Reservoir", "Demand"} <= set(run.recorder_names)
+        assert run.metadata["format"] == "pywr-next"
+        assert run.has_timeseries("Reservoir")
+        assert len(run.timeseries("Reservoir")) >= 4
     finally:
         thread.quit()
         thread.wait(10000)
