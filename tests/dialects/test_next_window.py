@@ -100,7 +100,8 @@ def test_add_connect_and_undo(window):
 
 def test_save_positions_in_model(window):
     """
-    Tests that the positions are saved in the model and the editor data is not.
+    Tests that the position and the appearance of a node are saved in the model, and
+    that the data of the drawing (shapes, map) is not.
     """
     window.model_config.nodes.set_position([1.5, 2.5], node_name="Reservoir")
     window.model_config.nodes.set_node_style("Reservoir", color="red")
@@ -108,7 +109,11 @@ def test_save_positions_in_model(window):
 
     saved = json.loads(open(window.model_config.json_file).read())
     node = saved["network"]["nodes"][1]
-    assert node["meta"] == {"name": "Reservoir", "position": {"schematic": [1.5, 2.5]}}
+    assert node["meta"] == {
+        "name": "Reservoir",
+        "position": {"schematic": [1.5, 2.5]},
+        "tags": {"editor:node_color": "red"},
+    }
     assert "pywr_editor" not in saved
 
 

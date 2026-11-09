@@ -102,15 +102,8 @@ class Nodes:
             (Constants.NODE_COLOR_KEY.value, color),
             (Constants.NODE_SIZE_KEY.value, size),
         ):
-            if value is UNCHANGED:
-                continue
-            if value is None:
-                position = node.position_dict()
-                if position is not None:
-                    position.pop(key, None)
-            else:
-                node.position_dict(create=True)[key] = value
-        node.drop_empty_position()
+            if value is not UNCHANGED:
+                node.set_editor_value(key, value)
         self.model.has_changed()
 
     def set_node_color(self, node_name: str, color: str | None) -> None:

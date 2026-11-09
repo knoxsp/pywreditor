@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Sequence
 
 from pywr_editor.model.constants import Constants
 from pywr_editor.model.edges import EdgeRecord, Edges
+from pywr_editor.model.editor_tags import read_tag, write_tag
 from pywr_editor.model.node_config import NodeConfig
 from pywr_editor.model.nodes import Nodes
 
@@ -72,6 +73,43 @@ class NextNodeConfig(NodeConfig):
         meta = self._meta()
         if meta is not None and meta.get("position") == {}:
             del meta["position"]
+
+    def editor_value(self, key: str):
+        """
+        Returns a value the editor stores for the node, read from the node's tags.
+        :param key: The key, such as "node_color".
+        :return: The value (a number for the node size), None if not set.
+        """
+        value = read_tag(self._meta_tags(), key)
+        if value is not None and key == Constants.NODE_SIZE_KEY.value:
+            try:
+                return float(value)
+            except ValueError:
+                return None
+        return value
+
+    def set_editor_value(self, key: str, value) -> None:
+        """
+        Sets or removes a value the editor stores for the node, in the node's tags.
+        :param key: The key, such as "node_color".
+        :param value: The value. None removes it.
+        :return: None
+        """
+        meta = self._meta(create=value is not None)
+        if meta is None:
+            return
+        tags = meta.get("tags")
+        if not isinstance(tags, dict):
+            if value is None:
+                return
+            tags = meta["tags"] = {}
+        write_tag(tags, key, value)
+        if not tags:
+            del meta["tags"]
+
+    def _meta_tags(self) -> dict | None:
+        meta = self._meta()
+        return None if meta is None else meta.get("tags")
 
     @property
     def name(self) -> str | None:

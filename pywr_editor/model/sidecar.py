@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from pywr_editor.model.constants import Constants
+from pywr_editor.model.editor_tags import read_tag, write_tag
 
 """
  The editor keeps its own data (the shapes drawn on the schematic, the size of the
@@ -72,6 +73,16 @@ def _node_position(node: dict, is_next: bool, create: bool = False) -> dict | No
         owner["position"] = {}
     position = owner.get("position")
     return position if isinstance(position, dict) else None
+
+
+def _move_to_tags(node: dict, values: dict) -> None:
+    # moves the editor values of a pywr-next node to the tags of its meta
+    for key in NODE_EDITOR_KEYS:
+        if key in values:
+            meta = node.setdefault("meta", {})
+            tags = meta.setdefault("tags", {})
+            if read_tag(tags, key) is None:
+                write_tag(tags, key, values[key])
 
 
 def _with_position(node: dict, position: dict, is_next: bool) -> dict:
@@ -207,7 +218,8 @@ def split_model(model: dict) -> tuple[dict, dict]:
 
             position = dict(position)
             entry = {}
-            for key in NODE_EDITOR_KEYS:
+            # pywr-next nodes keep their appearance in their tags, in the model
+            for key in () if is_next else NODE_EDITOR_KEYS:
                 if key in position:
                     entry[key] = position.pop(key)
 
@@ -266,11 +278,17 @@ def merge_editor_data(model: dict, data: dict) -> None:
         entry = nodes_data[name]
         if not isinstance(entry, dict):
             continue
+        if is_next:
+            # an older sidecar has the appearance of pywr-next nodes, which is now
+            # kept in their tags
+            _move_to_tags(node, entry)
+            if not isinstance(entry.get(GEOMETRY_KEY), dict):
+                continue
         position = _node_position(node, is_next, create=True)
         if position is None:
             continue
 
-        for key in NODE_EDITOR_KEYS:
+        for key in () if is_next else NODE_EDITOR_KEYS:
             if key in entry:
                 position[key] = entry[key]
 

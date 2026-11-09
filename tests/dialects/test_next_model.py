@@ -56,14 +56,40 @@ class TestNodes:
 
     def test_node_style(self, model):
         """
-        Tests that the editor style is kept with the position and removed when unset.
+        Tests that the appearance of a node is kept in its tags, as strings, and
+        that nothing is left behind when it is removed.
         """
         model.nodes.set_node_style("Catchment", color="red", size=1.5)
         node = model.nodes.config("Catchment", as_dict=False)
         assert node.node_color == "red"
         assert node.node_size == 1.5
-        model.nodes.set_node_style("Catchment", color=None, size=None)
-        assert "position" not in model.nodes.config("Catchment")["meta"]
+        meta = model.nodes.config("Catchment")["meta"]
+        assert meta["tags"] == {"editor:node_color": "red", "editor:node_size": "1.5"}
+        assert "position" not in meta
+
+        model.nodes.set_node_style("Catchment", color=None)
+        assert model.nodes.config("Catchment")["meta"]["tags"] == {
+            "editor:node_size": "1.5"
+        }
+        model.nodes.set_node_style("Catchment", size=None)
+        assert model.nodes.config("Catchment")["meta"] == {"name": "Catchment"}
+
+    def test_other_tags_are_kept(self, model):
+        """
+        Tests that the tags of the model are not touched by the editor.
+        """
+        meta = model.nodes.config("Demand")["meta"]
+        meta["tags"] = {"zone": "north"}
+        model.nodes.set_node_style("Demand", color="blue")
+        model.nodes.set_node_style("Demand", color=None)
+        assert meta["tags"] == {"zone": "north"}
+
+    def test_invalid_size_tag(self, model):
+        meta = model.nodes.config("Demand")["meta"]
+        meta["tags"] = {"editor:node_size": "big", "editor:node_color": "nope"}
+        node = model.nodes.config("Demand", as_dict=False)
+        assert node.node_size is None
+        assert node.node_color is None
 
     def test_add_and_delete(self, model):
         new = NextNodeConfig.create("New link", "Link", [1.23456, 2])
@@ -165,9 +191,9 @@ class TestEdges:
     def test_edge_color(self, model):
         model.nodes.set_node_style("Catchment", color="red")
         assert model.edges.color("Catchment") is None
-        model.nodes.config("Catchment", as_dict=False).position_dict(create=True)[
-            "edge_color"
-        ] = "blue"
+        model.nodes.config("Catchment", as_dict=False).set_editor_value(
+            "edge_color", "blue"
+        )
         assert model.edges.color("Catchment") == "blue"
 
 

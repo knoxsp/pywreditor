@@ -1,6 +1,6 @@
 import math
 from copy import deepcopy as dp
-from typing import Sequence
+from typing import Any, Sequence
 
 from pywr_editor.model import ComponentConfig, Constants, PywrNodesData
 from pywr_editor.model.constants import MAX_NODE_SIZE, MIN_NODE_SIZE
@@ -75,13 +75,37 @@ class NodeConfig(ComponentConfig):
         position = self.position_dict()
         return None if position is None else position.get(key)
 
+    def editor_value(self, key: str) -> Any:
+        """
+        Returns a value the editor stores for the node, such as its colour. pywr v1
+        nodes keep it with the position; pywr-next nodes keep it in their tags.
+        :param key: The key, such as Constants.NODE_COLOR_KEY.value.
+        :return: The value, None if the node does not have one.
+        """
+        return self._position_value(key)
+
+    def set_editor_value(self, key: str, value: Any) -> None:
+        """
+        Sets or removes a value the editor stores for the node.
+        :param key: The key, such as Constants.NODE_COLOR_KEY.value.
+        :param value: The value. None removes it.
+        :return: None
+        """
+        if value is None:
+            position = self.position_dict()
+            if position is not None:
+                position.pop(key, None)
+            self.drop_empty_position()
+        else:
+            self.position_dict(create=True)[key] = value
+
     @property
     def custom_style(self) -> str | None:
         """
         Return the custom node style.
         :return: The node style or None if this is not set.
         """
-        value = self._position_value(Constants.NODE_STYLE_KEY.value)
+        value = self.editor_value(Constants.NODE_STYLE_KEY.value)
         return value.lower() if isinstance(value, str) else None
 
     @property
@@ -90,7 +114,7 @@ class NodeConfig(ComponentConfig):
         Return the color name to use for the edge.
         :return: The edge_color property or None if this is not set.
         """
-        value = self._position_value(Constants.EDGE_COLOR_KEY.value)
+        value = self.editor_value(Constants.EDGE_COLOR_KEY.value)
         return value if isinstance(value, str) else None
 
     @property
@@ -99,7 +123,7 @@ class NodeConfig(ComponentConfig):
         Return the name of the colour highlighting the node on the schematic.
         :return: The colour name (a key of Color.colors) or None if not set.
         """
-        value = self._position_value(Constants.NODE_COLOR_KEY.value)
+        value = self.editor_value(Constants.NODE_COLOR_KEY.value)
         if isinstance(value, str) and value in Color.colors:
             return value
         return None
@@ -110,7 +134,7 @@ class NodeConfig(ComponentConfig):
         Return the scale factor of the node symbol stored for this node.
         :return: The factor, None if not set or not valid.
         """
-        return valid_node_size(self._position_value(Constants.NODE_SIZE_KEY.value))
+        return valid_node_size(self.editor_value(Constants.NODE_SIZE_KEY.value))
 
     @property
     def raw_geographic(self) -> list | dict | None:

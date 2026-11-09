@@ -184,6 +184,8 @@ class NextDialect(ModelDialect):
         # the editor data (shapes, map...) while the model is open
         json.setdefault(Constants.EDITOR_CONFIG_KEY.value, {})
 
+        self.move_appearance_to_tags(network)
+
         model.file = ModelFileInfo(model.json_file)
         model.nodes = NextNodes(model=model)
         model.edges = NextEdges(model=model)
@@ -303,6 +305,25 @@ class NextDialect(ModelDialect):
         from pywr_editor.dialects.next.model import NextNodeConfig
 
         return NextNodeConfig.create(name=name, node_type=node_type, position=position)
+
+    @staticmethod
+    def move_appearance_to_tags(network: dict) -> None:
+        """
+        Moves the appearance of the nodes (colour, size, style) that an earlier
+        version of the editor wrote in their "position" to their tags.
+        :param network: The network dictionary, changed in place.
+        :return: None
+        """
+        from pywr_editor.model.sidecar import NODE_EDITOR_KEYS, _move_to_tags
+
+        for node in network["nodes"]:
+            position = node["meta"].get("position")
+            if not isinstance(position, dict):
+                continue
+            values = {k: position.pop(k) for k in NODE_EDITOR_KEYS if k in position}
+            _move_to_tags(node, values)
+            if not position:
+                del node["meta"]["position"]
 
     def timestep_days(self, time_section: dict) -> int | None:
         """
