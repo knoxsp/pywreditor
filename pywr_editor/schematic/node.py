@@ -524,6 +524,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
                 lambda *args: self.view.set_nodes_hidden(names, hide)
             )
             self.add_style_action(context_menu, names)
+            self.add_metric_set_action(context_menu, targets)
             return context_menu
 
         # edit node action
@@ -561,6 +562,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         )
 
         self.add_style_action(context_menu, [self.name])
+        self.add_metric_set_action(context_menu, [self])
 
         # locate action
         locate_action = context_menu.addAction(
@@ -592,6 +594,41 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
                 self.add_delete_edge_actions(edge_disconnect_submenu)
 
         return context_menu
+
+    def add_metric_set_action(
+        self, menu: ContextualMenu, targets: list["SchematicNode"]
+    ) -> None:
+        """
+        Adds the action to put nodes in a metric set, if the model has metric sets.
+        :param menu: The menu.
+        :param targets: The nodes to add.
+        :return: None
+        """
+        model = self.view.model_config
+        if not model.dialect.supports("metric-sets"):
+            return
+        components = [
+            (
+                "VirtualNode" if node.model_node.is_virtual else "Node",
+                node.name,
+                node.model_node.props.get("type"),
+            )
+            for node in targets
+        ]
+        action = menu.addAction(
+            qta.icon("msc.graph", color=Color("gray", 500).qcolor),
+            "Add to metric set...",
+        )
+
+        def open_dialog(*args) -> None:
+            from pywr_editor.dialogs.next_components.add_to_metric_set_dialog import (
+                add_to_metric_set,
+            )
+
+            add_to_metric_set(model, components, self.view.app)
+
+        # noinspection PyUnresolvedReferences
+        action.triggered.connect(open_dialog)
 
     def add_style_action(self, menu: ContextualMenu, names: list[str]) -> None:
         """

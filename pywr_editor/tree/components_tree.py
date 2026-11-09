@@ -596,6 +596,16 @@ class ComponentsTree(QTreeWidget):
                     self.parent.open_component_dialog(kind, name)
                 )
             )
+            if item.kind == "parameter" and self.model_config.dialect.supports(
+                "metric-sets"
+            ):
+                metric_action = context_menu.addAction(
+                    qta.icon("msc.graph", color=icon_color), "Add to metric set..."
+                )
+                # noinspection PyUnresolvedReferences
+                metric_action.triggered.connect(
+                    lambda *args, name=item.name: self.on_add_to_metric_set(name)
+                )
             context_menu.exec(self.mapToGlobal(pos))
         elif isinstance(item, TreeWidgetRecorderName):
             recoder_name = item.name
@@ -617,6 +627,20 @@ class ComponentsTree(QTreeWidget):
             )
 
             context_menu.exec(self.mapToGlobal(pos))
+
+    def on_add_to_metric_set(self, parameter_name: str) -> None:
+        """
+        Opens the dialog to add a pywr-next parameter to a metric set.
+        :param parameter_name: The parameter name.
+        :return: None
+        """
+        from pywr_editor.dialogs.next_components.add_to_metric_set_dialog import (
+            add_to_metric_set,
+        )
+
+        add_to_metric_set(
+            self.model_config, [("Parameter", parameter_name, None)], self.parent
+        )
 
     @Slot(str)
     def on_edit_node(self, node_name: str) -> None:

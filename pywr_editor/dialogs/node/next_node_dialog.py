@@ -122,17 +122,63 @@ class NextNodeDialog(QDialog):
         self.local_parameters_label.setVisible(bool(local_specs))
         self.update_local_parameters_label()
 
+        # the metric sets that output the node
+        metrics_box = QHBoxLayout()
+        self.metric_sets_label = QLabel()
+        self.metric_sets_label.setObjectName("metric_sets_label")
+        self.metric_sets_label.setWordWrap(True)
+        self.metric_sets_button = PushIconButton(
+            icon="msc.graph", label="Add to metric set..."
+        )
+        self.metric_sets_button.setObjectName("metric_sets_button")
+        # noinspection PyUnresolvedReferences
+        self.metric_sets_button.clicked.connect(self.on_add_to_metric_set)
+        metrics_box.addWidget(self.metric_sets_label, 1)
+        metrics_box.addWidget(self.metric_sets_button)
+        self.update_metric_sets_label()
+
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignTop)
         layout.addWidget(self.title)
         layout.addWidget(self.description)
         layout.addWidget(self.form)
         layout.addLayout(local_box)
+        layout.addLayout(metrics_box)
         layout.addLayout(button_box)
 
         self.setWindowTitle(f"Edit node - {node_name}")
         self.setMinimumSize(750, 650)
         self.setWindowModality(Qt.WindowModality.WindowModal)
+
+    def update_metric_sets_label(self) -> None:
+        """
+        Shows the metric sets that have a metric for the node.
+        :return: None
+        """
+        from pywr_editor.dialects.next import metric_sets
+
+        sets = metric_sets.sets_containing(self.model_config, "Node", self.node_name)
+        self.metric_sets_label.setText(
+            "Metric sets: " + metric_sets.describe_sets(sets)
+            if sets
+            else "Not in any metric set, so its values are not output"
+        )
+
+    @Slot()
+    def on_add_to_metric_set(self) -> None:
+        """
+        Opens the dialog to add the node to a metric set.
+        :return: None
+        """
+        from pywr_editor.dialogs.next_components.add_to_metric_set_dialog import (
+            add_to_metric_set,
+        )
+
+        dialog = add_to_metric_set(
+            self.model_config, [("Node", self.node_name, self.node_type)], self
+        )
+        # noinspection PyUnresolvedReferences
+        dialog.finished.connect(self.update_metric_sets_label)
 
     def update_local_parameters_label(self) -> None:
         """

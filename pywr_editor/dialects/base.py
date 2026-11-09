@@ -138,7 +138,8 @@ class ModelDialect(ABC):
      - "preflight": the check that loads the model with pywr v1 (validation dialog);
      - "run-results": the results of the last run, saved by the editor;
      - "run-inspector": the inspector of the pywr v1 model that is being run;
-     - "console": the IPython console with the model loaded """
+     - "console": the IPython console with the model loaded;
+     - "metric-sets": the shortcuts to add nodes and parameters to metric sets """
 
     def simple_time(self, time_section: dict) -> bool:
         """
