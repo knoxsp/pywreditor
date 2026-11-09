@@ -57,7 +57,8 @@ def get_node_icon(
     :param ignore_custom_type: When True, it ignores the custom icon if set.
     :return: The shape instance if found, None otherwise.
     """
-    node_type = model_node_obj.type
+    # a dialect may draw a node type with the shape of another one
+    node_type = getattr(model_node_obj, "shape_name", None) or model_node_obj.type
     custom_node_style = model_node_obj.custom_style
 
     available_classes = get_node_icon_classes()
@@ -72,6 +73,7 @@ def get_node_icon(
         return getattr(all_nodes, available_classes[pos])
 
     # node style from type
+    node_type = node_type.lower() if isinstance(node_type, str) else node_type
     if node_type in lowercase_classes:
         pos = lowercase_classes.index(node_type)
         return getattr(all_nodes, available_classes[pos])

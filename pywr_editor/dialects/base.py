@@ -169,6 +169,15 @@ class ModelDialect(ABC):
     supports_custom_nodes: bool = False
     """ Whether models can have custom node types imported from Python files """
 
+    def node_shape_name(self, node_type: str) -> str:
+        """
+        Returns the name of the schematic shape of a node type.
+        :param node_type: The node type.
+        :return: The name of a class of pywr_editor.node_shapes. The generic shape is
+        used if there is no class with this name.
+        """
+        return node_type
+
     @abstractmethod
     def node_types(self) -> dict[str, str]:
         """

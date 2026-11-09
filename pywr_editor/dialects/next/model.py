@@ -41,6 +41,15 @@ def humanise_type(node_type: str | None) -> str:
 class NextNodeConfig(NodeConfig):
     """A pywr-next node. Its name and position are in its "meta" object."""
 
+    @property
+    def shape_name(self) -> str | None:
+        """
+        The name of the schematic shape of the node type, when it is not the type.
+        """
+        from pywr_editor.dialects.next import NODE_SHAPES
+
+        return NODE_SHAPES.get(self.props.get("type"))
+
     def _meta(self, create: bool = False) -> dict | None:
         meta = self.props.get("meta")
         if not isinstance(meta, dict):

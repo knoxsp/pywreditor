@@ -226,7 +226,8 @@ class LibraryPanel(QGraphicsView):
         for ni, (node_type, node_name) in enumerate(self.node_dict.items()):
             # node icon
             try:
-                node_class_type = getattr(pywr_editor.node_shapes, node_type)
+                shape = self.window.model_config.dialect.node_shape_name(node_type)
+                node_class_type = getattr(pywr_editor.node_shapes, shape)
             except AttributeError:
                 # node name is not a built-in component
                 node_class_type = getattr(pywr_editor.node_shapes, "CustomNode")

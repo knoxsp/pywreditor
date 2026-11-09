@@ -17,6 +17,46 @@ ICONS = {
 """ The ribbon icons of the kinds of components """
 
 
+NODE_GROUPS = (
+    ("Core", ("Input", "Link", "Output")),
+    ("Storage", ("Storage", "Reservoir", "PiecewiseStorage")),
+    ("River", ("Catchment", "River", "RiverGauge", "RiverSplitWithGauge", "Abstraction")),
+    ("Other", ("LossLink", "PiecewiseLink", "Delay", "WaterTreatmentWorks", "Turbine")),
+)
+""" The groups of node types in the node library, in order. A type that is not here
+(from a later version of pywr-next) is shown after them """
+NODE_SHAPES = {
+    "Delay": "DelayNode",
+    "WaterTreatmentWorks": "Works",
+}
+""" The schematic shapes of the node types that are not drawn with a shape of the same
+name. The other types have their own shape, or the generic one """
+
+
+def node_group_order(node_type: str) -> int:
+    """
+    Returns the position of the group of a node type, for sorting.
+    :param node_type: The node type.
+    :return: The position of the group in NODE_GROUPS and the position in it.
+    """
+    for number, (_, types) in enumerate(NODE_GROUPS):
+        if node_type in types:
+            return number * 100 + types.index(node_type)
+    return len(NODE_GROUPS) * 100
+
+
+def node_group(node_type: str) -> str:
+    """
+    Returns the name of the group of a node type in the node library.
+    :param node_type: The node type.
+    :return: The group name, "Other" if the type is not in a group.
+    """
+    for name, types in NODE_GROUPS:
+        if node_type in types:
+            return name
+    return "Other"
+
+
 def _list_kind(
     key: str,
     label: str,
@@ -350,18 +390,25 @@ class NextDialect(ModelDialect):
 
     def node_types(self) -> dict[str, str]:
         """
-        Returns the pywr-next node types from the bundled schema.
+        Returns the pywr-next node types from the bundled schema, grouped: the core
+        nodes, the storage, the river nodes and the others.
         :return: The humanised name of each type, by type.
         """
         from pywr_editor.dialects.next.model import humanise_type
         from pywr_editor.dialects.next.schema import bundled_schema
 
-        return {
-            node_type: humanise_type(node_type)
-            for node_type in bundled_schema().types("Node")
-            # a placeholder stands for a node that another tool fills in
-            if node_type != "Placeholder"
-        }
+        # a placeholder stands for a node that another tool fills in
+        types = [t for t in bundled_schema().types("Node") if t != "Placeholder"]
+        types.sort(key=lambda t: (node_group_order(t), t))
+        return {node_type: humanise_type(node_type) for node_type in types}
+
+    def node_shape_name(self, node_type: str) -> str:
+        """
+        Returns the name of the schematic shape of a node type.
+        :param node_type: The node type.
+        :return: The name of a class of pywr_editor.node_shapes.
+        """
+        return NODE_SHAPES.get(node_type, node_type)
 
     def create_node(
         self, name: str, node_type: str, position: tuple[float, float]
