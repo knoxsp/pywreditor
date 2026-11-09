@@ -23,6 +23,10 @@ MARKER_FILE = "pywr-editor-env.json"
 """ The file in an environment recording what the editor installed """
 PYTHON_VERSION = "3.12"
 """ The Python version of the environments, which uv downloads if needed """
+EXTRAS = ("pandas", "excel")
+""" The optional parts of pywr-next that the editor installs. Models read their time
+series with pandas, and tables and time series from Excel files; polars and HDF files
+are not installed """
 ENVS_DIR_VARIABLE = "PYWR_EDITOR_ENVS_DIR"
 """ An environment variable to store the environments somewhere else """
 
@@ -116,6 +120,7 @@ class PywrEnvironment:
         return (
             info is not None
             and info.get("pywr_version") == self.pywr_version
+            and info.get("extras") == list(EXTRAS)
             and self.python.is_file()
         )
 
@@ -143,7 +148,7 @@ class PywrEnvironment:
                 "install",
                 "--python",
                 str(self.python),
-                f"pywr=={self.pywr_version}",
+                f"pywr[{','.join(EXTRAS)}]=={self.pywr_version}",
             ],
         ]
 
@@ -157,6 +162,7 @@ class PywrEnvironment:
                 {
                     "pywr_version": self.pywr_version,
                     "python_version": PYTHON_VERSION,
+                    "extras": list(EXTRAS),
                     "installed_on": datetime.now().isoformat(timespec="seconds"),
                 },
                 indent=2,

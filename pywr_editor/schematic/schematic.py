@@ -1755,54 +1755,65 @@ class Schematic(QGraphicsView):
                     item.setFlag(QGraphicsItem.ItemIsMovable, False)
                     item.setFlag(QGraphicsItem.ItemIsSelectable, False)
 
-                    # draw new tooltip
+                    # draw new tooltip with the live values of the model
                     model = self.app.run_widget.worker.pywr_model
+                    if model is None:
+                        # the model is run by another process (pywr-next): its
+                        # values are not available, so the tooltip is not changed
+                        tooltip_text = item.tooltip_text
+                    else:
 
-                    cell_style = "style='padding:2px 6px;"
-                    cell_style += f"border:1px solid {Color('neutral', 400).hex}'"
+                        cell_style = "style='padding:2px 6px;"
+                        cell_style += f"border:1px solid {Color('neutral', 400).hex}'"
 
-                    tooltip_text = "<table>"
-                    tooltip_text += "<tr><td colspan='2'><b style='font-size:12pt'>"
-                    tooltip_text += f"{item.name}</td></tr>"
+                        tooltip_text = "<table>"
+                        tooltip_text += "<tr><td colspan='2'><b style='font-size:12pt'>"
+                        tooltip_text += f"{item.name}</td></tr>"
 
-                    node = model.nodes[item.name]
-                    all_attributes = inspect.getmembers(
-                        node,
-                        lambda a: not inspect.isroutine(a),
-                    )
-                    for (
-                        attr_raw_name,
-                        result_data,
-                    ) in InspectorTree.get_node_value_dict(
-                        model, all_attributes
-                    ).items():
-                        if attr_raw_name == "prev_flow":
-                            continue
-                        attr_name = item.model_node.humanise_attribute_name(
-                            attr_raw_name
+                        node = model.nodes[item.name]
+                        all_attributes = inspect.getmembers(
+                            node,
+                            lambda a: not inspect.isroutine(a),
                         )
-                        tooltip_text += "<tr>"
-                        # data with scenarios
-                        if result_data["has_scenarios"]:
-                            tooltip_text += f"<td colspan='2'>{attr_name} "
-                            tooltip_text += "<table style='margin-left:10px;"
-                            tooltip_text += "border-collapse:collapse'>"
-                            tooltip_text += f"<tr><td {cell_style}><b>Combination</b>"
-                            tooltip_text += (
-                                f"</td><td {cell_style}><b>Value</b></td></tr>"
+                        for (
+                            attr_raw_name,
+                            result_data,
+                        ) in InspectorTree.get_node_value_dict(
+                            model, all_attributes
+                        ).items():
+                            if attr_raw_name == "prev_flow":
+                                continue
+                            attr_name = item.model_node.humanise_attribute_name(
+                                attr_raw_name
                             )
-                            for sc_value in result_data["data"]:
-                                tooltip_text += f"<tr><td {cell_style}>"
-                                tooltip_text += f"{sc_value['name']}</td>"
-                                tooltip_text += f"<td {cell_style}>{sc_value['value']}"
-                                tooltip_text += "</td></tr>"
-                            tooltip_text += "</table></td>"
-                        # single value
-                        else:
-                            tooltip_text += f"<td>{attr_name}:</td>"
-                            tooltip_text += f"<td>{result_data['data']['value']}</td>"
-                        tooltip_text += "</tr>"
-                    tooltip_text += "</table>"
+                            tooltip_text += "<tr>"
+                            # data with scenarios
+                            if result_data["has_scenarios"]:
+                                tooltip_text += f"<td colspan='2'>{attr_name} "
+                                tooltip_text += "<table style='margin-left:10px;"
+                                tooltip_text += "border-collapse:collapse'>"
+                                tooltip_text += (
+                                    f"<tr><td {cell_style}><b>Combination</b>"
+                                )
+                                tooltip_text += (
+                                    f"</td><td {cell_style}><b>Value</b></td></tr>"
+                                )
+                                for sc_value in result_data["data"]:
+                                    tooltip_text += f"<tr><td {cell_style}>"
+                                    tooltip_text += f"{sc_value['name']}</td>"
+                                    tooltip_text += (
+                                        f"<td {cell_style}>{sc_value['value']}"
+                                    )
+                                    tooltip_text += "</td></tr>"
+                                tooltip_text += "</table></td>"
+                            # single value
+                            else:
+                                tooltip_text += f"<td>{attr_name}:</td>"
+                                tooltip_text += (
+                                    f"<td>{result_data['data']['value']}</td>"
+                                )
+                            tooltip_text += "</tr>"
+                        tooltip_text += "</table>"
                 else:
                     # unlock node position and selection
                     item.setFlag(QGraphicsItem.ItemIsMovable, True)

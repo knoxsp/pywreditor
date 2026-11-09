@@ -128,9 +128,10 @@ class InstallEnvironmentDialog(QDialog):
                 f"To {self.purpose}, the editor needs <b>pywr-next {version}</b>. "
                 "pywr-next cannot be installed with the pywr version the editor "
                 "uses, so the editor installs it in a separate folder, with Python "
-                f"{PYTHON_VERSION}. This downloads about 100 MB from the Python "
-                "package index. Nothing else on your computer is changed, and the "
-                "folder can be removed from this dialog at any time.<br><br>"
+                f"{PYTHON_VERSION}, with pandas and Excel support. This downloads "
+                "about 150 MB from the Python package index. Nothing else on your "
+                "computer is changed, and the folder can be removed from this dialog "
+                "at any time.<br><br>"
                 "It will be installed in the folder below. Install it now?"
             )
 

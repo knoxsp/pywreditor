@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
+    from PySide6.QtCore import QObject
     from PySide6.QtWidgets import QDialog, QWidget
 
     from pywr_editor.model import ModelConfig
@@ -130,7 +131,10 @@ class ModelDialect(ABC):
      - "python-paths": folders added to the Python path to run the model;
      - "slots": the dialog to name the slots of the edges;
      - "orphaned-parameters": finding the parameters that nothing uses;
-     - "run": running the model from the editor;
+     - "run": the run controls (run, run to, step, stop), see create_run_worker();
+     - "preflight": the check that loads the model with pywr v1 (validation dialog);
+     - "run-results": the results of the last run, saved by the editor;
+     - "run-inspector": the inspector of the pywr v1 model that is being run;
      - "console": the IPython console with the model loaded """
 
     def supports(self, feature: str) -> bool:
@@ -171,12 +175,29 @@ class ModelDialect(ABC):
         """
 
     @abstractmethod
-    def validate_model(self, model: "ModelConfig") -> list:
+    def validate_model(
+        self, model: "ModelConfig", include_orphans: bool = True
+    ) -> list:
         """
         Runs the checks of the editor, which are quick.
         :param model: The model configuration.
+        :param include_orphans: Whether to report the components nothing uses.
         :return: The list of Diagnostic.
         """
+
+    def create_run_worker(
+        self, run_widget: "QWidget", end_date: Any, run_to_date: Any
+    ) -> "QObject | None":
+        """
+        Creates the worker that runs the model in its own thread. It has the signals
+        and methods of the pywr v1 worker (PywrWorker).
+        :param run_widget: The run controls, with the main window and settings.
+        :param end_date: The end date of the run, as pandas Timestamp.
+        :param run_to_date: The run-to date, as pandas Timestamp.
+        :return: The worker, or None if the model cannot be run now (for example
+        because the user did not install what it needs).
+        """
+        return None
 
     @abstractmethod
     def validate_schema(self, model_dict: dict) -> list:

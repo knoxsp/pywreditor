@@ -251,8 +251,13 @@ class MainWindow(QMainWindow):
 
         # check if the run worker is still running
         try:
-            if self.run_widget.worker:
-                self.run_widget.worker.kill()
+            worker = self.run_widget.worker
+            if worker is not None and hasattr(worker, "shutdown"):
+                # the service of a pywr-next run is another process, which must
+                # have stopped before the editor closes
+                worker.shutdown()
+            elif worker is not None:
+                worker.kill()
         except RuntimeError:
             pass
         event.accept()
@@ -1179,7 +1184,8 @@ class MainWindow(QMainWindow):
         "python-paths": ["edit-python-paths"],
         "slots": ["edit-slots"],
         "orphaned-parameters": ["find-orphaned-parameters"],
-        "run": ["run-results", "run-inspector"],
+        "run-results": ["run-results"],
+        "run-inspector": ["run-inspector"],
     }
     """ The ribbon actions of the editor features that a dialect may not have """
 

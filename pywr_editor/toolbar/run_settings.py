@@ -28,22 +28,33 @@ class RunSettings(QWidget):
         super().__init__(parent)
         self.editor_settings = parent.editor_settings
 
-        try:
-            # noinspection PyUnresolvedReferences
-            from pywr.solvers import solver_registry
+        self.is_next = parent.model_config.dialect.key == "next"
+        if self.is_next:
+            from pywr_editor.dialects.next.runner_protocol import SOLVERS
 
-            names = [solver.name for solver in solver_registry if solver.name != "null"]
-        except ImportError:
-            # pywr v1 is not installed in the editor's environment
-            names = []
-        current = self.editor_settings.solver
+            names = list(SOLVERS)
+            current = self.editor_settings.next_solver
+        else:
+            try:
+                # noinspection PyUnresolvedReferences
+                from pywr.solvers import solver_registry
+
+                names = [
+                    solver.name for solver in solver_registry if solver.name != "null"
+                ]
+            except ImportError:
+                # pywr v1 is not installed in the editor's environment
+                names = []
+            current = self.editor_settings.solver
 
         layout = QGridLayout()
         layout.setRowMinimumHeight(0, 40)
         layout.addWidget(QLabel("Solver"), 0, 0)
         self.solver = QComboBox()
         self.solver.setToolTip(
-            "The Pywr solver used to run the model. This is ignored if the model "
+            "The pywr-next solver used to run the model"
+            if self.is_next
+            else "The Pywr solver used to run the model. This is ignored if the model "
             'file sets its own "solver" key'
         )
         self.solver.addItems(names if current in names else [current, *names])
@@ -87,7 +98,10 @@ class RunSettings(QWidget):
 
     @Slot(str)
     def on_solver_changed(self, name: str) -> None:
-        self.editor_settings.save_solver(name)
+        if self.is_next:
+            self.editor_settings.save_next_solver(name)
+        else:
+            self.editor_settings.save_solver(name)
 
     @Slot()
     def on_output_dir_edited(self) -> None:

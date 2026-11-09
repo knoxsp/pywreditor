@@ -117,7 +117,9 @@ class ValidationDialog(QDialog):
         )
         self.preflight_button.clicked.connect(self.run_preflight)
         # the check loads the model with pywr v1
-        self.preflight_button.setVisible(self.model_config.dialect.supports("run"))
+        self.preflight_button.setVisible(
+            self.model_config.dialect.supports("preflight")
+        )
         self.close_button = QPushButton("Close")
         self.close_button.clicked.connect(self.close)
 

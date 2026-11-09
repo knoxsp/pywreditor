@@ -18,8 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from pywr_editor.dialogs import InspectorDialog
-from pywr_editor.model import PywrProgress, PywrWorker, validate_model
-from pywr_editor.model.results import resolve_output_dir
+from pywr_editor.model import PywrProgress, PywrWorker
 from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.toolbar.small_button import ToolbarSmallButton
 from pywr_editor.utils import Logging
@@ -162,25 +161,12 @@ class RunWidget(QWidget):
         run_to_date: datetime = (
             self.app.findChild(DateEdit, "run_to_date").date().toPython()
         )
-        self.worker = PywrWorker(
-            model_dict=self.model_config.clean_json,
-            model_file=self.model_config.json_file,
-            end_date=pd.Timestamp(end_date),
-            run_to_date=pd.Timestamp(run_to_date),
-            python_paths=self.app.editor_settings.python_paths,
-            python_modules=self.app.editor_settings.python_modules,
-            solver=self.app.editor_settings.solver,
-            results_dir=(
-                str(
-                    resolve_output_dir(
-                        self.app.editor_settings.output_dir,
-                        self.model_config.json_file,
-                    )
-                )
-                if self.app.editor_settings.are_results_saved
-                else None
-            ),
+        worker = self.model_config.dialect.create_run_worker(
+            self, pd.Timestamp(end_date), pd.Timestamp(run_to_date)
         )
+        if worker is None:
+            return False
+        self.worker = worker
         self.thread = QThread(self)
         self.worker.moveToThread(self.thread)
 
@@ -507,7 +493,9 @@ class RunWidget(QWidget):
         """
         errors = [
             d
-            for d in validate_model(self.model_config, include_orphans=False)
+            for d in self.model_config.dialect.validate_model(
+                self.model_config, include_orphans=False
+            )
             if d.severity == "error"
         ]
         if not errors:

@@ -85,20 +85,55 @@ class V1Dialect(ModelDialect):
             "slots",
             "orphaned-parameters",
             "run",
+            "preflight",
+            "run-results",
+            "run-inspector",
             "console",
         ]
     )
     supports_custom_nodes = True
 
-    def validate_model(self, model: "ModelConfig") -> list:
+    def validate_model(
+        self, model: "ModelConfig", include_orphans: bool = True
+    ) -> list:
         """
         Runs the checks of the editor on a pywr v1 model.
         :param model: The model configuration.
+        :param include_orphans: Whether to report the components nothing uses.
         :return: The list of Diagnostic.
         """
         from pywr_editor.model.validation import validate_model
 
-        return validate_model(model)
+        return validate_model(model, include_orphans=include_orphans)
+
+    def create_run_worker(self, run_widget, end_date, run_to_date):
+        """
+        Creates the worker that runs a pywr v1 model in the editor's process.
+        :param run_widget: The run controls.
+        :param end_date: The end date of the run.
+        :param run_to_date: The run-to date.
+        :return: The worker.
+        """
+        from pywr_editor.model.pywr_worker import PywrWorker
+        from pywr_editor.model.results import resolve_output_dir
+
+        app = run_widget.app
+        settings = app.editor_settings
+        model_config = run_widget.model_config
+        return PywrWorker(
+            model_dict=model_config.clean_json,
+            model_file=model_config.json_file,
+            end_date=end_date,
+            run_to_date=run_to_date,
+            python_paths=settings.python_paths,
+            python_modules=settings.python_modules,
+            solver=settings.solver,
+            results_dir=(
+                str(resolve_output_dir(settings.output_dir, model_config.json_file))
+                if settings.are_results_saved
+                else None
+            ),
+        )
 
     def validate_schema(self, model_dict: dict) -> list:
         """

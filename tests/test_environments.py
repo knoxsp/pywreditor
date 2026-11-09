@@ -42,7 +42,7 @@ def test_environment(tmp_path):
     assert environment.is_installed() is False
     commands = environment.install_commands("uv")
     assert commands[0][:2] == ["uv", "venv"]
-    assert commands[1][-1] == "pywr==2.0.0rc1"
+    assert commands[1][-1] == "pywr[pandas,excel]==2.0.0rc1"
 
     # installed: the interpreter exists and the marker is written
     environment.python.parent.mkdir(parents=True)

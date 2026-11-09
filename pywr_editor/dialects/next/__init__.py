@@ -58,7 +58,7 @@ class NextDialect(ModelDialect):
     key = "next"
     label = "pywr-next"
     time_key = "time"
-    features = frozenset(["node-dialog"])
+    features = frozenset(["node-dialog", "run"])
 
     @classmethod
     def detect(cls, model_json: Any) -> bool:
@@ -201,11 +201,14 @@ class NextDialect(ModelDialect):
         # supported yet
         model.recorders = model.scenarios = model.includes = None
 
-    def validate_model(self, model: "ModelConfig") -> list:
+    def validate_model(
+        self, model: "ModelConfig", include_orphans: bool = True
+    ) -> list:
         """
         Runs the checks pywr-next makes when it loads a network and the schema cannot
         express (unique names, valid edges).
         :param model: The model configuration.
+        :param include_orphans: Not used: pywr-next components are not orphaned.
         :return: The list of Diagnostic.
         """
         from pywr_editor.dialects.next.validation import validate_network
@@ -267,6 +270,40 @@ class NextDialect(ModelDialect):
             ),
             _list_kind("output", "Outputs", "outputs", "Output", "NextOutputsDialog"),
         ]
+
+    def create_run_worker(self, run_widget, end_date, run_to_date):
+        """
+        Creates the worker that runs a pywr-next model with the runner service of
+        pywr-next, in its own Python environment. The user is asked to install
+        pywr-next when this is not done yet.
+        :param run_widget: The run controls.
+        :param end_date: The end date of the run.
+        :param run_to_date: The run-to date.
+        :return: The worker, or None if pywr-next is not installed.
+        """
+        from pywr_editor.dialects.next.runner import NextRunWorker
+        from pywr_editor.dialogs.environments.install_dialog import ensure_pywr_next
+        from pywr_editor.model.results import resolve_output_dir
+
+        environment = ensure_pywr_next("run this model", run_widget.app)
+        if environment is None:
+            return None
+        app = run_widget.app
+        settings = app.editor_settings
+        model_config = run_widget.model_config
+        return NextRunWorker(
+            model_dict=model_config.clean_json,
+            model_file=model_config.json_file,
+            python=str(environment.python),
+            end_date=end_date,
+            run_to_date=run_to_date,
+            solver=settings.next_solver,
+            results_dir=(
+                str(resolve_output_dir(settings.output_dir, model_config.json_file))
+                if settings.are_results_saved
+                else None
+            ),
+        )
 
     def node_dialog_class(self) -> type:
         """
