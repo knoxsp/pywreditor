@@ -628,12 +628,7 @@ class PythonCodePanel(QWidget):
         Whether the code in the editor is what was loaded: the code in the file, or the
         code of a new function or class that the user did not change.
         """
-        if not self.dirty:
-            return True
-        return (
-            self.loaded is not None
-            and self.editor.toPlainText() == pc.starter_code(*self.loaded)
-        )
+        return not self.dirty
 
     def read_file(self) -> str:
         if self.file is not None and self.file.is_file():
@@ -653,21 +648,22 @@ class PythonCodePanel(QWidget):
         if reread or not self.file_text:
             self.file_text = self.read_file()
         self.loaded = key
-        dirty = False
         if key is None:
             code = self.file_text
             self.heading.setText("Python code (all of the file)")
         else:
             span = pc.find_object(self.file_text, *key)
             if span is None:
+                # nothing is written until the user changes the code (or runs it)
                 code = pc.starter_code(*key)
-                dirty = True
-                self.heading.setText(f"Python code (new {key[0].lower()} {key[1]})")
+                self.heading.setText(
+                    f"Python code (new {key[0].lower()} {key[1]}, not in the file yet)"
+                )
             else:
                 lines = self.file_text.splitlines()[span[0] - 1 : span[1]]
                 code = "\n".join(lines) + "\n"
                 self.heading.setText(f"Python code ({key[0].lower()} {key[1]})")
-        self.set_code(code, dirty=dirty)
+        self.set_code(code, dirty=False)
 
     def set_code(self, code: str, dirty: bool) -> None:
         self.editor.blockSignals(True)
@@ -694,7 +690,7 @@ class PythonCodePanel(QWidget):
     def open_file(self) -> None:
         if self.file is not None:
             if not self.file.exists():
-                self.save()
+                self.save(force=True)
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.file)))
 
     # --- editing and checks --------------------------------------------------
@@ -782,12 +778,16 @@ class PythonCodePanel(QWidget):
     def has_errors(self) -> bool:
         return any(d.severity == "error" for d in self.diagnostics)
 
-    def save(self) -> bool:
+    def save(self, force: bool = False) -> bool:
         """
-        Writes the code to its file.
+        Writes the code to its file, if the user changed it.
+        :param force: Write the code even if it was not changed, to create the
+        function or class of a new parameter.
         :return: True if the file was written (or there was nothing to write).
         """
         if self.file is None or not self.editor.isEnabled():
+            return True
+        if not self.dirty and not force:
             return True
         text, _ = self.combined_text()
         try:
@@ -841,7 +841,7 @@ class PythonCodePanel(QWidget):
         if self.has_errors():
             self.summary.setText("Fix the errors before running the code")
             return None
-        if not self.save():
+        if not self.save(force=True):
             return None
         values = self.parameter_values()
         start, days = self.timestep_settings()

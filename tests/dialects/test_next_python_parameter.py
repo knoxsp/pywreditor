@@ -175,7 +175,19 @@ def test_class_object_and_unknown_function(qtbot, model):
     dialog.reload_list("scaled")
     panel = dialog.panel
     assert panel.editor.toPlainText() == python_code.starter_code("Function", "other")
-    assert panel.dirty and dialog.save_button.isEnabled()
+    assert "not in the file yet" in panel.heading.text()
+    # nothing is written until the user changes the code
+    assert not panel.dirty and not dialog.save_button.isEnabled()
+    assert dialog.save() is not False
+    helpers = python_code.module_file(model.json_file).parent / "helpers.py"
+    assert "def other" not in helpers.read_text()
+    # saving rebuilt the form, with a new panel
+    panel = dialog.panel
+    panel.editor.setPlainText("def other(info):\n    return 2.0\n")
+    assert dialog.save_button.isEnabled()
+    assert dialog.save() is not False
+    assert "def other(info):" in helpers.read_text()
+    assert "def scale(info, factor):" in helpers.read_text()
 
 
 def test_module_source_is_not_edited(qtbot, model):

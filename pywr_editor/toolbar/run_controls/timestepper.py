@@ -21,6 +21,8 @@ class TimeStepperWidget(QWidget):
         self.app = parent
         self.model_config = parent.model_config
 
+        self.running = False
+        self.editable = True
         main_layout = QGridLayout()
         main_layout.setRowMinimumHeight(0, 40)
 
@@ -85,6 +87,53 @@ class TimeStepperWidget(QWidget):
         main_layout.setColumnMinimumWidth(2, 15)
 
         self.setLayout(main_layout)
+        self.start_date = start_date
+        self.end_date = end_date
+        self.time_step = time_step
+        self.run_to_date = run_to_date
+        self.refresh()
+
+    def refresh(self) -> None:
+        """
+        Shows the time of the model, after the dialog that edits it saved it. When the
+        model has a time of day or a timestep that is not a number of days, which the
+        toolbar cannot edit, the fields are disabled.
+        :return: None
+        """
+        time = self.model_config.timestepper
+        dialect = self.model_config.dialect
+        self.editable = dialect.simple_time(time)
+        for widget, key in ((self.start_date, "start"), (self.end_date, "end")):
+            date = QDate.fromString(str(time.get(key))[:10], "yyyy-MM-dd")
+            if date.isValid():
+                widget.blockSignals(True)
+                widget.setDate(date)
+                widget.blockSignals(False)
+        self.time_step.blockSignals(True)
+        self.time_step.setValue(self.model_config.time_delta)
+        self.time_step.blockSignals(False)
+        self.apply_enabled()
+
+    def set_running(self, is_running: bool) -> None:
+        """
+        Disables the fields while the model runs.
+        :param is_running: Whether the model is running.
+        :return: None
+        """
+        self.running = is_running
+        self.apply_enabled()
+
+    def apply_enabled(self) -> None:
+        editable = self.editable and not self.running
+        for widget in (self.start_date, self.end_date, self.time_step):
+            widget.setEnabled(editable)
+            widget.setToolTip(
+                ""
+                if self.editable
+                else "The time of this model is edited with the Time button of the "
+                "Model tab"
+            )
+        self.run_to_date.setDisabled(self.running)
 
     @Slot(QDate)
     def date_changed(

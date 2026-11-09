@@ -61,7 +61,6 @@ from pywr_editor.utils import (
     Settings,
     get_signal_sender,
 )
-from pywr_editor.widgets import DateEdit, SpinBox
 
 
 class MainWindow(QMainWindow):
@@ -755,7 +754,8 @@ class MainWindow(QMainWindow):
 
         settings_panel = model_tab.add_panel("Settings")
         settings_panel.add_button(self.app_actions.get("edit-metadata"))
-        component_kinds = self.model_config.dialect.component_kinds()
+        all_kinds = self.model_config.dialect.component_kinds()
+        component_kinds = [kind for kind in all_kinds if kind.panel is None]
         settings_panel.add_vertical_small_buttons(
             [
                 self.app_actions.get(kind.action_key)
@@ -771,6 +771,12 @@ class MainWindow(QMainWindow):
         for kind in component_kinds:
             if kind.large_button:
                 settings_panel.add_button(self.app_actions.get(kind.action_key))
+        # the kinds that have their own panel
+        for panel_name in dict.fromkeys(k.panel for k in all_kinds if k.panel):
+            panel = model_tab.add_panel(panel_name)
+            for kind in all_kinds:
+                if kind.panel == panel_name:
+                    panel.add_button(self.app_actions.get(kind.action_key))
 
         validation_panel = model_tab.add_panel("Validation", layout="vertical")
         validation_panel.add_button(
@@ -805,7 +811,8 @@ class MainWindow(QMainWindow):
         # Run tab
         run = self.toolbar.add_tab("Run")
         time_stepper_panel = run.add_panel("Time-stepper")
-        time_stepper_panel.add_widget(TimeStepperWidget(self))
+        self.time_stepper = TimeStepperWidget(self)
+        time_stepper_panel.add_widget(self.time_stepper)
 
         nodes_panel = run.add_panel("Controls")
         run_widget = RunWidget(self)
@@ -1397,14 +1404,7 @@ class MainWindow(QMainWindow):
         self.map_settings.setDisabled(is_running)
 
         # handle the timestepper fields
-        # noinspection PyUnresolvedReferences
-        self.findChild(DateEdit, "start_date").setDisabled(is_running)
-        # noinspection PyUnresolvedReferences
-        self.findChild(DateEdit, "end_date").setDisabled(is_running)
-        # noinspection PyUnresolvedReferences
-        self.findChild(DateEdit, "run_to_date").setDisabled(is_running)
-        # noinspection PyUnresolvedReferences
-        self.findChild(SpinBox, "time_step").setDisabled(is_running)
+        self.time_stepper.set_running(is_running)
 
     @Slot()
     def on_save(self) -> None:

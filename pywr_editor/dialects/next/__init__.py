@@ -242,7 +242,41 @@ class NextDialect(ModelDialect):
         Returns the kinds of pywr-next components edited in their own dialog.
         :return: The list of component kinds.
         """
+
+        def time_dialog() -> type:
+            from pywr_editor.dialogs.next_domain.time_dialog import NextTimeDialog
+
+            return NextTimeDialog
+
+        def scenarios_dialog() -> type:
+            from pywr_editor.dialogs.next_domain.scenarios_dialog import (
+                NextScenariosDialog,
+            )
+
+            return NextScenariosDialog
+
         return [
+            # these have no list in the network: the tree and the search skip them
+            ComponentKind(
+                key="time",
+                label="Time",
+                action_key="edit-time",
+                icon=":/toolbar/edit-metadata",
+                tooltip="Change the dates and the timestep of the model",
+                dialog_class=time_dialog,
+                shortcut="Ctrl+Shift+T",
+                panel="Time and scenarios",
+            ),
+            ComponentKind(
+                key="scenario domain",
+                label="Scenarios",
+                action_key="edit-scenario-domain",
+                icon=":/toolbar/edit-scenarios",
+                tooltip="Add, modify and delete the groups of scenarios",
+                dialog_class=scenarios_dialog,
+                shortcut="Ctrl+Shift+S",
+                panel="Time and scenarios",
+            ),
             _list_kind(
                 "table", "Tables", "tables", "DataTable", "NextTablesDialog", "Ctrl+T"
             ),
@@ -361,6 +395,23 @@ class NextDialect(ModelDialect):
             _move_to_tags(node, values)
             if not position:
                 del node["meta"]["position"]
+
+    def simple_time(self, time_section: dict) -> bool:
+        """
+        Checks whether the toolbar can edit the time of the model: plain dates and a
+        timestep in days.
+        :param time_section: The "time" dictionary.
+        :return: True if the toolbar can edit the time.
+        """
+        from pywr_editor.dialects.next import time_domain
+
+        return (
+            time_domain.parse_time(time_section.get("start")) is not None
+            and time_domain.parse_time(time_section.get("end")) is not None
+            and not time_domain.has_time_of_day(time_section.get("start"))
+            and not time_domain.has_time_of_day(time_section.get("end"))
+            and self.timestep_days(time_section) is not None
+        )
 
     def timestep_days(self, time_section: dict) -> int | None:
         """

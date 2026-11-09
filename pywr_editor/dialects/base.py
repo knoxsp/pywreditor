@@ -42,6 +42,9 @@ class ComponentKind:
     """ The keyboard shortcut of the ribbon button, such as "Ctrl+P" """
     large_button: bool = True
     """ Whether the ribbon button is large or a small button in a column """
+    panel: str | None = None
+    """ The name of the ribbon panel for the button, when it is not in the "Settings"
+    panel with the other kinds. The buttons of a panel are large """
     list_key: str | None = None
     """ For pywr-next components, the key of their list in the network (such as
     "parameters"). The components tree and the search then list them generically """
@@ -136,6 +139,16 @@ class ModelDialect(ABC):
      - "run-results": the results of the last run, saved by the editor;
      - "run-inspector": the inspector of the pywr v1 model that is being run;
      - "console": the IPython console with the model loaded """
+
+    def simple_time(self, time_section: dict) -> bool:
+        """
+        Checks whether the dates and the timestep of the model are edited in the
+        toolbar, which has a date for the start and the end and a timestep in days.
+        :param time_section: The time dictionary.
+        :return: False if the model has a time of day or another kind of timestep,
+        which the time dialog edits.
+        """
+        return True
 
     def supports(self, feature: str) -> bool:
         """
