@@ -288,6 +288,16 @@ class MainWindow(QMainWindow):
         )
         self.app_actions.add(
             Action(
+                key="convert-model",
+                name="Convert to\n pywr-next",
+                icon=":/toolbar/new",
+                tooltip="Convert this pywr v1 model to a pywr-next model, saved in a "
+                "new file",
+                connection=self.convert_model,
+            )
+        )
+        self.app_actions.add(
+            Action(
                 key="save-model",
                 name="Save\n file",
                 icon=":/toolbar/save",
@@ -745,6 +755,7 @@ class MainWindow(QMainWindow):
         file_panel.add_button(self.app_actions.get("save-model"))
         self.app_actions.get("save-model").setDisabled(True)
         file_panel.add_button(self.app_actions.get("reload-model"))
+        file_panel.add_button(self.app_actions.get("convert-model"))
         file_panel.add_button(self.app_actions.get("copy-file-path"))
         self.app_actions.get("copy-file-path").setDisabled(
             not self.model_config.json_file
@@ -1193,6 +1204,7 @@ class MainWindow(QMainWindow):
         "orphaned-parameters": ["find-orphaned-parameters"],
         "run-results": ["run-results"],
         "run-inspector": ["run-inspector"],
+        "convert-to-next": ["convert-model"],
     }
     """ The ribbon actions of the editor features that a dialect may not have """
 
@@ -1478,6 +1490,16 @@ class MainWindow(QMainWindow):
         dialect = ask_new_model_dialect()
         if dialect is not None:
             MainWindow(new_dialect=dialect)
+
+    @Slot()
+    def convert_model(self) -> None:
+        """
+        Converts the model to pywr-next and shows the result.
+        :return: None
+        """
+        from pywr_editor.dialogs.convert.convert_dialog import convert_to_next
+
+        convert_to_next(self)
 
     @staticmethod
     @Slot()

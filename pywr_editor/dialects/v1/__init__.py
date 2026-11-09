@@ -89,6 +89,7 @@ class V1Dialect(ModelDialect):
             "run-results",
             "run-inspector",
             "console",
+            "convert-to-next",
         ]
     )
     supports_custom_nodes = True

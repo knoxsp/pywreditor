@@ -139,7 +139,8 @@ class ModelDialect(ABC):
      - "run-results": the results of the last run, saved by the editor;
      - "run-inspector": the inspector of the pywr v1 model that is being run;
      - "console": the IPython console with the model loaded;
-     - "metric-sets": the shortcuts to add nodes and parameters to metric sets """
+     - "metric-sets": the shortcuts to add nodes and parameters to metric sets;
+     - "convert-to-next": the conversion of the model to pywr-next """
 
     def simple_time(self, time_section: dict) -> bool:
         """
