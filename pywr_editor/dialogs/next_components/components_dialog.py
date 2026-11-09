@@ -15,9 +15,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pywr_editor.dialects.next import python_code
 from pywr_editor.dialects.next.model import NamedComponents, humanise_type
 from pywr_editor.dialects.next.schema import FieldSpec, bundled_schema
 from pywr_editor.form import FieldConfig, Form, TextWidget, Validation
+from pywr_editor.dialogs.next_components.python_panel import PythonCodePanel
 from pywr_editor.form.schema_form import field_configs
 from pywr_editor.widgets import PushIconButton
 
@@ -498,12 +500,104 @@ class NextOutputsDialog(NextComponentsDialog):
 
 
 class NextParametersDialog(NextComponentsDialog):
+    """
+    The parameters dialog. A "Python" parameter also shows the code it calls, which
+    is edited in its Python file next to the model (see python_code.py).
+    """
+
     definition = "Parameter"
     title = "Parameters"
+    code_fields = ("source", "object", "args", "kwargs", "metrics", "indices")
+    """ The fields of a Python parameter that change what the checks look at """
 
     @staticmethod
     def components_of(model: "ModelConfig") -> NamedComponents:
         return model.parameters
+
+    def __init__(self, *args, **kwargs):
+        self.panel: PythonCodePanel | None = None
+        super().__init__(*args, **kwargs)
+
+    def form_values(self) -> dict:
+        """
+        Returns the current values of the fields of the form that describe the code
+        of a Python parameter, without validating the form.
+        :return: The values by field name.
+        """
+        values = {}
+        if self.form is not None:
+            for name in (*self.code_fields, "return_type"):
+                field = self.form.find_field(name)
+                if field is not None:
+                    values[name] = field.value()
+        return values
+
+    def clear_form(self) -> None:
+        if self.panel is not None:
+            self.form_container.removeWidget(self.panel)
+            self.panel.hide()
+            self.panel.deleteLater()
+            self.panel = None
+        super().clear_form()
+
+    def show_component(self, name: str | None) -> None:
+        super().show_component(name)
+        component = self.components.config(name) if name is not None else None
+        if self.form is None or component is None or self.type_of(component) != "Python":
+            return
+        self.panel = PythonCodePanel(self.model, self.form_values, self)
+        self.panel.setObjectName("python_panel")
+        self.form_container.addWidget(self.panel, 2)
+        for field_name in self.code_fields:
+            field = self.form.find_field(field_name)
+            if field is not None:
+                # noinspection PyUnresolvedReferences
+                field.widget.field_value_changed.connect(self.panel.schedule_check)
+        # noinspection PyUnresolvedReferences
+        self.panel.changed.connect(self.on_code_changed)
+        self.panel.refresh()
+        self.save_button.setEnabled(self.panel.dirty)
+
+    @Slot()
+    def on_code_changed(self) -> None:
+        self.save_button.setEnabled(True)
+
+    @Slot()
+    def save(self) -> dict | bool:
+        """
+        Saves the code of a Python parameter in its file, then the parameter.
+        :return: The new component dictionary, or False if the form does not
+        validate or the file cannot be written.
+        """
+        if self.panel is not None and self.form is not None:
+            if self.form.validate() is False:
+                return False
+            if not self.panel.save():
+                return False
+        return super().save()
+
+    def new_component(self, component_type: str | None, name: str) -> dict:
+        """
+        Returns a new parameter. A Python parameter calls a new function of the
+        Python file of the model, which is created with a few lines of code.
+        """
+        component = super().new_component(component_type, name)
+        model_file = self.model.json_file
+        if component_type == "Python" and model_file:
+            file = python_code.module_file(model_file)
+            function = python_code.python_identifier(name)
+            component["source"] = {"type": "Path", "path": file.name}
+            component["object"] = {"type": "Function", "function": function}
+            try:
+                text = file.read_text(encoding="utf-8") if file.is_file() else ""
+                if python_code.find_object(text, "Function", function) is None:
+                    code = python_code.starter_code("Function", function)
+                    file.write_text(
+                        python_code.splice(text, None, code)[0], encoding="utf-8"
+                    )
+            except OSError:
+                pass
+        return component
 
 
 def open_local_parameters(
