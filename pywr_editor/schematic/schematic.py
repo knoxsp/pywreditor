@@ -419,11 +419,14 @@ class Schematic(QGraphicsView):
                 self.add_node(node_props=node_props, position_override=position)
                 continue
 
-            # position is not available: place the node in the centre
+            # position is not available: place the node where it is on the map, or in
+            # the centre if it has no geographic position either. The position is
+            # saved with the model like any other change
             if node_config.position is None:
                 node_props = self.model_config.nodes.set_position(
                     node_index=node_index,
-                    position=[self.schematic_width / 2, self.schematic_height / 2],
+                    position=self.geo_to_scene(node_config.geographic_position)
+                    or [self.schematic_width / 2, self.schematic_height / 2],
                 )
 
             # draw the node
