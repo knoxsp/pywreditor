@@ -35,11 +35,25 @@ SOLVERS = ("clp", "highs", "cbc", "microlp")
 DEFAULT_SOLVER = "clp"
 
 SERVER_SNIPPET = """\
+import os
 import sys
+import threading
+
+# the service ends when the editor does, even if the editor crashes or is killed: it
+# keeps listening for a new client after each run, so it would otherwise stay running.
+# The editor keeps the standard input of the service open, and the operating system
+# closes it when the editor ends: the service stops when it is closed. This works on
+# every platform, also while the service is running a model
+def stop_with_editor():
+    try:
+        sys.stdin.buffer.read()
+    except Exception:
+        return
+    os._exit(0)
+
+threading.Thread(target=stop_with_editor, daemon=True).start()
 if sys.platform.startswith("linux"):
-    # the service ends when the editor does, even if the editor crashes: it keeps
-    # listening for a new client after each run, and holds the GIL, so it cannot check
-    # whether the editor is still there
+    # the kernel also ends the service when the editor does
     try:
         import ctypes
         import signal

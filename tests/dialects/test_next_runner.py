@@ -522,43 +522,151 @@ def test_real_runner_service(qtbot, tmp_path):
         thread.wait(10000)
 
 
-@pytest.mark.skipif(
-    not os.environ.get("PYWR_NEXT_PYTHON") or not sys.platform.startswith("linux"),
-    reason="needs PYWR_NEXT_PYTHON and Linux",
-)
-def test_service_ends_with_the_editor(tmp_path):
-    """
-    Tests that the real service does not stay running when the process that started
-    it exits, which would happen if the editor crashed: the service keeps listening
-    for a new client after each run.
-    """
-    import subprocess
+# the part of the service program that is specific to Linux is removed to test what the
+# other platforms use
+WATCHDOG_ONLY = protocol.SERVER_SNIPPET.replace('sys.platform.startswith("linux")', "False")
+
+LONG_RUN_MODEL = """
+{"metadata": {"title": "long"},
+ "time": {"start": "1700-01-01", "end": "2400-12-31",
+          "timestep": {"type": "Days", "days": 1}},
+ "network": {"nodes": [
+   {"meta": {"name": "in"}, "type": "Input", "max_flow": {"type": "Literal", "value": 5}},
+   {"meta": {"name": "out"}, "type": "Output", "max_flow": {"type": "Literal", "value": 3},
+    "cost": {"type": "Literal", "value": -10}}],
+  "edges": [{"from_node": "in", "to_node": "out"}]}}
+"""
+
+
+def is_alive(pid: int) -> bool:
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
+    except (FileNotFoundError, ProcessLookupError):
+        return False
+
+
+def wait_until_gone(pid: int, seconds: float = 8) -> bool:
     import time
 
-    python = os.environ["PYWR_NEXT_PYTHON"]
-    parent = (
-        "import subprocess, sys, time\n"
-        f"p = subprocess.Popen([{python!r}, '-c', {protocol.SERVER_SNIPPET!r}, "
-        "'pywr-editor-test-orphan'], stdout=subprocess.DEVNULL, "
-        "stderr=subprocess.DEVNULL)\n"
-        "time.sleep(3)\n"  # let the service start
-        "print(p.pid, flush=True)\n"
-    )
-    output = subprocess.run(
-        [sys.executable, "-c", parent], capture_output=True, text=True, timeout=60
-    )
-    pid = int(output.stdout.strip())
-
-    def is_running() -> bool:
-        try:
-            return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
-        except FileNotFoundError:
-            return False
-
-    deadline = time.time() + 5
-    while is_running() and time.time() < deadline:
+    deadline = time.time() + seconds
+    while is_alive(pid) and time.time() < deadline:
         time.sleep(0.1)
-    still_running = is_running()
-    if still_running:
+    gone = not is_alive(pid)
+    if not gone:
         os.kill(pid, 9)
-    assert not still_running
+    return gone
+
+
+EDITOR = """
+import json, os, socket, subprocess, sys, time
+from pywr_editor.dialects.next import runner_protocol as P
+
+python, snippet, name, run = sys.argv[1:5]
+# the editor keeps the standard input of the service open, as QProcess does
+service = subprocess.Popen([python, "-c", snippet, name], stdin=subprocess.PIPE,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+print(service.pid, flush=True)
+if run == "idle":
+    time.sleep(120)
+sock = None
+for _ in range(300):
+    sock = socket.socket(socket.AF_UNIX)
+    try:
+        sock.connect("\\0" + name)
+        break
+    except OSError:
+        sock.close()
+        time.sleep(0.1)
+decoder = P.FrameDecoder()
+
+def read():
+    sock.settimeout(60)
+    while True:
+        messages = decoder.push(sock.recv(1 << 20))
+        if messages:
+            return messages
+
+def kinds(messages):
+    return [m.get("payload", m).get("type") for m in messages]
+
+sock.sendall(P.encode_frame(P.hello(["solver:clp"])))
+accepted = read()[0]
+session = P.ClientSession((accepted.get("payload") or accepted)["session_id"])
+sock.sendall(session.frame(P.initialise_command(
+    "long", json.loads(sys.argv[5]), sys.argv[6], sys.argv[6])))
+seen = []
+while "initialised" not in seen:
+    seen += kinds(read())
+sock.sendall(session.frame(P.run_to_end_command()))
+updates = 0
+while updates < 3:
+    updates += kinds(read()).count("update")
+print("running", flush=True)
+time.sleep(120)
+"""
+
+
+def start_editor(tmp_path, snippet: str, run: str):
+    """
+    Starts a process that acts as the editor: it starts the service and, when asked,
+    a long run. It returns when the service is busy.
+    :return: The editor process and the process id of the service.
+    """
+    import subprocess
+
+    python = os.environ["PYWR_NEXT_PYTHON"]
+    editor = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            EDITOR,
+            python,
+            snippet,
+            f"pywr-editor-test-{os.getpid()}-{run}",
+            run,
+            LONG_RUN_MODEL,
+            str(tmp_path),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).parents[2])},
+    )
+    service_pid = int(editor.stdout.readline())
+    if run == "busy":
+        assert editor.stdout.readline().strip() == "running"
+    else:
+        import time
+
+        time.sleep(2)  # let the service start
+    return editor, service_pid
+
+
+@pytest.mark.skipif(not os.environ.get("PYWR_NEXT_PYTHON"), reason="needs PYWR_NEXT_PYTHON")
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="needs Linux (/proc)")
+@pytest.mark.parametrize(
+    "snippet",
+    [protocol.SERVER_SNIPPET, WATCHDOG_ONLY],
+    ids=["linux", "other_platforms"],
+)
+@pytest.mark.parametrize("run", ["idle", "busy"])
+def test_service_ends_when_the_editor_is_killed(tmp_path, snippet, run):
+    """
+    Tests that the real service does not stay running when the process that started
+    it is killed, which would happen if the editor crashed: the service keeps
+    listening for a new client after each run. It must stop both when it waits for a
+    client and while it runs a model, with what the service uses on Linux and with
+    what is used on the other platforms.
+    """
+    import signal
+
+    editor, service_pid = start_editor(tmp_path, snippet, run)
+    try:
+        assert is_alive(service_pid)
+        editor.send_signal(signal.SIGKILL)
+        editor.wait()
+        assert wait_until_gone(service_pid)
+    finally:
+        if editor.poll() is None:
+            editor.kill()
+        if is_alive(service_pid):
+            os.kill(service_pid, 9)

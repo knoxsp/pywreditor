@@ -3,8 +3,8 @@
 This is the working record of the work Claude has done in this repository to make the
 pywr v1 editor edit pywr-next (pywr 2.x) models. **Read it before starting work, so the
 codebase does not have to be re-read.** Update it in every commit (see "Rules for every
-commit"). Last updated for commit `caba1b8` plus the uncommitted work listed under
-"Pending".
+commit"). Last updated for the watchdog commit (see the end of section 9). Nothing is pending
+unless section 8 says so.
 
 ## 1. Goal and approach
 
@@ -44,6 +44,7 @@ own work. The geographic view feature has its own memory note.
 | Running is via the stepping runner service, and the editor must be able to step (#37) | User | `dialects/next/runner.py` |
 | Priorities order: #39, #32, "#53", #38, #31, #40. "#53" does not exist; Claude took it as #35 and said so | User, 2026-11-09 | commits below |
 | Results of pywr-next runs are converted to the v1 results folder format so the existing viewer reads them | Claude | `dialects/next/results.py` |
+| The runner service ends with the editor on every platform through a stdin watchdog (the editor keeps the pipe open) plus `PR_SET_PDEATHSIG` on Linux | Claude, with the user's go-ahead 2026-11-10 | `runner_protocol.SERVER_SNIPPET` |
 | Unplaced nodes use their geographic position, projected like the geographic view | Claude (issue #46 proposal) | `schematic/schematic.py` `draw()` |
 
 Still open: #24 (read-only multi-network), #43 (crash root cause), #45 (bundle uv),
@@ -118,9 +119,13 @@ environment's Python in subprocesses; the editor never imports pywr-next.
 ## 7. Known issues and open threads
 
 - **#43 crash (unexplained part).** Rare SIGSEGV in `tests/conftest.py`
-  `delete_windows_after_test` at `app.topLevelWidgets()` (freed widget still registered).
-  Seen 2026-11-09 12:01 and 2026-11-10 14:54. Not reproduced in 4 further verbose full
-  runs. The QThread-deletion abort part is fixed (`caba1b8`).
+  `delete_windows_after_test` at `app.topLevelWidgets()` (freed widget still registered;
+  the first widget walk after a test is probably where earlier heap damage shows up).
+  Seen 2026-11-09 12:01 and 2026-11-10 14:54, both in full runs. Across the 15 full runs
+  since the thread fix (6 + 1 crashed + 8 verbose) it happened once; the 8 verbose runs
+  (`-v`, so a crash names its test) were all clean. If it happens again, keep the whole
+  log (no `tail`) and the dump, and look at the test named on the last line and the one
+  before it. The QThread-deletion abort part is fixed (`caba1b8`). Issue #43 stays open.
 - Closing the window during a pywr v1 run only calls `worker.kill()` and does not wait for
   the thread (pywr-next waits in `NextRunWorker.shutdown()`).
 - Left undone on purpose: Python aggregation functions in outputs are not editable;
@@ -130,13 +135,7 @@ environment's Python in subprocesses; the editor never imports pywr-next.
 
 ## 8. Pending (uncommitted) work
 
-- Stdin watchdog for the runner service (#47): `SERVER_SNIPPET` in
-  `dialects/next/runner_protocol.py` exits when stdin closes; QProcess keeps the pipe open
-  and the OS closes it when the editor dies. New tests in
-  `tests/dialects/test_next_runner.py` (`test_service_ends_when_the_editor_is_killed`,
-  Linux snippet and the other-platforms variant, idle and mid-run; a plain `run_server`
-  survives, so the tests discriminate). Only testable on Linux here. Waiting on the crash
-  hunt before committing.
+Nothing.
 
 ## 9. Commit log with decisions
 
@@ -222,14 +221,26 @@ the decisions or facts that are not obvious from the diff.
   The thread is now deleted from its own `finished` signal. Regression test runs a real
   `RunWidget` with a slow worker in a subprocess.
 
-- (this commit, hash to be added next time) docs: this file and `CLAUDE.md`. Decided with the
+- `5b1f587` docs: this file and `CLAUDE.md`. Decided with the
   user: the log lives in the repo on the branch (so it travels with the work and is loaded
   through `CLAUDE.md`), with a pointer in Claude's memory; every commit must update it.
   The stdin watchdog (section 8) was deliberately left out of this commit.
 
+- (this commit, hash to be added next time) #47: the runner service stops when the editor
+  dies. `SERVER_SNIPPET` starts a daemon thread that reads stdin and calls `os._exit(0)` on
+  end-of-file; QProcess keeps the service's stdin pipe open and the OS closes it when the
+  editor ends, so it needs no OS-specific call (Windows and macOS are untested here;
+  Linux keeps `PR_SET_PDEATHSIG` as well). Tested on the real service, idle and while it
+  runs a long model: a plain `run_server` survives the editor being killed, the snippet
+  does not. This corrects the earlier claim in #47 that the GIL prevents a watchdog thread
+  (it does not, also mid-run). The old lifetime test let the service inherit pytest's
+  stdin (immediate end-of-file), so it could pass without proving anything; the new tests
+  hold a real pipe. Stray `run_server` processes found earlier were from probe scripts
+  that bypassed the snippet, not from the editor.
+
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
-own hash, so write the entry with the commit title and fill in the hash in the next commit.
+own hash, so write the entry as "(this commit)" and fill in the hash in the next commit.
 
 ## 10. Rules for every commit
 
