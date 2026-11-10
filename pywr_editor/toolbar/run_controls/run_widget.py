@@ -168,6 +168,10 @@ class RunWidget(QWidget):
             return False
         self.worker = worker
         self.thread = QThread(self)
+        # the thread is deleted when it has really ended, not when the worker reports
+        # it finished: the worker can still be in the thread, and Qt aborts the
+        # application if a running thread is deleted
+        self.thread.finished.connect(self.thread.deleteLater)
         self.worker.moveToThread(self.thread)
 
         # noinspection PyUnresolvedReferences
@@ -209,8 +213,7 @@ class RunWidget(QWidget):
         self.is_running = False
         self.run_status_changed.emit(False)
 
-        self.thread.exit()
-        self.thread.deleteLater()
+        self.thread.quit()
 
         self.run_button.setEnabled(True)
         self.run_to_button.setEnabled(True)
