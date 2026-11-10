@@ -1,3 +1,5 @@
+import json as json_module
+import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -172,6 +174,80 @@ class NextDialect(ModelDialect):
             and all(isinstance(node, dict) and "meta" in node for node in nodes)
         )
 
+    @staticmethod
+    def show_network(model: "ModelConfig") -> bool:
+        """
+        Replaces the dictionary of a multi-network model with a single-network model
+        that has one of its networks, so that the network can be shown on the
+        schematic. The model is read-only: the file has the networks and the transfers
+        between them, which the editor does not know how to write.
+        :param model: The model configuration with the loaded dictionary.
+        :return: True if the network is loaded, False (and the error is set in the
+        model) if not.
+        """
+        import copy
+
+        from pywr_editor.model.constants import Constants
+
+        original = model.json
+        entries = [n for n in original["networks"] if isinstance(n, dict)]
+        names = [str(n.get("name")) for n in entries]
+        model.network_names = names
+        if not entries:
+            model.load_error = 'The "networks" of the model is empty'
+            return False
+        if model.network is None:
+            model.network = names[0]
+        if model.network not in names:
+            model.load_error = f'The model has no network "{model.network}"'
+            return False
+        entry = entries[names.index(model.network)]
+        network = entry.get("network")
+        where = "inline"
+        if isinstance(network, str):
+            where = network
+            path = os.path.join(os.path.dirname(os.path.abspath(model.json_file)), network)
+            try:
+                with open(path) as file:
+                    network = json_module.load(file)
+            except Exception as e:
+                model.load_error = (
+                    f'The network "{model.network}" cannot be read from "{network}":'
+                    f"\n\n{type(e).__name__}: {e}"
+                )
+                return False
+        if not isinstance(network, dict):
+            model.load_error = f'The network "{model.network}" is not an object'
+            return False
+        # a network in its own file may be wrapped as in a single-network model
+        if isinstance(network.get("network"), dict):
+            network = network["network"]
+
+        view = {
+            key: copy.deepcopy(original[key])
+            for key in ("metadata", "time", "scenarios")
+            if key in original
+        }
+        view["network"] = copy.deepcopy(network)
+        if Constants.EDITOR_CONFIG_KEY.value in original:
+            view[Constants.EDITOR_CONFIG_KEY.value] = original[
+                Constants.EDITOR_CONFIG_KEY.value
+            ]
+        transfers = entry.get("transfers") or []
+        incoming = ", ".join(
+            f'"{t.get("name")}" from "{t.get("from_network")}"'
+            for t in transfers
+            if isinstance(t, dict)
+        )
+        model.json = view
+        model.read_only = True
+        model.read_only_note = (
+            f'Network "{model.network}" ({where}) of a model with {len(entries)} '
+            "networks: read-only. The time domain, scenarios and transfers are in "
+            f"the model file. Transfers into this network: {incoming or 'none'}"
+        )
+        return True
+
     def empty_model(self) -> dict:
         """
         Returns the dictionary of a new empty pywr-next model.
@@ -210,12 +286,11 @@ class NextDialect(ModelDialect):
 
         json = model.json
         if self.is_multi_network(json):
-            model.load_error = (
-                "This is a pywr-next model with several networks. The editor cannot "
-                + "open these models yet"
-            )
-            return
-        if self.is_network_file(json):
+            # the network is shown on the schematic, but cannot be changed (#24)
+            if not self.show_network(model):
+                return
+            json = model.json
+        elif self.is_network_file(json):
             model.load_error = (
                 "This file has a pywr-next network that is part of a model with "
                 + "several networks. Open the model file instead"

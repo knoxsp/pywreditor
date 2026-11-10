@@ -156,7 +156,7 @@ class SchematicLegend(QFrame):
         :param pos: The position, in row coordinates.
         :return: None
         """
-        if self.schematic.app.is_model_running:
+        if self.schematic.app.editing_locked:
             return
         menu = ContextualMenu()
         menu.set_title(group["label"])

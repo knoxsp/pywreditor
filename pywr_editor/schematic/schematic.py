@@ -1160,7 +1160,7 @@ class Schematic(QGraphicsView):
                 "Switch to the geographic view to estimate the node positions", 5000
             )
             return
-        if getattr(self.app, "is_model_running", False):
+        if getattr(self.app, "editing_locked", False):
             return
 
         names, known = [], {}
@@ -1214,7 +1214,7 @@ class Schematic(QGraphicsView):
                 "Switch to the schematic view to lay out the nodes", 5000
             )
             return
-        if getattr(self.app, "is_model_running", False):
+        if getattr(self.app, "editing_locked", False):
             return
 
         names = [item.name for item in self.node_items.values()]
@@ -1744,6 +1744,15 @@ class Schematic(QGraphicsView):
         else:
             self.app.statusBar().showMessage("Schematic export aborted")
 
+    def set_read_only(self) -> None:
+        """
+        Locks the nodes of a read-only model, so that they cannot be moved.
+        :return: None
+        """
+        for item in self.items():
+            if isinstance(item, (SchematicNode, AbstractSchematicShape)):
+                item.setFlag(QGraphicsItem.ItemIsMovable, False)
+
     def set_run_mode(self, enable: bool) -> None:
         """
         Enables the run mode when the model is running.
@@ -1763,7 +1772,8 @@ class Schematic(QGraphicsView):
                     item.setFlag(QGraphicsItem.ItemIsSelectable, False)
 
                     # draw new tooltip with the live values of the model
-                    model = self.app.run_widget.worker.pywr_model
+                    worker = self.app.run_widget.worker
+                    model = None if worker is None else worker.pywr_model
                     if model is None:
                         # the model is run by another process (pywr-next): its
                         # values are not available, so the tooltip is not changed

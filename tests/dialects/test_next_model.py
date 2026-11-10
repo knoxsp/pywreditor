@@ -262,11 +262,8 @@ def test_structure_errors(tmp_path, change, message):
     assert message in model.load_error
 
 
-@pytest.mark.parametrize(
-    "file, message",
-    [("multi1/model.json", "several networks"), ("multi1/network1.json", "Open")],
-)
-def test_multi_network_not_loaded(file, message):
-    model = ModelConfig(str(NEXT_MODELS / file))
+def test_network_file_of_a_multi_network_model_is_not_loaded():
+    """The model file must be opened: it has the time domain and the transfers."""
+    model = ModelConfig(str(NEXT_MODELS / "multi1/network1.json"))
     assert model.dialect.key == "next"
-    assert message in model.load_error
+    assert "Open" in model.load_error

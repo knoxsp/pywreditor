@@ -521,7 +521,7 @@ class ComponentsTree(QTreeWidget):
         :return: None
         """
         # disable menu if model is running
-        if self.parent.is_model_running:
+        if self.parent.editing_locked:
             return
 
         item = self.itemAt(pos)

@@ -18,6 +18,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
+    QInputDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QWidget,
@@ -63,6 +65,17 @@ from pywr_editor.utils import (
 )
 
 
+class LockableUndoStack(QUndoStack):
+    """An undo stack that ignores new commands when it is locked (a read-only model)."""
+
+    locked = False
+
+    def push(self, command) -> None:
+        if self.locked:
+            return
+        super().push(command)
+
+
 class MainWindow(QMainWindow):
     warning_info_message = Signal(str, str, str)
     """ Signal emitted when a warning message is generated """
@@ -79,12 +92,19 @@ class MainWindow(QMainWindow):
     ]
     """ List of class attributes pointing to widgets whose geometry must be saved """
 
-    def __init__(self, model_file: str | None = None, new_dialect: str = "v1"):
+    def __init__(
+        self,
+        model_file: str | None = None,
+        new_dialect: str = "v1",
+        network: str | None = None,
+    ):
         """
         Initialises the editor.
         :param model_file: The path to the model file. Ignore this to start
         a new empty model.
         :param new_dialect: The dialect of a new empty model ("v1" or "next").
+        :param network: The network of a pywr-next model with several networks to
+        show (read-only). If None, the user is asked.
         """
         super().__init__()
         self.logger = Logging().logger(self.__class__.__name__)
@@ -110,7 +130,19 @@ class MainWindow(QMainWindow):
 
         # load configurations
         self.model_file = model_file
-        self.model_config = ModelConfig(model_file, new_dialect=new_dialect)
+        self.model_config = ModelConfig(
+            model_file, new_dialect=new_dialect, network=network
+        )
+        if (
+            network is None
+            and self.model_config.read_only
+            and len(self.model_config.network_names) > 1
+        ):
+            choice = self.ask_network(self.model_config.network_names)
+            if choice is not None and choice != self.model_config.network:
+                self.model_config = ModelConfig(
+                    model_file, new_dialect=new_dialect, network=choice
+                )
         # Show error if the JSON file does not load
         load_error = self.model_config.load_error
         if load_error is None and not self.model_config.dialect.can_open:
@@ -133,7 +165,10 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         # noinspection PyUnresolvedReferences
         self.timer.timeout.connect(self.listen_for_changes)
-        self.timer.start(3000)
+        # the dictionary of a read-only model is a view of the file, which would
+        # always look changed
+        if not self.model_config.read_only:
+            self.timer.start(3000)
 
         self.editor_settings = Settings(model_file)
         # store recent files
@@ -195,7 +230,7 @@ class MainWindow(QMainWindow):
         self.console_panel.hide()
 
         # Actions
-        self.undo_stack = QUndoStack(self)
+        self.undo_stack = LockableUndoStack(self)
         self.app_actions = Actions(window=self)
         Theme.on_change(self, lambda w: w.app_actions.refresh_icons())
         self.register_model_actions()
@@ -232,13 +267,89 @@ class MainWindow(QMainWindow):
         self.validation_dialog: ValidationDialog | None = None
         self.run_widget.run_status_changed.connect(self.on_model_run)
 
+        if self.model_config.read_only:
+            self.lock_read_only()
+
+    @property
+    def is_read_only(self) -> bool:
+        """
+        Whether the model is shown but cannot be changed (a network of a model with
+        several networks).
+        """
+        return self.model_config.read_only
+
+    @property
+    def editing_locked(self) -> bool:
+        """
+        Whether the model cannot be edited now: it is running or it is read-only.
+        """
+        return self.is_model_running or self.is_read_only
+
+    def ask_network(self, names: list[str]) -> str | None:
+        """
+        Asks which network of a model with several networks to show.
+        :param names: The names of the networks.
+        :return: The name, or None if the user cancelled.
+        """
+        name, ok = QInputDialog.getItem(
+            self,
+            "Choose a network",
+            "This model has several networks. The editor shows one network at a "
+            "time, and it cannot change them yet. Which network do you want to see?",
+            names,
+            0,
+            False,
+        )
+        return name if ok else None
+
+    def edit_action_keys(self) -> list[str]:
+        """
+        Returns the keys of the actions that change the model or need it to be idle.
+        """
+        return [
+            *[kind.action_key for kind in self.model_config.dialect.component_kinds()],
+            "edit-metadata",
+            "edit-imports",
+            "edit-slots",
+            "validate-model",
+            "find-orphaned-nodes",
+            "find-orphaned-parameters",
+            "toggle-geo-view",
+            "auto-layout",
+            "infer-geo-positions",
+            "manage-gis-layers",
+        ]
+
+    def lock_read_only(self) -> None:
+        """
+        Locks the window of a read-only model: nothing that changes the model can be
+        started, and the model cannot be saved or run.
+        :return: None
+        """
+        self.undo_stack.locked = True
+        for action_name in [*self.edit_action_keys(), "save-model"]:
+            self.app_actions.get(action_name).setDisabled(True)
+        # noinspection PyTypeChecker
+        self.toolbar.findChild(SchematicItemsLibrary).setDisabled(True)
+        self.run_widget.setDisabled(True)
+        self.time_stepper.set_running(True)
+        self.map_settings.setDisabled(True)
+        self.schematic.set_read_only()
+        label = QLabel(self.model_config.read_only_note or "Read-only")
+        label.setToolTip(label.text())
+        self.statusBar().addPermanentWidget(label)
+
     def closeEvent(self, event: PySide6.QtGui.QCloseEvent) -> None:
         """
         Prompt whether to save the model and saves the widgets' geometry and state.
         :param event: The event being triggered.
         :return: None
         """
-        if self.model_config.has_changes is False or self.maybe_save():
+        if (
+            self.model_config.read_only
+            or self.model_config.has_changes is False
+            or self.maybe_save()
+        ):
             self.editor_settings.save_window_attributes(self)
         else:
             # the user cancelled or the model could not be saved: keep the window
@@ -1004,6 +1115,8 @@ class MainWindow(QMainWindow):
             title = (
                 f"{self.model_config.title} - {self.model_config.file.file_name}"
                 + (f" ({folder})" if folder else "")
+                + (f" - network {self.model_config.network}, read-only"
+                   if self.model_config.read_only else "")
             )
         else:
             title = f"New empty {self.model_config.dialect.label} model"
@@ -1392,20 +1505,7 @@ class MainWindow(QMainWindow):
         self.is_model_running = is_running
 
         # disable toolbar buttons
-        to_disable = [
-            *[kind.action_key for kind in self.model_config.dialect.component_kinds()],
-            "edit-metadata",
-            "edit-imports",
-            "edit-slots",
-            "validate-model",
-            "find-orphaned-nodes",
-            "find-orphaned-parameters",
-            "toggle-geo-view",
-            "auto-layout",
-            "infer-geo-positions",
-            "manage-gis-layers",
-        ]
-        for action_name in to_disable:
+        for action_name in self.edit_action_keys():
             self.app_actions.get(action_name).setDisabled(is_running)
 
         # disable the node library

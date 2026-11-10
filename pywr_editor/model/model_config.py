@@ -39,16 +39,30 @@ class ModelConfig(QObject):
     model_changed = Signal()
     """ Signal emitted when a change is applied to the model configuration """
 
-    def __init__(self, json_file: str | None = None, new_dialect: str = "v1"):
+    def __init__(
+        self,
+        json_file: str | None = None,
+        new_dialect: str = "v1",
+        network: str | None = None,
+    ):
         """
         Initialise the class.
         :param json_file: The path to the model file
         :param new_dialect: The dialect of a new model, when there is no model file
         ("v1" or "next"). The dialect of a model file is detected.
+        :param network: The name of the network to show when the model has several
+        networks (pywr-next). Default: the first one.
         """
         super().__init__()
         self.json_file = json_file
         self.new_dialect = new_dialect
+        self.network = network
+        self.read_only = False
+        """ A model that is shown but cannot be changed or saved """
+        self.network_names: list[str] = []
+        """ The networks of a multi-network model (see NextDialect.show_network) """
+        self.read_only_note: str | None = None
+        """ What a read-only model shows, for the user """
 
         # load the model
         self.json = dict()
@@ -520,6 +534,9 @@ class ModelConfig(QObject):
         Saves the model file, and the editor data in its sidecar file (see sidecar.py)
         :return: True if the file is successfully saved, the error message otherwise.
         """
+        if self.read_only:
+            # the model on the screen is a view of the file, which is not changed
+            return "This model is read-only: it cannot be saved"
         model, editor_data = split_model(self.json)
         # the sidecar is written first: if the model cannot be written, the sidecar
         # has the new editor data and the model keeps the old one, which the sidecar

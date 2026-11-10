@@ -37,7 +37,7 @@ own work. The geographic view feature has its own memory note.
 |---|---|---|
 | One editor with a dialect switch, not a fork | User, 2026-11-06 | `pywr_editor/dialects/` |
 | Positions live in `meta.position` (`schematic`, `geographic`). Put as much as possible in the pywr-next schema; only application data (shapes, map, GIS layers, GeoJSON footprint) stays in the sidecar (#21) | User | `dialects/next/model.py`, `model/sidecar.py` |
-| Multi-network models are refused for now (#24) | User | `dialects/next/__init__.py` load error |
+| Multi-network models: refused first, then opened read-only, one network at a time (#24) | User | `NextDialect.show_network`, `ModelConfig.read_only` |
 | The editor installs pywr-next into its own environment after a consent prompt that shows the location (#36) | User | `environments.py`, `dialogs/environments/` |
 | Python parameter code goes in an editor-managed `.py` file next to the model (`<model>_parameters.py`); inline code is to be proposed upstream (#39) | User | `dialects/next/python_code.py` |
 | Node colour, size and style go in `meta.tags` as `editor:*` keys (#44) | User | `model/editor_tags.py` |
@@ -49,7 +49,7 @@ own work. The geographic view feature has its own memory note.
 | Branch for all new work, including #48-#50: `pywr-next-dialect`, not branches off `dark-mode` (an earlier plan to build the v1 parts off `dark-mode` was dropped to avoid conflicts) | User, 2026-11-10 | issues #48-#50 |
 | Unplaced nodes use their geographic position, projected like the geographic view | Claude (issue #46 proposal) | `schematic/schematic.py` `draw()` |
 
-Still open: #24 (read-only multi-network), #43 (crash root cause), #45 (bundle uv),
+Still open: #24 (editing multi-network models, option 3), #43 (crash root cause), #45 (bundle uv),
 #47 (service lifetime on Windows/macOS), style profiles and model kinds from #44.
 
 ## 4. Architecture map
@@ -400,7 +400,7 @@ the decisions or facts that are not obvious from the diff.
   (`~/.config/pywr-editor.conf`) was cleaned by hand on 2026-11-10: tmp/test paths removed,
   backup in `~/pywr-editor.conf.bak-2026-11-10`; this is not part of the code.
 
-- (this commit, hash to be added next time) Bundle uv with the editor (#45), code and tests
+- 6026f68 Bundle uv with the editor (#45), code and tests
   only. `scripts/bundle_uv.py` downloads a pinned uv (0.13.7) for the platform, checks the
   SHA-256 written in the file (all six targets were downloaded and checked on 2026-11-10)
   and extracts the executable; `python build.py uv` puts it in `build/uv/`; `main.spec`
@@ -413,6 +413,26 @@ the decisions or facts that are not obvious from the diff.
   the PyInstaller build and the Windows installer were not run (Linux only, and a build is
   slow), so "the install works on a machine without uv" is untested: #45 stays open for it.
   Tests: `tests/test_bundle_uv.py` (15; the download test needs `PYWR_EDITOR_NETWORK_TESTS=1`).
+
+- (this commit, hash to be added next time) Open multi-network pywr-next models read-only
+  (#24, option 2 of the issue; replaces the refusal). `NextDialect.show_network()` replaces
+  the loaded dictionary with a single-network view (`metadata`, `time`, `scenarios` and the
+  chosen network, read from its file or inline) and sets `ModelConfig.read_only`,
+  `network`, `network_names` and `read_only_note` (the transfers into the network).
+  `MainWindow(network=...)` asks which network with a `QInputDialog` when it is not given
+  (cancel = first). Decisions: (1) safety first: `ModelConfig.save()` refuses when
+  read-only, so the view can never overwrite the model or network files (tests fail
+  without it, checked); no unsaved-changes prompt on close; the external-change timer is
+  off (the view never equals the file). (2) Locking reuses the run-mode guards:
+  `MainWindow.editing_locked` (= running or read-only) replaces `is_model_running` in the
+  schematic context menus, legend, node menu, auto-layout, geo estimate and the tree menu;
+  `LockableUndoStack` drops commands; edit actions, node library, run widget, map settings
+  and time stepper are disabled; nodes are not movable. (3) Not done: editing the networks
+  or transfers (option 3), a switcher inside the open window (reopen the file to choose
+  another network), the sidecar positions of the multi-network file are carried over but
+  not network-specific, running the model, and shapes can still be dragged in memory
+  (never saved). Tests: `tests/dialects/test_next_multi_network.py` (14); the old
+  "multi-network is refused" test now only checks the network file.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its

@@ -102,7 +102,8 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         # allow interaction
         self.setFlag(
             QGraphicsItem.ItemIsMovable,
-            self.view.editor_settings.is_schematic_locked is False,
+            self.view.editor_settings.is_schematic_locked is False
+            and not getattr(self.view.app, "is_read_only", False),
         )
         self.setFlag(QGraphicsItem.ItemIsSelectable)
         # enable notifications for position and transformation changes
@@ -491,7 +492,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :param event: The event being triggered.
         :return: None
         """
-        if self.view.app.is_model_running or self.view.connecting_node_props.enabled:
+        if self.view.app.editing_locked or self.view.connecting_node_props.enabled:
             return
 
         # keep a multiple selection when right-clicking one of its nodes
