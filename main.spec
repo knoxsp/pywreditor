@@ -41,6 +41,14 @@ if IS_WINDOWS:
 # PyInstaller hook so the folder ends up in the build (and in the macOS app bundle)
 metadata = [] if IS_WINDOWS else copy_metadata("pywr")
 
+# uv, which installs the pywr-next environment (see `python build.py uv`). It is put
+# next to the executable, where pywr_editor.environments.find_uv() looks for it
+uv_executable = Path("build/uv") / ("uv.exe" if IS_WINDOWS else "uv")
+if uv_executable.is_file():
+    binaries.append((str(uv_executable), "."))
+else:
+    print("WARNING: uv is not bundled: run `python build.py uv` before the build")
+
 a = Analysis(
     ["main.py"],
     binaries=binaries,

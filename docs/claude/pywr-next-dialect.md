@@ -389,7 +389,7 @@ the decisions or facts that are not obvious from the diff.
   put back it fails (checked), which answers the remark that it did not exercise the
   deferred deletion. Tests: `TestEdgesThatUseDifferentSlots` (5, fail without the fix).
 
-- (this commit, hash to be added next time) Closing the window during a pywr v1 run waits
+- d0756a0 Closing the window during a pywr v1 run waits
   for the worker thread (#43, the exit-time race named there). `RunWidget.wait_for_thread()`
   (quit + wait, at most 10 s, tolerates a thread Qt already deleted) is called by
   `MainWindow.closeEvent` after `worker.kill()`/`shutdown()`; before, only pywr-next runs
@@ -399,6 +399,20 @@ the decisions or facts that are not obvious from the diff.
   (child process; fails with the wait removed, checked). The user's real recent-files list
   (`~/.config/pywr-editor.conf`) was cleaned by hand on 2026-11-10: tmp/test paths removed,
   backup in `~/pywr-editor.conf.bak-2026-11-10`; this is not part of the code.
+
+- (this commit, hash to be added next time) Bundle uv with the editor (#45), code and tests
+  only. `scripts/bundle_uv.py` downloads a pinned uv (0.13.7) for the platform, checks the
+  SHA-256 written in the file (all six targets were downloaded and checked on 2026-11-10)
+  and extracts the executable; `python build.py uv` puts it in `build/uv/`; `main.spec`
+  adds it as a binary next to the executable (where `find_uv()` looks, `contents_directory
+  = "."`) and warns if it is missing; `windows_setup.iss` lists it (`skipifsourcedoesntexist`,
+  as the installer lists files one by one); `LEGAL NOTICES.md` has a uv entry (MIT or
+  Apache-2.0). Decisions: pin the checksums in the source (a changed download is refused,
+  not just compared with the file next to it on the same server); uv is not required for
+  the build to run (warning only), as the editor falls back to `uv` on the PATH. NOT done:
+  the PyInstaller build and the Windows installer were not run (Linux only, and a build is
+  slow), so "the install works on a machine without uv" is untested: #45 stays open for it.
+  Tests: `tests/test_bundle_uv.py` (15; the download test needs `PYWR_EDITOR_NETWORK_TESTS=1`).
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
