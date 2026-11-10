@@ -46,7 +46,7 @@ own work. The geographic view feature has its own memory note.
 | Results of pywr-next runs are converted to the v1 results folder format so the existing viewer reads them | Claude | `dialects/next/results.py` |
 | The runner service ends with the editor on every platform through a stdin watchdog (the editor keeps the pipe open) plus `PR_SET_PDEATHSIG` on Linux | Claude, with the user's go-ahead 2026-11-10 | `runner_protocol.SERVER_SNIPPET` |
 | Prevent invalid input using the schemas, in both versions: **block** only what is certain to break the schema or can never work; **warn** in the validation step on what is merely likely to cause trouble. Stricter than pywr v1 where needed; **dead links are not allowed**. Order: connections (#48), pywr-next forms (#49), v1 forms (#50) | User, 2026-11-10 | issues #48-#50 |
-| Branches for that work: the parts that do not need the dialect classes are built on a branch off `dark-mode` (which equals `main`, has no `dialects/`), then `dark-mode` is merged into `pywr-next-dialect` and the pywr-next parts are built there | User, 2026-11-10 | issues #48-#50 |
+| Branch for all new work, including #48-#50: `pywr-next-dialect`, not branches off `dark-mode` (an earlier plan to build the v1 parts off `dark-mode` was dropped to avoid conflicts) | User, 2026-11-10 | issues #48-#50 |
 | Unplaced nodes use their geographic position, projected like the geographic view | Claude (issue #46 proposal) | `schematic/schematic.py` `draw()` |
 
 Still open: #24 (read-only multi-network), #43 (crash root cause), #45 (bundle uv),
@@ -65,6 +65,16 @@ Dialects (`pywr_editor/dialects/`)
   `schema.py` (reads the bundled JSON Schema), `validation.py`, `references.py`
   (typed find/rename), `time_domain.py`, `scenarios.py`, `metric_sets.py`,
   `python_code.py`, `runner_protocol.py`, `runner.py`, `results.py`, `conversion.py`.
+
+Connection rules (#48): `model/connection_rules.py` is shared by both dialects and knows no
+format: `Role` (SOURCE, SINK, THROUGH, STORAGE), `Endpoint`, `check_connection()`,
+`find_edge_issues()`, `find_unrouted()`. Each dialect has a `node_roles` table (by lowercase
+type without the "node" suffix; a type not in it is not restricted) and
+`edge_issue_severity` (v1 "warning", next "error"); `ModelDialect.check_connection(model,
+source, target)` is used by the schematic (`SchematicNode.is_connectable()` and
+`connection_issue()`, `Schematic.on_connect_node_start/end()`); validation uses the same
+functions (`model/validation.py` `validate_connections()` and
+`dialects/next/validation.py` `validate_connections()`).
 
 Models: `model/model_config.py` (asks the dialect to `setup_model`),
 `model/schemas/pywr-next-model.schema.json` + `SOURCE-pywr-next.json` (bundled from pywr
@@ -105,6 +115,12 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   network-wide: "not part of any routes", "no valid routes". Probe scripts: the
   `next_probe.py`/`next_probe2.py` approach (build a valid Input->Link->Output chain, add
   one edge, `pywr.ModelSchema.from_json_string(...).build(".", None)`).
+- Node roles checked against the real packages (2026-11-10): pywr-next 2.0.0rc1 refuses an
+  edge into Input and Catchment and out of Output; Delay, Link, LossLink, PiecewiseLink,
+  PiecewiseStorage, Reservoir, River, RiverGauge, RiverSplitWithGauge, Storage, Turbine and
+  WaterTreatmentWorks accept both. Abstraction is not in a model that builds on its own, so
+  it is not in the role table (not restricted). For pywr v1 1.23.0 the 15 types of the table
+  match the classes (BaseInput, BaseOutput, Storage, others pass flow through).
 - Schema constraint counts: pywr-next has 41 `minimum`, 9 `maximum`, 14 `enum`, 177 `const`;
   pywr v1 has 20 `minimum`, 66 `enum` and, in the strict schema only, 41 `pattern`.
   The pywr-next forms use only `required`, enum and `minimum` today; the v1 forms are
@@ -129,7 +145,7 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   `--filter-files`.
 - Real test model: `/home/stephen/git/models/thames-adaptive/v2/` (62 nodes, only
   geographic positions). Use copies; do not commit it.
-- Current result: 3171 passed, 14 skipped (full suite, real-service tests on).
+- Current result: 3220 passed, 14 skipped (full suite, real-service tests on).
 
 ## 7. Known issues and open threads
 
@@ -141,10 +157,9 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   (`-v`, so a crash names its test) were all clean. If it happens again, keep the whole
   log (no `tail`) and the dump, and look at the test named on the last line and the one
   before it. The QThread-deletion abort part is fixed (`caba1b8`). Issue #43 stays open.
-- Planned (decided 2026-11-10, not started): #48 refuse dead/invalid edges and warn on doubtful
-  ones (stage A off `dark-mode`, stage B on `pywr-next-dialect`), #49 pywr-next forms
-  constrained by the schema, #50 v1 forms (blocked until the neutral checking code from #49 is
-  on `dark-mode`). Severity rule for existing models: dead/invalid edge = error for pywr-next,
+- Planned (decided 2026-11-10): #48 is implemented (see section 9; the issue closes when PR
+  #42 merges). Next: #49 pywr-next forms constrained by the schema, then #50 v1 forms, both on
+  `pywr-next-dialect`; #50 reuses the checking code built in #49. Severity rule for existing models: dead/invalid edge = error for pywr-next,
   warning for v1. No-route problems are warnings.
 - Closing the window during a pywr v1 run only calls `worker.kill()` and does not wait for
   the thread (pywr-next waits in `NextRunWorker.shutdown()`).
@@ -258,9 +273,23 @@ the decisions or facts that are not obvious from the diff.
   hold a real pipe. Stray `run_server` processes found earlier were from probe scripts
   that bypassed the snippet, not from the editor.
 
-- (this commit, hash to be added next time) docs: recorded the decisions for #48-#50
+- `3ec0032` docs: recorded the decisions for #48-#50
   (blocking vs warning policy, order, branch plan), the tested edge rules of pywr v1 and
   pywr-next, and the schema constraint counts. No code changed.
+
+- (this commit, hash to be added next time) #48: dead and invalid connections.
+  `model/connection_rules.py` (shared, format-free) plus a role table and
+  `edge_issue_severity` per dialect and `ModelDialect.check_connection()`. Blocked (never
+  created): out of an Output, into an Input/Catchment, self-loop, virtual end point,
+  duplicate. The schematic's connect mode only offers valid targets and explains when a node
+  can connect to nothing. Validation reports the same edges in existing models (error for
+  pywr-next, warning for v1) and warns about nodes that have edges but are on no route; nodes
+  with no edge are left to the existing "not connected" check. Decided while doing it:
+  Abstraction is not in the pywr-next table because no model with it builds on its own, so it
+  is unrestricted; a reverse edge (B->A when A->B exists) is not a duplicate, but the connect
+  mode still hides it as before. Contract tests: v1 roles against the pywr classes, pywr-next
+  roles against a real build (needs `PYWR_NEXT_PYTHON`; breaking a role makes it fail).
+  Single-branch decision recorded in section 3.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its

@@ -1,12 +1,19 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
+
+from pywr_editor.model.connection_rules import (
+    ConnectionIssue,
+    Endpoint,
+    Role,
+    check_connection,
+)
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QObject
     from PySide6.QtWidgets import QDialog, QWidget
 
-    from pywr_editor.model import ModelConfig
+    from pywr_editor.model import ModelConfig, NodeConfig
 
 """
  A dialect handles one model file format: pywr v1 or pywr-next. The editor detects
@@ -169,6 +176,69 @@ class ModelDialect(ABC):
 
     supports_custom_nodes: bool = False
     """ Whether models can have custom node types imported from Python files """
+
+    node_roles: dict[str, Role] = {}
+    """ The role of the node types in the connection rules, by lowercase type without
+    the "node" suffix. A type that is not here is not restricted """
+
+    edge_issue_severity: Literal["error", "warning"] = "warning"
+    """ How the validation reports an edge that is not allowed in an existing model.
+    The editor never lets the user add one. It is an error if the model cannot be
+    loaded by the runtime, a warning if the runtime accepts it """
+
+    def connection_endpoint(self, node: "NodeConfig") -> Endpoint:
+        """
+        Describes a node for the connection rules.
+        :param node: The node.
+        :return: The end point.
+        """
+        return Endpoint(
+            name=node.name,
+            role=self.node_roles.get(node.key or ""),
+            virtual=node.is_virtual,
+            label=self.node_type_label(node),
+        )
+
+    def node_type_label(self, node: "NodeConfig") -> str:
+        """
+        Returns the type of a node as shown in messages.
+        :param node: The node.
+        :return: The type, such as "Output".
+        """
+        return node.humanised_type
+
+    def connection_endpoints(self, model: "ModelConfig") -> dict[str, Endpoint]:
+        """
+        Describes the nodes of a model for the connection rules.
+        :param model: The model.
+        :return: The end points by node name.
+        """
+        endpoints = {}
+        for props in model.nodes.get_all():
+            node = model.nodes.node(props)
+            if node.name is not None:
+                endpoints[node.name] = self.connection_endpoint(node)
+        return endpoints
+
+    def check_connection(
+        self, model: "ModelConfig", source_name: str, target_name: str
+    ) -> ConnectionIssue | None:
+        """
+        Checks whether an edge between two nodes of the model can be added.
+        :param model: The model.
+        :param source_name: The name of the node the edge starts from.
+        :param target_name: The name of the node the edge goes to.
+        :return: The reason it cannot be added, or None if it can.
+        """
+        source = model.nodes.config(source_name, as_dict=False)
+        target = model.nodes.config(target_name, as_dict=False)
+        if source is None or target is None:
+            return None
+        return check_connection(
+            self.connection_endpoint(source),
+            self.connection_endpoint(target),
+            model.edges.records(),
+        )
 
     def node_shape_name(self, node_type: str) -> str:
         """

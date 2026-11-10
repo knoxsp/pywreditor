@@ -373,9 +373,22 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
                 and not connected_node.model_node.is_virtual
                 and self not in connected_node.connected_nodes["source_nodes"]
                 and self not in connected_node.connected_nodes["target_nodes"]
+                # the rules of the model format, such as that nothing can be
+                # connected to an Input
+                and self.connection_issue(connected_node) is None
             )
         else:
             return not self.model_node.is_virtual
+
+    def connection_issue(self, source_node: "SchematicNode"):
+        """
+        Checks whether an edge from another node to this one is allowed.
+        :param source_node: The node the edge starts from.
+        :return: The reason the edge is not allowed (a ConnectionIssue), or None if
+        it is.
+        """
+        model = self.view.app.model_config
+        return model.dialect.check_connection(model, source_node.name, self.name)
 
     def delete_edge(
         self, node_name: str, edge_type: Literal["source", "target"]

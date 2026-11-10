@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from pywr_editor.dialects.base import ComponentKind, ModelDialect
+from pywr_editor.model.connection_rules import Role
 from pywr_editor.model.constants import Constants
 
 if TYPE_CHECKING:
@@ -93,6 +94,27 @@ class V1Dialect(ModelDialect):
         ]
     )
     supports_custom_nodes = True
+    node_roles = {
+        **dict.fromkeys(["input", "catchment"], Role.SOURCE),
+        "output": Role.SINK,
+        **dict.fromkeys(["storage", "reservoir"], Role.STORAGE),
+        **dict.fromkeys(
+            [
+                "link",
+                "river",
+                "rivergauge",
+                "riversplit",
+                "riversplitwithgauge",
+                "piecewiselink",
+                "multisplitlink",
+                "losslink",
+                "breaklink",
+                "delay",
+            ],
+            Role.THROUGH,
+        ),
+    }
+    edge_issue_severity = "warning"
 
     def validate_model(
         self, model: "ModelConfig", include_orphans: bool = True

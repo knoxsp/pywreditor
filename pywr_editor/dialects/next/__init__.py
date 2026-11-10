@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from pywr_editor.dialects.base import ComponentKind, ModelDialect
+from pywr_editor.model.connection_rules import Role
 
 if TYPE_CHECKING:
     from pywr_editor.model import ModelConfig
@@ -99,6 +100,33 @@ class NextDialect(ModelDialect):
     label = "pywr-next"
     time_key = "time"
     features = frozenset(["node-dialog", "run", "run-results", "metric-sets"])
+    node_roles = {
+        **dict.fromkeys(["input", "catchment"], Role.SOURCE),
+        "output": Role.SINK,
+        **dict.fromkeys(["storage", "reservoir", "piecewisestorage"], Role.STORAGE),
+        **dict.fromkeys(
+            [
+                "link",
+                "river",
+                "rivergauge",
+                "riversplitwithgauge",
+                "losslink",
+                "piecewiselink",
+                "delay",
+                "watertreatmentworks",
+                "turbine",
+            ],
+            Role.THROUGH,
+        ),
+    }
+    """ Checked against pywr-next 2.0.0rc1 by tests. "Abstraction" is not here: it is
+    not in the pywr-next test models, so its role was not checked """
+    edge_issue_severity = "error"
+
+    def node_type_label(self, node) -> str:
+        from pywr_editor.dialects.next.model import humanise_type
+
+        return humanise_type(node.props.get("type"))
 
     @classmethod
     def detect(cls, model_json: Any) -> bool:

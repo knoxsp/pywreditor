@@ -1854,6 +1854,21 @@ class Schematic(QGraphicsView):
         command = DeleteItemCommand(schematic=self, selected_items=items)
         self.app.undo_stack.push(command)
 
+    def no_connection_message(self, node: "SchematicNode") -> str:
+        """
+        Explains why a node cannot be connected to any other node.
+        :param node: The node.
+        :return: The message.
+        """
+        model = self.model_config
+        for item in self.items():
+            if isinstance(item, SchematicNode) and item != node:
+                issue = model.dialect.check_connection(model, node.name, item.name)
+                # the reasons that depend on the node, not on the other node
+                if issue is not None and issue.kind in ("from_sink", "virtual"):
+                    return issue.message
+        return f'"{node.name}" is already connected to every node it can be connected to'
+
     @Slot(SchematicNode)
     def on_connect_node_start(self, node: "SchematicNode") -> None:
         """
@@ -1861,6 +1876,18 @@ class Schematic(QGraphicsView):
         :param node: The node where the new edge needs to start.
         :return: None
         """
+        # do not start if there is nothing the node can be connected to
+        candidates = [
+            item
+            for item in self.items()
+            if isinstance(item, SchematicNode)
+            and item != node
+            and item.is_connectable(node)
+        ]
+        if not candidates:
+            self.app.statusBar().showMessage(self.no_connection_message(node), 10000)
+            return
+
         self.connecting_node_props.enabled = True
         self.connecting_node_props.source_node = node
         self.viewport().setCursor(Qt.CrossCursor)
@@ -1914,7 +1941,12 @@ class Schematic(QGraphicsView):
 
         # create the new edge if the target mode is available (this may be False or
         # None when the connection is aborted)
-        if target_node:
+        issue = (
+            target_node.connection_issue(source_node) if target_node else None
+        )
+        if issue is not None:
+            self.app.statusBar().showMessage(issue.message, 10000)
+        elif target_node:
             command = ConnectNodeCommand(
                 schematic=self,
                 source_node_name=source_node.name,

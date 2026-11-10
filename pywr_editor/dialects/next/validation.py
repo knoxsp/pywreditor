@@ -6,6 +6,12 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from pywr_editor.model.connection_rules import (
+    Endpoint,
+    find_edge_issues,
+    find_unrouted,
+)
+from pywr_editor.model.edges import EdgeRecord
 from pywr_editor.model.validation import Diagnostic, _leaf_error, _shorten
 
 """
@@ -167,6 +173,102 @@ def validate_network(model: dict) -> list[Diagnostic]:
                     path=("network", "edges", ei),
                 )
             )
+    diagnostics += validate_connections(model)
+    return diagnostics
+
+
+def connection_endpoints(network: dict) -> dict[str, Endpoint]:
+    """
+    Describes the nodes of a network for the connection rules.
+    :param network: The "network" dictionary.
+    :return: The end points by node name. Virtual nodes are included.
+    """
+    from pywr_editor.dialects.next import NextDialect
+    from pywr_editor.dialects.next.model import humanise_type
+
+    endpoints = {}
+    for item in _components(network, "nodes"):
+        name = component_name(item)
+        if name is None or not isinstance(item, dict):
+            continue
+        node_type = item.get("type") if isinstance(item.get("type"), str) else None
+        endpoints[name] = Endpoint(
+            name=name,
+            role=NextDialect.node_roles.get((node_type or "").lower()),
+            label=humanise_type(node_type),
+        )
+    for item in _components(network, "virtual_nodes"):
+        name = component_name(item)
+        if name is not None:
+            endpoints[name] = Endpoint(name=name, role=None, virtual=True)
+    return endpoints
+
+
+def network_edges(network: dict) -> list[EdgeRecord]:
+    """
+    Returns the edges of a network as records. Edges that are not valid are skipped.
+    :param network: The "network" dictionary.
+    :return: The edge records.
+    """
+    return [
+        EdgeRecord(
+            edge["from_node"], edge["to_node"], edge.get("from_slot"), edge.get("to_slot")
+        )
+        for edge in _components(network, "edges")
+        if isinstance(edge, dict)
+        and isinstance(edge.get("from_node"), str)
+        and isinstance(edge.get("to_node"), str)
+    ]
+
+
+def validate_connections(model: dict) -> list[Diagnostic]:
+    """
+    Reports the edges that pywr-next refuses (into an Input, out of an Output, a
+    duplicate) and, as warnings, the nodes that are on no route from a source to a
+    sink. Self-loops, virtual nodes and missing nodes are reported by
+    validate_network().
+    :param model: The model dictionary.
+    :return: The list of diagnostics.
+    """
+    network = model.get("network")
+    if not isinstance(network, dict):
+        return []
+    endpoints = connection_endpoints(network)
+    edges = network_edges(network)
+    # the indexes of the records are the indexes of the valid edges in the list
+    positions = [
+        i
+        for i, edge in enumerate(_components(network, "edges"))
+        if isinstance(edge, dict)
+        and isinstance(edge.get("from_node"), str)
+        and isinstance(edge.get("to_node"), str)
+    ]
+    diagnostics = []
+    for index, issue in find_edge_issues(endpoints, edges):
+        if issue.kind in ("self", "virtual"):
+            continue
+        diagnostics.append(
+            Diagnostic(
+                severity="error",
+                source="model",
+                message=issue.message,
+                path=("network", "edges", positions[index]),
+            )
+        )
+    node_index = {
+        component_name(n): i for i, n in enumerate(_components(network, "nodes"))
+    }
+    for name in find_unrouted(endpoints, edges):
+        diagnostics.append(
+            Diagnostic(
+                severity="warning",
+                source="model",
+                message=f'The node "{name}" is not on a route from a source (an Input, '
+                "a Catchment or a Storage) to a sink (an Output or a Storage)",
+                path=("network", "nodes", node_index.get(name, 0)),
+                component=("node", name),
+            )
+        )
     return diagnostics
 
 
