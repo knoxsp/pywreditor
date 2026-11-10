@@ -76,6 +76,11 @@ def friendly_message(error: Any) -> str:
         return f"The list must have at most {expected} item" + (
             "" if expected == 1 else "s"
         )
+    if validator == "required" and isinstance(error.instance, dict):
+        missing = [name for name in expected if name not in error.instance]
+        return ", ".join(f'"{name}"' for name in missing) + (
+            " is required" if len(missing) == 1 else " are required"
+        )
     if validator == "pattern":
         return f"{where} does not have the expected format"
     return _shorten(error.message)

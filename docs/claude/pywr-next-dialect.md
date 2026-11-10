@@ -89,6 +89,16 @@ references/files are also warnings in the validation dialog
 (`dialects/next/validation.py` `validate_references()`, `validate_files()`;
 `dialects/next/references.py` `existing_names()`, `missing_references()`).
 
+pywr v1 forms and the schema (#50): `dialects/v1/schema_check.py` `check_component(kind, old, new)`
+returns (errors, warnings) for "node", "parameter", "table" or "scenario". Errors = what the
+*standard* v1 schema rejects (certain: it reads a core node/parameter that does not match
+its type as a custom one, so it only finds what cannot be custom); warnings = what only
+the *strict* schema finds. Both only for what the edit introduced. `Form` has `schema_kind`,
+`schema_component(form_data) -> (before, after)` and `check_schema()`, run at the end of
+`Form.validate()` (before the dialogs' rename side effects); v1 `NodeDialogForm`,
+`ParameterForm`, `TableFormWidget` and `ScenarioFormWidget` set them. Issues are shown under
+the field named by `issue.path[0]`. Recorders are not checked (the v1 schema has none).
+
 Models: `model/model_config.py` (asks the dialect to `setup_model`),
 `model/schemas/pywr-next-model.schema.json` + `SOURCE-pywr-next.json` (bundled from pywr
 2.0.0rc1; refresh with `scripts/update_pywr_next_schema.py`), `model/sidecar.py`
@@ -161,7 +171,7 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   `--filter-files`.
 - Real test model: `/home/stephen/git/models/thames-adaptive/v2/` (62 nodes, only
   geographic positions). Use copies; do not commit it.
-- Current result: 3475 passed, 14 skipped (full suite, real-service tests on).
+- Current result: 3490 passed, 14 skipped (full suite, real-service tests on).
 
 ## 7. Known issues and open threads
 
@@ -173,9 +183,8 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   (`-v`, so a crash names its test) were all clean. If it happens again, keep the whole
   log (no `tail`) and the dump, and look at the test named on the last line and the one
   before it. The QThread-deletion abort part is fixed (`caba1b8`). Issue #43 stays open.
-- Planned (decided 2026-11-10): #48 and #49 are implemented (see section 9; the issues close
-  when PR #42 merges). Next: #50 v1 forms on `pywr-next-dialect`, reusing
-  `model/schema_check.py` and the `Validation.warning_message` support from #49. Severity rule for existing models: dead/invalid edge = error for pywr-next,
+- Planned (decided 2026-11-10): #48, #49 and #50 are implemented (see section 9; the issues
+  close when PR #42 merges). Nothing else is planned from the schema work. Severity rule for existing models: dead/invalid edge = error for pywr-next,
   warning for v1. No-route problems are warnings.
 - Closing the window during a pywr v1 run only calls `worker.kill()` and does not wait for
   the thread (pywr-next waits in `NextRunWorker.shutdown()`).
@@ -307,7 +316,7 @@ the decisions or facts that are not obvious from the diff.
   roles against a real build (needs `PYWR_NEXT_PYTHON`; breaking a role makes it fail).
   Single-branch decision recorded in section 3.
 
-- (this commit, hash to be added next time) #49: pywr-next forms use the schema. Every
+- `312b473` #49: pywr-next forms use the schema. Every
   generated field refuses (error, blocks Save) a value the bundled schema rejects, with a
   message in words ("The value must be at least 1"); a reference to a component that does
   not exist and a data file that does not exist are warnings (do not block), in the form
@@ -322,6 +331,24 @@ the decisions or facts that are not obvious from the diff.
   generated from the schema (every constraint keyword on a real field: violating value
   refused, conforming accepted), plus a sweep of the 583 components of the Thames v2 model
   through their forms: no refusal, no warning.
+
+- (this commit, hash to be added next time) #50: pywr v1 forms use the v1 schema. At the end of
+  `Form.validate()` the node, parameter, table and scenario forms check the component as it
+  will be stored. Decisions: only problems the edit *introduced* are reported; the standard
+  schema's errors block Save (shown under the field, plus a message box), the strict
+  schema's findings are warnings under the field and do not block; a node or parameter
+  without a `type` is not checked (partial forms in tests; real forms always have it);
+  scenarios keep their name in the component (the schema requires it), parameters and tables
+  do not (the name is the key); recorders have no schema so they are not checked. The
+  choice of the closest branch of an anyOf/oneOf (`_leaf_error`) is now recursive and also
+  treats a failed `not` or enum on the type tag as "wrong branch", so messages are about
+  the real problem ("agg_func must be one of: sum, product, max, min", "The list must have
+  at least 12 items") instead of "type must be one of ...". "required" errors say
+  `"size" is required`. A limit: one issue is reported per choice, so an old deep problem can
+  hide a new shallow one (it errs on the side of not blocking). Checked: a sweep of every
+  node, parameter and table of the 75 v1 test models through their real forms: the new check
+  refused none (the forms' own validation refuses the deliberately broken test components,
+  as before).
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its

@@ -1,4 +1,5 @@
 import ast
+import copy
 from typing import TYPE_CHECKING, Any, Literal
 
 from PySide6.QtWidgets import QGroupBox, QLineEdit, QPushButton
@@ -168,6 +169,31 @@ class NodeDialogForm(Form):
         :return: The value or empty if the key is not set.
         """
         return super().get_dict_value(key, self.node_dict)
+
+    schema_kind = "node"
+
+    def schema_component(self, form_data: dict) -> tuple[dict | None, dict]:
+        """
+        Returns the node before and after the edit, as it is stored in the model:
+        with its type, its position (which the form does not edit), and the edge
+        colour and node style moved into the position.
+        :param form_data: The form values.
+        :return: The node before and after the edit.
+        """
+        new = copy.deepcopy(form_data)
+        type_widget: TextWidget = self.find_field("type").widget
+        new["type"] = (
+            type_widget.line_edit.text()
+            if type_widget.isEnabled()
+            else self.node_obj.key
+        )
+        position = copy.deepcopy(self.node_obj.props.get("position") or {})
+        for key in (Constants.EDGE_COLOR_KEY.value, Constants.NODE_STYLE_KEY.value):
+            if key in new:
+                position[key] = new.pop(key)
+        if position:
+            new["position"] = position
+        return copy.deepcopy(self.node_obj.props), new
 
     def save(self) -> dict | bool:
         """

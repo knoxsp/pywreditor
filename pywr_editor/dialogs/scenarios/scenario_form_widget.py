@@ -17,6 +17,21 @@ if TYPE_CHECKING:
 
 
 class ScenarioFormWidget(ModelComponentForm):
+    schema_kind = "scenario"
+
+    def schema_component(self, form_data: dict) -> tuple[dict | None, dict]:
+        """
+        Returns the scenario before and after the edit, as it is stored in the model
+        (with the name, and with the options in the dictionary).
+        :param form_data: The form values.
+        :return: The scenario before the edit and after it.
+        """
+        new = {k: v for k, v in form_data.items() if k != "options"}
+        for key, value in (form_data.get("options") or {}).items():
+            if value:
+                new[key] = value
+        return (dict(self.scenario_dict) if self.scenario_dict else None), new
+
     def __init__(
         self,
         name: str,

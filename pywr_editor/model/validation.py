@@ -134,30 +134,39 @@ def _leaf_error(error):
     # for the wrong node or parameter type fail early (a missing property, for
     # example), while the one for the right type fails deeper in the component.
     # When the branches fail at the same depth, the branch for the type named by the
-    # value is the closest: the other ones fail on the constant that names their type.
-    plausible = _plausible_branches(error)
-    if len(plausible) == 1:
-        leaves = [leaf for sub in plausible[0] for leaf in _leaf_errors(sub)]
-    else:
-        leaves = _leaf_errors(error)
-    deepest = max(len(leaf.absolute_path) for leaf in leaves)
-    return best_match([leaf for leaf in leaves if len(leaf.absolute_path) == deepest])
+    # value is the closest: the other ones fail on the choice that names their type.
+    if not error.context:
+        return error
+    # the branches for the type of the value (all of them if there is none): look for
+    # the problem in each, and keep the deepest
+    branches = _plausible_branches(error) or _branches(error)
+    found = [_leaf_error(sub) for subs in branches for sub in subs]
+    deepest = max(len(leaf.absolute_path) for leaf in found)
+    return best_match([leaf for leaf in found if len(leaf.absolute_path) == deepest])
 
 
-def _plausible_branches(error) -> list[list]:
-    # the errors of each branch of a choice, without the branches that fail on the
-    # constant that names their type (the value is another type)
+def _branches(error) -> list[list]:
+    # the errors of each branch of a choice
     branches: dict = {}
     for sub in error.context or []:
         key = sub.schema_path[0] if sub.schema_path else 0
         branches.setdefault(key, []).append(sub)
+    return list(branches.values())
+
+
+def _plausible_branches(error) -> list[list]:
+    # the errors of each branch of a choice, without the branches that fail on the
+    # property that names their type (the value is another type): the constant or
+    # the list of types it must be, or the types it must not be (a custom type)
     return [
         subs
-        for subs in branches.values()
+        for subs in _branches(error)
         if not any(
-            leaf.validator == "const" and len(leaf.absolute_path) == len(error.absolute_path) + 1
+            not sub.context
+            and sub.validator in ("const", "enum", "not")
+            and len(sub.absolute_path) == len(error.absolute_path) + 1
+            and sub.absolute_path[-1] in ("type", "format")
             for sub in subs
-            for leaf in _leaf_errors(sub)
         )
     ]
 
