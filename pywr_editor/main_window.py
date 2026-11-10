@@ -259,6 +259,9 @@ class MainWindow(QMainWindow):
                 worker.kill()
         except RuntimeError:
             pass
+        # a running thread must not be deleted with the window
+        if not self.run_widget.wait_for_thread():
+            self.logger.error("The run thread did not stop in 10 seconds")
         event.accept()
 
     def register_model_actions(self) -> None:

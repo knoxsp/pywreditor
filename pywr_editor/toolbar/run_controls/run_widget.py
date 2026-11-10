@@ -202,6 +202,24 @@ class RunWidget(QWidget):
 
         return True
 
+    def wait_for_thread(self, timeout_ms: int = 10000) -> bool:
+        """
+        Waits until the worker thread has ended. The window must not be destroyed
+        before: Qt aborts the application if a running thread is deleted. The worker
+        has to be told to stop first (kill() or shutdown()).
+        :param timeout_ms: The longest time to wait, in milliseconds.
+        :return: True if there is no running thread any more, False if the thread did
+        not end in time.
+        """
+        try:
+            if self.thread is None or not self.thread.isRunning():
+                return True
+            self.thread.quit()
+            return self.thread.wait(timeout_ms)
+        except RuntimeError:
+            # the thread has ended and Qt has deleted it
+            return True
+
     @Slot()
     def worker_has_finished(self) -> None:
         """

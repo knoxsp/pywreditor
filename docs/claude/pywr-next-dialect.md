@@ -375,7 +375,7 @@ the decisions or facts that are not obvious from the diff.
   fixes undone the 14 new tests fail. Lesson: do not `pkill -f` a pattern that is in your
   own command line (it killed the shell once more).
 
-- (this commit, hash to be added next time) Fixes for the second Copilot review (on 0bce2cb: 5
+- 11c76a7 Fixes for the second Copilot review (on 0bce2cb: 5
   resolved, 3 open). Cause: the editor treated two nodes as joined by one edge, but pywr
   allows several (different slots), which my slot fix (#3 above) made legitimate.
   `Edges.find_records(source, target)` returns all the edges of a pair; `DisconnectNodeCommand`
@@ -388,6 +388,17 @@ the decisions or facts that are not obvious from the diff.
   DeferredDelete)`), instead of relying on `processEvents()`; with the old deletion code
   put back it fails (checked), which answers the remark that it did not exercise the
   deferred deletion. Tests: `TestEdgesThatUseDifferentSlots` (5, fail without the fix).
+
+- (this commit, hash to be added next time) Closing the window during a pywr v1 run waits
+  for the worker thread (#43, the exit-time race named there). `RunWidget.wait_for_thread()`
+  (quit + wait, at most 10 s, tolerates a thread Qt already deleted) is called by
+  `MainWindow.closeEvent` after `worker.kill()`/`shutdown()`; before, only pywr-next runs
+  waited, so a v1 run could be deleted with the window while running ("QThread: Destroyed
+  while thread is still running"). Decision: bounded wait, log an error if it times out and
+  close anyway (never hang the exit). Test: `test_closing_the_window_waits_for_the_run_thread`
+  (child process; fails with the wait removed, checked). The user's real recent-files list
+  (`~/.config/pywr-editor.conf`) was cleaned by hand on 2026-11-10: tmp/test paths removed,
+  backup in `~/pywr-editor.conf.bak-2026-11-10`; this is not part of the code.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
