@@ -251,3 +251,108 @@ class TestRunWithTimeOfDay:
         finally:
             window.model_config.reset_change_flag()
             window.close()
+
+
+from pywr_editor.schematic import Edge  # noqa: E402
+
+
+def edge_items(window, source: str, target: str) -> list:
+    return [
+        item
+        for item in window.schematic.scene.items()
+        if isinstance(item, Edge)
+        and item.source.name == source
+        and item.target.name == target
+    ]
+
+
+class TestEdgesThatUseDifferentSlots:
+    """
+    Two edges between the same nodes are different connections when they use different
+    slots. The schematic draws one edge, and deleting it deletes both, so that an undo
+    must restore both (the second one was lost).
+    """
+
+    SPILL_META = {"comment": "spill"}
+
+    @pytest.fixture
+    def parallel(self, qtbot, tmp_path):
+        model = next_model(
+            edges=[
+                {"from_node": "in", "to_node": "link"},
+                {"from_node": "link", "to_node": "out", "from_slot": {"type": "River"}},
+                {
+                    "from_node": "link",
+                    "to_node": "out",
+                    "from_slot": {"type": "Spill"},
+                    "meta": self.SPILL_META,
+                },
+            ]
+        )
+        window = open_window(qtbot, tmp_path, model)
+        yield window
+        window.model_config.reset_change_flag()
+        window.close()
+
+    @staticmethod
+    def between(window) -> list[dict]:
+        return [
+            e
+            for e in window.model_config.json["network"]["edges"]
+            if (e["from_node"], e["to_node"]) == ("link", "out")
+        ]
+
+    def test_one_edge_is_drawn_for_the_two_connections(self, parallel):
+        assert len(self.between(parallel)) == 2
+        assert len(edge_items(parallel, "link", "out")) == 1
+
+    def test_all_the_records_between_the_nodes_are_found(self, parallel):
+        records = parallel.model_config.edges.find_records("link", "out")
+        assert [r.source_slot for r in records] == [{"type": "River"}, {"type": "Spill"}]
+        assert records[1].extra == {"meta": self.SPILL_META}
+        assert parallel.model_config.edges.find_records("out", "link") == []
+
+    def test_disconnecting_and_undoing_restores_both_edges(self, parallel):
+        command = DisconnectNodeCommand(parallel.schematic, "link", "out")
+        command.redo()
+        assert self.between(parallel) == []
+        assert edge_items(parallel, "link", "out") == []
+        command.undo()
+        edges = self.between(parallel)
+        assert [e["from_slot"] for e in edges] == [{"type": "River"}, {"type": "Spill"}]
+        assert edges[1]["meta"] == self.SPILL_META
+        assert len(edge_items(parallel, "link", "out")) == 1
+
+    def test_deleting_a_node_and_undoing_restores_both_edges(self, parallel):
+        schematic = parallel.schematic
+        command = DeleteItemCommand(schematic, [schematic.node_items["out"]])
+        command.redo()
+        assert None not in command.deleted_edges
+        assert len(command.deleted_edges) == 2
+        assert parallel.model_config.edges.count == 1
+        command.undo()
+        assert len(self.between(parallel)) == 2
+        assert self.between(parallel)[1]["meta"] == self.SPILL_META
+        assert parallel.model_config.edges.count == 3
+
+    def test_pywr_v1_edges_with_slots(self, qtbot, tmp_path):
+        model = {
+            "metadata": {"title": "t", "minimum_version": "1.19.0"},
+            "timestepper": {"start": "2020-01-01", "end": "2020-01-10", "timestep": 1},
+            "nodes": [
+                {"name": n, "type": t, "position": {"schematic": p}}
+                for n, t, p in (("a", "Link", [100, 100]), ("b", "Link", [300, 100]))
+            ],
+            "edges": [["a", "b", 1, 1], ["a", "b", 2, 1]],
+        }
+        window = open_window(qtbot, tmp_path, model)
+        try:
+            assert len(edge_items(window, "a", "b")) == 1
+            command = DisconnectNodeCommand(window.schematic, "a", "b")
+            command.redo()
+            assert window.model_config.edges.count == 0
+            command.undo()
+            assert window.model_config.json["edges"] == [["a", "b", 1, 1], ["a", "b", 2, 1]]
+        finally:
+            window.model_config.reset_change_flag()
+            window.close()

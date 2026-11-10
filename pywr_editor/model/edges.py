@@ -83,6 +83,22 @@ class Edges:
         edge, _ = self.find(source_node_name, target_node_name)
         return None if edge is None else EdgeRecord.from_v1(edge)
 
+    def find_records(
+        self, source_node_name: str, target_node_name: str
+    ) -> list[EdgeRecord]:
+        """
+        Finds all the edges between two nodes. There can be more than one when the
+        edges use different slots. The schematic draws one edge for them.
+        :param source_node_name: The name of the source node.
+        :param target_node_name: The name of the target node.
+        :return: The edge records, an empty list if the nodes are not connected.
+        """
+        return [
+            edge
+            for edge in self.records()
+            if edge.source == source_node_name and edge.target == target_node_name
+        ]
+
     def add_record(self, edge: EdgeRecord) -> bool:
         """
         Adds an edge from a record.

@@ -171,7 +171,7 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   `--filter-files`.
 - Real test model: `/home/stephen/git/models/thames-adaptive/v2/` (62 nodes, only
   geographic positions). Use copies; do not commit it.
-- Current result: 3506 passed, 14 skipped (full suite, real-service tests on).
+- Current result: 3511 passed, 14 skipped (full suite, real-service tests on).
 
 ## 7. Known issues and open threads
 
@@ -350,7 +350,7 @@ the decisions or facts that are not obvious from the diff.
   refused none (the forms' own validation refuses the deliberately broken test components,
   as before).
 
-- (this commit, hash to be added next time) Fixes for the Copilot review of PR #42 (7 comments,
+- `0bce2cb` Fixes for the Copilot review of PR #42 (7 comments,
   all verified before fixing; all were mistakes of this work):
   1. `EdgeRecord` has an `extra` field (compare/hash off) with the rest of the stored edge
      (the "meta" of a pywr-next edge); `NextEdges._record` fills it and `add_record` restores
@@ -374,6 +374,20 @@ the decisions or facts that are not obvious from the diff.
   Tests: `tests/dialects/test_next_review_fixes.py` and a scenario test; with the source
   fixes undone the 14 new tests fail. Lesson: do not `pkill -f` a pattern that is in your
   own command line (it killed the shell once more).
+
+- (this commit, hash to be added next time) Fixes for the second Copilot review (on 0bce2cb: 5
+  resolved, 3 open). Cause: the editor treated two nodes as joined by one edge, but pywr
+  allows several (different slots), which my slot fix (#3 above) made legitimate.
+  `Edges.find_records(source, target)` returns all the edges of a pair; `DisconnectNodeCommand`
+  captures and restores all of them (`edge_configs`; `edge_config` is still the first, for
+  the existing tests); `Schematic.delete_edge()` returns a list, so `delete_node()` no
+  longer collects a `None` for the second graphic edge. The schematic now draws one edge
+  per pair (`draw()` deduplicates the targets), so the drawing and the model agree, and
+  deleting that edge deletes every connection between the two nodes (as before). Also the
+  thread-lifetime test delivers the deferred deletes itself (`sendPostedEvents(None,
+  DeferredDelete)`), instead of relying on `processEvents()`; with the old deletion code
+  put back it fails (checked), which answers the remark that it did not exercise the
+  deferred deletion. Tests: `TestEdgesThatUseDifferentSlots` (5, fail without the fix).
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its

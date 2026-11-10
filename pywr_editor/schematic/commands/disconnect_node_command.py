@@ -41,6 +41,9 @@ class DisconnectNodeCommand(QUndoCommand):
         # To properly restore, if the edge is changed (for ex. a Slot is added),
         # store the edge configuration for the undo command
         self.edge_config: EdgeRecord | None = None
+        # all the edges between the two nodes: there is more than one when they use
+        # different slots, and they are all deleted
+        self.edge_configs: list[EdgeRecord] = []
         self.setText("disconnect node")
 
     def redo(self) -> None:
@@ -49,10 +52,10 @@ class DisconnectNodeCommand(QUndoCommand):
         :return: None
         """
         # store the edge so that it can be restored later
-        self.edge_config = self.model_config.edges.find_record(
-            source_node_name=self.source_node.name,
-            target_node_name=self.target_node.name,
+        self.edge_configs = self.model_config.edges.find_records(
+            self.source_node.name, self.target_node.name
         )
+        self.edge_config = self.edge_configs[0] if self.edge_configs else None
         # remove edge from model config
         self.model_config.edges.delete(
             source_node_name=self.source_node.name,
@@ -88,9 +91,12 @@ class DisconnectNodeCommand(QUndoCommand):
         :return: None
         """
         # restore edge
-        if self.edge_config:
-            if self.model_config.edges.add_record(self.edge_config):
-                self.logger.debug(f"Restored edge: {self.edge_config}")
+        if self.edge_configs:
+            restored = [
+                self.model_config.edges.add_record(edge) for edge in self.edge_configs
+            ]
+            if all(restored):
+                self.logger.debug(f"Restored edges: {self.edge_configs}")
             else:
                 # When a node is renamed, its edge cannot be restored.
                 self.logger.debug(

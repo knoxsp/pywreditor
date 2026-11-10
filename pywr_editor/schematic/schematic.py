@@ -438,7 +438,9 @@ class Schematic(QGraphicsView):
         for source_node_name, source_node_obj in self.node_items.items():
             target_nodes = self.model_config.edges.targets(source_node_name)
             if target_nodes is not None:
-                for target_node_name in target_nodes:
+                # one edge is drawn between two nodes, also when the model has several
+                # (that use different slots)
+                for target_node_name in dict.fromkeys(target_nodes):
                     target_node_obj = self.node_items[target_node_name]
                     edge = Edge(
                         source=source_node_obj,
@@ -515,13 +517,13 @@ class Schematic(QGraphicsView):
         for c_node in node_item.connected_nodes["target_nodes"]:
             edge_item = c_node.delete_edge(node_name=node_item.name, edge_type="source")
             if edge_item:
-                deleted_edges.append(self.delete_edge(edge_item))
+                deleted_edges += self.delete_edge(edge_item)
 
         # delete edges on the schematic when node is target node
         for c_node in node_item.connected_nodes["source_nodes"]:
             edge_item = c_node.delete_edge(node_name=node_item.name, edge_type="target")
             if edge_item:
-                deleted_edges.append(self.delete_edge(edge_item))
+                deleted_edges += self.delete_edge(edge_item)
 
         # remove the graphic item in schematic and model config
         self.model_config.nodes.delete(node_name)
@@ -560,19 +562,21 @@ class Schematic(QGraphicsView):
         del self.shape_items[shape_id]
         self.scene.removeItem(shape_item)
 
-    def delete_edge(self, edge_item: Edge) -> EdgeRecord | None:
+    def delete_edge(self, edge_item: Edge) -> list[EdgeRecord]:
         """
-        Deletes the edge from the schematic and model configuration.
+        Deletes the edge from the schematic and model configuration. The schematic
+        draws one edge for the nodes, however many edges (using different slots) the
+        model has between them: all are deleted.
         :param edge_item: The schematic Edge instance.
-        :return: The deleted model edge (nodes and slot names).
+        :return: The deleted model edges (nodes, slots and the rest of the edge).
         """
         self.scene.removeItem(edge_item)
-        # delete edge from model config and returned deleted model edge
-        edge = self.model_config.edges.find_record(
+        # delete edges from model config and return the deleted model edges
+        edges = self.model_config.edges.find_records(
             edge_item.source.name, edge_item.target.name
         )
         self.model_config.edges.delete(edge_item.source.name, edge_item.target.name)
-        return edge
+        return edges
 
     def add_abort_node_connection_button(self) -> None:
         """

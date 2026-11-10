@@ -10,7 +10,7 @@ ROOT = Path(__file__).parents[2]
 
 SCRIPT = """
 import sys, time
-from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import QApplication
 from pywr_editor import MainWindow
 from pywr_editor.utils import Settings
@@ -38,6 +38,9 @@ while time.time() < deadline and run_widget.is_running:
 end = time.time() + 2
 while time.time() < end:
     QCoreApplication.processEvents()
+    # the deferred deletes are delivered here, as processEvents() leaves them if it is
+    # not called from the event loop
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     time.sleep(0.01)
 window.model_config.reset_change_flag()
 print("finished cleanly")
