@@ -131,6 +131,18 @@ class NextSchema:
                 variants[tag[1]] = merged
         return variants
 
+    def component_schema(self, definition: str, type_name: str | None = None) -> dict | None:
+        """
+        Returns the schema of a whole component, with its "meta" and its type.
+        :param definition: The definition of the kind, such as "Node".
+        :param type_name: The type, such as "Reservoir". None for a kind of
+        component that has one shape (such as a metric set).
+        :return: The schema, or None if the type is not in the bundled schema.
+        """
+        if type_name is None:
+            return self.resolve(self.defs[definition]) if definition in self.defs else None
+        return self.variants(definition).get(type_name)
+
     def tag_key(self, definition: str) -> str:
         """
         Returns the property that identifies the type of a component, which is

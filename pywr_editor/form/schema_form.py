@@ -4,6 +4,11 @@ from typing import TYPE_CHECKING, Any, Type
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QPlainTextEdit
 
+from pywr_editor.dialects.next.references import (
+    existing_names,
+    unresolved,
+    value_references,
+)
 from pywr_editor.dialects.next.schema import FieldSpec, bundled_schema
 from pywr_editor.form.field_config import FieldConfig
 from pywr_editor.form.form_widget import FormWidget
@@ -12,6 +17,12 @@ from pywr_editor.form.widgets.boolean_widget import BooleanWidget
 from pywr_editor.form.widgets.float_widget import FloatWidget
 from pywr_editor.form.widgets.metric_widget import MetricWidget
 from pywr_editor.form.widgets.text_widget import TextWidget
+from pywr_editor.model.schema_check import (
+    SchemaChecker,
+    SchemaIssue,
+    missing_file_message,
+    new_issues,
+)
 
 if TYPE_CHECKING:
     from pywr_editor.form import FormField
@@ -247,6 +258,68 @@ def register_ref_widget(ref: str, widget: Type[FormWidget]) -> None:
     REF_WIDGETS[ref] = widget
 
 
+FILE_FIELDS = ("url", "path")
+""" The string properties of the tables and time series that name a data file """
+
+
+def schema_checker() -> SchemaChecker:
+    """
+    Returns the checker of the values against the bundled schema.
+    :return: The checker.
+    """
+    return SchemaChecker(bundled_schema().defs)
+
+
+def schema_validation(spec: FieldSpec, model_config: "ModelConfig | None" = None):
+    """
+    Builds the validation of a field, which refuses a value that the bundled schema
+    rejects, and warns about a value that the schema accepts but pywr-next cannot use
+    because a component or a file it names is not there.
+    :param spec: The description of the property.
+    :param model_config: The model, to look for the components and the folder of the
+    model. Optional.
+    :return: The function for the "validate_fun" key of a form field.
+    """
+
+    def validate(name: str, label: str, value: Any) -> Validation:
+        # an empty value is checked by the field (it cannot be empty if it is required)
+        if value is None or value == "" or spec.schema is None:
+            return Validation()
+        issues = schema_checker().check(spec.schema, value)
+        if issues:
+            return Validation(issues[0].message)
+        return Validation(warning_message=_warning(spec, value, model_config))
+
+    return validate
+
+
+def _warning(spec: FieldSpec, value: Any, model_config: "ModelConfig | None") -> str | None:
+    if model_config is None:
+        return None
+    if spec.name == "metric_set":
+        # a name, or a list of names, of metric sets
+        names = [value] if isinstance(value, str) else value
+        references = [
+            ("metric set", name)
+            for name in (names if isinstance(names, list) else [])
+            if isinstance(name, str)
+        ]
+    elif spec.kind == "string" and spec.name in NAME_PICKERS:
+        references = [("table", value)] if isinstance(value, str) else []
+    elif spec.kind == "string" and spec.name in FILE_FIELDS:
+        return missing_file_message(value, model_config.json_file)
+    elif spec.kind in ("ref", "json", "number_list") and isinstance(value, (dict, list)):
+        references = value_references(value)
+    else:
+        return None
+    missing = unresolved(references, existing_names(model_config.json))
+    if not missing:
+        return None
+    listed = ", ".join(f'{kind} "{name}"' for kind, name in missing[:3])
+    more = f" and {len(missing) - 3} more" if len(missing) > 3 else ""
+    return f"The model has no {listed}{more}"
+
+
 def field_config(
     spec: FieldSpec, values: dict, model_config: "ModelConfig | None" = None
 ) -> FieldConfig:
@@ -266,6 +339,7 @@ def field_config(
     )
     if spec.description:
         config["help_text"] = spec.description
+    config["validate_fun"] = schema_validation(spec, model_config)
 
     if spec.kind == "ref" and spec.ref in REF_WIDGETS:
         config["field_type"] = REF_WIDGETS[spec.ref]
@@ -322,3 +396,25 @@ def field_configs(
     :return: The field configurations, in the order of the descriptions.
     """
     return [field_config(spec, values, model_config) for spec in specs]
+
+
+def introduced_issues(
+    definition: str, type_name: str | None, old: dict | None, new: dict
+) -> list[SchemaIssue]:
+    """
+    Checks a component that was edited in a form against the schema of its type, as
+    a last check after the form accepted every field. A problem the component already
+    had is not reported, so a component with a value the form does not edit can still
+    be saved: only what this edit adds is.
+    :param definition: The schema definition of the kind of component, such as "Node".
+    :param type_name: The type of the component, None for a kind with one shape.
+    :param old: The component before the edit. None for a new component.
+    :param new: The component after the edit.
+    :return: The problems the edit introduced, none if the type is not in the schema.
+    """
+    schema = bundled_schema().component_schema(definition, type_name)
+    if schema is None:
+        return []
+    checker = schema_checker()
+    before = checker.check(schema, old) if old else []
+    return new_issues(before, checker.check(schema, new))

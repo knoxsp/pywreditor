@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Iterator
 
-from pywr_editor.dialects.next.validation import component_from_path
+from pywr_editor.dialects.next.validation import component_from_path, component_name
 
 """
  References between the components of a pywr-next model. Unlike pywr v1, where a
@@ -155,3 +155,79 @@ def rename_references(model: dict, kind: str, old_name: str, new_name: str) -> i
     for found in to_change:
         found.container[found.key] = new_name
     return len(to_change)
+
+
+def existing_names(model: dict) -> dict[str, set[str]]:
+    """
+    Lists the names of the components that can be referenced.
+    :param model: The model dictionary.
+    :return: The names by kind: "node" (the nodes and the virtual nodes, which a node
+    reference can name), "virtual node", "parameter", "table", "time series" and
+    "metric set".
+    """
+    network = model.get("network") if isinstance(model, dict) else None
+    network = network if isinstance(network, dict) else {}
+
+    def names(key: str) -> set[str]:
+        items = network.get(key)
+        found = {
+            component_name(item) for item in (items if isinstance(items, list) else [])
+        }
+        return {name for name in found if name is not None}
+
+    nodes, virtual = names("nodes"), names("virtual_nodes")
+    return {
+        "node": nodes | virtual,
+        "virtual node": virtual,
+        "parameter": names("parameters"),
+        "table": names("tables"),
+        "time series": names("time_series"),
+        "metric set": names("metric_sets"),
+    }
+
+
+def unresolved(
+    references: list[tuple[str, str]], names: dict[str, set[str]]
+) -> list[tuple[str, str]]:
+    """
+    Finds the references to a component that does not exist. Local parameters are
+    not checked: they belong to a node.
+    :param references: The (kind, name) of each reference.
+    :param names: The existing names, from existing_names().
+    :return: The references to a component that is not in the model, without
+    repetitions.
+    """
+    missing = []
+    for kind, name in references:
+        if kind in names and name not in names[kind] and (kind, name) not in missing:
+            missing.append((kind, name))
+    return missing
+
+
+def value_references(value: Any) -> list[tuple[str, str]]:
+    """
+    Finds the references in a value that is not in a model yet, such as the metric
+    being edited in a form.
+    :param value: The value, such as a metric dictionary.
+    :return: The (kind, name) of each reference to a component.
+    """
+    return [
+        (found.kind, found.name)
+        for _, found in _walk(value, (), False)
+        if isinstance(found.name, str)
+    ]
+
+
+def missing_references(model: dict) -> list[Reference]:
+    """
+    Finds the references to components that do not exist in the model. pywr-next
+    cannot build such a model, but the schema does not say so.
+    :param model: The model dictionary.
+    :return: The references, in the order of the model.
+    """
+    names = existing_names(model)
+    return [
+        reference
+        for reference in find_references(model)
+        if reference.kind in names and reference.name not in names[reference.kind]
+    ]

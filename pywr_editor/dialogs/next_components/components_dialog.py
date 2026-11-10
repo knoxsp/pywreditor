@@ -20,7 +20,7 @@ from pywr_editor.dialects.next.model import NamedComponents, humanise_type
 from pywr_editor.dialects.next.schema import FieldSpec, bundled_schema
 from pywr_editor.form import FieldConfig, Form, TextWidget, Validation
 from pywr_editor.dialogs.next_components.python_panel import PythonCodePanel
-from pywr_editor.form.schema_form import field_configs
+from pywr_editor.form.schema_form import field_configs, introduced_issues
 from pywr_editor.widgets import PushIconButton
 
 if TYPE_CHECKING:
@@ -342,6 +342,21 @@ class NextComponentsDialog(QDialog):
         component = {"meta": meta, **form_data}
         if self.tag is not None:
             component = {"meta": meta, self.tag: self.type_of(old), **form_data}
+
+        introduced = introduced_issues(
+            self.definition,
+            None if self.single_type else self.type_of(old),
+            old,
+            component,
+        )
+        if introduced:
+            QMessageBox.critical(
+                self,
+                "Cannot save the form",
+                "The schema does not accept the result:\n\n"
+                + "\n".join(issue.message for issue in introduced[:5]),
+            )
+            return False
 
         self.components.update(self.current, component)
         self.after_change(f'Saved {self.components.kind} "{meta["name"]}"')

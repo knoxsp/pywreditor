@@ -133,9 +133,33 @@ def _leaf_error(error):
     # anyOf/oneOf errors do not say which branch is the closest match. The branches
     # for the wrong node or parameter type fail early (a missing property, for
     # example), while the one for the right type fails deeper in the component.
-    leaves = _leaf_errors(error)
+    # When the branches fail at the same depth, the branch for the type named by the
+    # value is the closest: the other ones fail on the constant that names their type.
+    plausible = _plausible_branches(error)
+    if len(plausible) == 1:
+        leaves = [leaf for sub in plausible[0] for leaf in _leaf_errors(sub)]
+    else:
+        leaves = _leaf_errors(error)
     deepest = max(len(leaf.absolute_path) for leaf in leaves)
     return best_match([leaf for leaf in leaves if len(leaf.absolute_path) == deepest])
+
+
+def _plausible_branches(error) -> list[list]:
+    # the errors of each branch of a choice, without the branches that fail on the
+    # constant that names their type (the value is another type)
+    branches: dict = {}
+    for sub in error.context or []:
+        key = sub.schema_path[0] if sub.schema_path else 0
+        branches.setdefault(key, []).append(sub)
+    return [
+        subs
+        for subs in branches.values()
+        if not any(
+            leaf.validator == "const" and len(leaf.absolute_path) == len(error.absolute_path) + 1
+            for sub in subs
+            for leaf in _leaf_errors(sub)
+        )
+    ]
 
 
 def validate_schema(model: dict, strict: bool = True) -> list[Diagnostic]:

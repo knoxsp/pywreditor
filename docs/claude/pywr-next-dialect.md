@@ -76,6 +76,19 @@ source, target)` is used by the schematic (`SchematicNode.is_connectable()` and
 functions (`model/validation.py` `validate_connections()` and
 `dialects/next/validation.py` `validate_connections()`).
 
+Schema checks for forms (#49): `model/schema_check.py` is format-free: `SchemaChecker(defs)`
+checks a value against a schema fragment and returns `SchemaIssue`s with readable messages
+(one issue per unexpected property; for a choice between types only the closest branch,
+using `_leaf_error` in `model/validation.py`, which now prefers the branch whose type tag
+matches). `Validation` has a `warning_message` (shown with `set_warning`, never blocks).
+`form/schema_form.py`: every generated field gets `schema_validation(spec, model)` as its
+`validate_fun` (error if the schema rejects the value; warning for a reference to a
+component that does not exist or a data file that does not exist), and
+`introduced_issues()` is the last check in the node and components dialogs. Missing
+references/files are also warnings in the validation dialog
+(`dialects/next/validation.py` `validate_references()`, `validate_files()`;
+`dialects/next/references.py` `existing_names()`, `missing_references()`).
+
 Models: `model/model_config.py` (asks the dialect to `setup_model`),
 `model/schemas/pywr-next-model.schema.json` + `SOURCE-pywr-next.json` (bundled from pywr
 2.0.0rc1; refresh with `scripts/update_pywr_next_schema.py`), `model/sidecar.py`
@@ -121,6 +134,9 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   WaterTreatmentWorks accept both. Abstraction is not in a model that builds on its own, so
   it is not in the role table (not restricted). For pywr v1 1.23.0 the 15 types of the table
   match the classes (BaseInput, BaseOutput, Storage, others pass flow through).
+- Constraints on real pywr-next form fields (checked by the generated tests): `type`, `enum`,
+  `minimum`, `maximum`, `minItems`, `maxItems`. A pywr-next Table metric uses `row` and
+  `column` (not `index`); a CSV table needs `lookup` (and `cols` for a Row lookup).
 - Schema constraint counts: pywr-next has 41 `minimum`, 9 `maximum`, 14 `enum`, 177 `const`;
   pywr v1 has 20 `minimum`, 66 `enum` and, in the strict schema only, 41 `pattern`.
   The pywr-next forms use only `required`, enum and `minimum` today; the v1 forms are
@@ -145,7 +161,7 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   `--filter-files`.
 - Real test model: `/home/stephen/git/models/thames-adaptive/v2/` (62 nodes, only
   geographic positions). Use copies; do not commit it.
-- Current result: 3220 passed, 14 skipped (full suite, real-service tests on).
+- Current result: 3475 passed, 14 skipped (full suite, real-service tests on).
 
 ## 7. Known issues and open threads
 
@@ -157,9 +173,9 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   (`-v`, so a crash names its test) were all clean. If it happens again, keep the whole
   log (no `tail`) and the dump, and look at the test named on the last line and the one
   before it. The QThread-deletion abort part is fixed (`caba1b8`). Issue #43 stays open.
-- Planned (decided 2026-11-10): #48 is implemented (see section 9; the issue closes when PR
-  #42 merges). Next: #49 pywr-next forms constrained by the schema, then #50 v1 forms, both on
-  `pywr-next-dialect`; #50 reuses the checking code built in #49. Severity rule for existing models: dead/invalid edge = error for pywr-next,
+- Planned (decided 2026-11-10): #48 and #49 are implemented (see section 9; the issues close
+  when PR #42 merges). Next: #50 v1 forms on `pywr-next-dialect`, reusing
+  `model/schema_check.py` and the `Validation.warning_message` support from #49. Severity rule for existing models: dead/invalid edge = error for pywr-next,
   warning for v1. No-route problems are warnings.
 - Closing the window during a pywr v1 run only calls `worker.kill()` and does not wait for
   the thread (pywr-next waits in `NextRunWorker.shutdown()`).
@@ -277,7 +293,7 @@ the decisions or facts that are not obvious from the diff.
   (blocking vs warning policy, order, branch plan), the tested edge rules of pywr v1 and
   pywr-next, and the schema constraint counts. No code changed.
 
-- (this commit, hash to be added next time) #48: dead and invalid connections.
+- `b913079` #48: dead and invalid connections.
   `model/connection_rules.py` (shared, format-free) plus a role table and
   `edge_issue_severity` per dialect and `ModelDialect.check_connection()`. Blocked (never
   created): out of an Output, into an Input/Catchment, self-loop, virtual end point,
@@ -290,6 +306,22 @@ the decisions or facts that are not obvious from the diff.
   mode still hides it as before. Contract tests: v1 roles against the pywr classes, pywr-next
   roles against a real build (needs `PYWR_NEXT_PYTHON`; breaking a role makes it fail).
   Single-branch decision recorded in section 3.
+
+- (this commit, hash to be added next time) #49: pywr-next forms use the schema. Every
+  generated field refuses (error, blocks Save) a value the bundled schema rejects, with a
+  message in words ("The value must be at least 1"); a reference to a component that does
+  not exist and a data file that does not exist are warnings (do not block), in the form
+  and in the validation dialog. Decisions: the last check of the whole component (node and
+  components dialogs) blocks only problems the edit *introduced*, so a component with a
+  value the form does not show (already invalid) can still be saved; unexpected
+  properties are one issue each so that adding one does not change the others; missing
+  files are checked only for `url`/`path` at the top level of tables, time series and
+  parameters (a Python parameter's source is not, the Python panel creates it); files
+  cannot be checked before the model is saved. `_leaf_error` now prefers the branch of a
+  choice whose type tag matches (it picked "must be Square" for a Circle). Tests are
+  generated from the schema (every constraint keyword on a real field: violating value
+  refused, conforming accepted), plus a sweep of the 583 components of the Thames v2 model
+  through their forms: no refusal, no warning.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its

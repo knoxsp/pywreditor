@@ -3,11 +3,11 @@ from typing import TYPE_CHECKING, Union
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QWindow
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout
 
 from pywr_editor.dialects.next.schema import bundled_schema
 from pywr_editor.form import FieldConfig, Form, TextWidget, Validation
-from pywr_editor.form.schema_form import field_configs
+from pywr_editor.form.schema_form import field_configs, introduced_issues
 from pywr_editor.model import ModelConfig
 from pywr_editor.node_shapes import get_node_icon
 from pywr_editor.widgets import PushIconButton
@@ -260,6 +260,15 @@ class NextNodeDialog(QDialog):
             return False
 
         node = self.node_dict(form_data)
+        introduced = introduced_issues("Node", self.node_type, self.node.props, node)
+        if introduced:
+            QMessageBox.critical(
+                self,
+                "Cannot save the form",
+                "The schema does not accept the result:\n\n"
+                + "\n".join(issue.message for issue in introduced[:5]),
+            )
+            return False
         new_name = node["meta"]["name"]
         if new_name != self.node_name:
             # renames the edges and the references to the node too

@@ -164,3 +164,26 @@ def test_local_parameters_button(qtbot, tmp_path):
     dialog.save()
     local = model.nodes.config("demand1")["parameters"]
     assert [p["meta"]["name"] for p in local] == ["renamed"]
+
+
+def test_a_result_the_schema_rejects_is_not_saved(qtbot, model, monkeypatch):
+    """
+    Tests that the node is not saved when the check of the whole node finds a problem
+    that the edit introduced, even if every field is accepted.
+    """
+    from pywr_editor.model.schema_check import SchemaIssue
+
+    boxes = []
+    monkeypatch.setattr(
+        "pywr_editor.dialogs.node.next_node_dialog.QMessageBox.critical",
+        staticmethod(lambda *args: boxes.append(args[-1])),
+    )
+    monkeypatch.setattr(
+        "pywr_editor.dialogs.node.next_node_dialog.introduced_issues",
+        lambda *args: [SchemaIssue("The value is wrong", ("max_flow",))],
+    )
+    before = copy.deepcopy(model.nodes.config("Reservoir"))
+    dialog = open_dialog(qtbot, model, "Reservoir")
+    assert dialog.save() is False
+    assert boxes and "The value is wrong" in boxes[0]
+    assert model.nodes.config("Reservoir") == before

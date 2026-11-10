@@ -279,9 +279,14 @@ class NextDialect(ModelDialect):
         :param include_orphans: Not used: pywr-next components are not orphaned.
         :return: The list of Diagnostic.
         """
-        from pywr_editor.dialects.next.validation import validate_network
+        from pywr_editor.dialects.next.validation import (
+            validate_files,
+            validate_network,
+        )
 
-        return validate_network(model.clean_json)
+        return validate_network(model.clean_json) + validate_files(
+            model.clean_json, model.json_file
+        )
 
     def validate_schema(self, model_dict: dict) -> list:
         """

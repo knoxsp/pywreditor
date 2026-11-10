@@ -174,6 +174,76 @@ def validate_network(model: dict) -> list[Diagnostic]:
                 )
             )
     diagnostics += validate_connections(model)
+    diagnostics += validate_references(model)
+    return diagnostics
+
+
+def validate_references(model: dict) -> list[Diagnostic]:
+    """
+    Reports, as warnings, the references to components that do not exist. The schema
+    accepts any name, but pywr-next cannot build the model.
+    :param model: The model dictionary.
+    :return: The list of diagnostics.
+    """
+    from pywr_editor.dialects.next.references import missing_references
+
+    diagnostics = []
+    for reference in missing_references(model):
+        owner = (
+            f'The {reference.owner[0]} "{reference.owner[1]}"'
+            if reference.owner
+            else "A component"
+        )
+        diagnostics.append(
+            Diagnostic(
+                severity="warning",
+                source="model",
+                message=f'{owner} refers to the {reference.kind} "{reference.name}", '
+                "which does not exist",
+                path=reference.path,
+                component=reference.owner,
+            )
+        )
+    return diagnostics
+
+
+FILE_KEYS = ("url", "path")
+""" The properties of tables, time series and parameters that name a data file """
+
+
+def validate_files(model: dict, model_file: str | None) -> list[Diagnostic]:
+    """
+    Reports, as warnings, the data files of the tables, time series and parameters
+    that do not exist. They are relative to the folder of the model.
+    :param model: The model dictionary.
+    :param model_file: The path of the model file. The files cannot be checked if the
+    model has not been saved.
+    :return: The list of diagnostics.
+    """
+    from pywr_editor.model.schema_check import missing_file_message
+
+    network = model.get("network")
+    if not isinstance(network, dict) or model_file is None:
+        return []
+    diagnostics = []
+    for key in ("tables", "time_series", "parameters"):
+        for index, item in enumerate(_components(network, key)):
+            if not isinstance(item, dict):
+                continue
+            for file_key in FILE_KEYS:
+                message = missing_file_message(item.get(file_key), model_file)
+                if message is None:
+                    continue
+                name = component_name(item)
+                diagnostics.append(
+                    Diagnostic(
+                        severity="warning",
+                        source="model",
+                        message=message,
+                        path=("network", key, index, file_key),
+                        component=(COMPONENT_LISTS[key], name) if name else None,
+                    )
+                )
     return diagnostics
 
 

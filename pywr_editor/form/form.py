@@ -432,15 +432,19 @@ class Form(QScrollArea):
         output = form_field.widget.validate(name, form_label, value)
 
         # widget has not failed validation (otherwise preserve first message)
+        warning = output.warning_message
         if "validate_fun" in field_dict and output.validation is True:
             output = field_dict["validate_fun"](name, form_label, value)
             if not isinstance(output, Validation):
                 raise TypeError(f"Custom validation for {name} must return Validation")
+            warning = warning or output.warning_message
 
         if output.validation is False:
             form_field.set_error(output.error_message)
             return False
 
+        if warning:
+            form_field.set_warning(warning)
         return True
 
     def validate(self) -> bool | dict[str, Any]:
