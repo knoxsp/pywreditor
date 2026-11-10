@@ -45,6 +45,8 @@ own work. The geographic view feature has its own memory note.
 | Priorities order: #39, #32, "#53", #38, #31, #40. "#53" does not exist; Claude took it as #35 and said so | User, 2026-11-09 | commits below |
 | Results of pywr-next runs are converted to the v1 results folder format so the existing viewer reads them | Claude | `dialects/next/results.py` |
 | The runner service ends with the editor on every platform through a stdin watchdog (the editor keeps the pipe open) plus `PR_SET_PDEATHSIG` on Linux | Claude, with the user's go-ahead 2026-11-10 | `runner_protocol.SERVER_SNIPPET` |
+| Prevent invalid input using the schemas, in both versions: **block** only what is certain to break the schema or can never work; **warn** in the validation step on what is merely likely to cause trouble. Stricter than pywr v1 where needed; **dead links are not allowed**. Order: connections (#48), pywr-next forms (#49), v1 forms (#50) | User, 2026-11-10 | issues #48-#50 |
+| Branches for that work: the parts that do not need the dialect classes are built on a branch off `dark-mode` (which equals `main`, has no `dialects/`), then `dark-mode` is merged into `pywr-next-dialect` and the pywr-next parts are built there | User, 2026-11-10 | issues #48-#50 |
 | Unplaced nodes use their geographic position, projected like the geographic view | Claude (issue #46 proposal) | `schematic/schematic.py` `draw()` |
 
 Still open: #24 (read-only multi-network), #43 (crash root cause), #45 (bundle uv),
@@ -94,6 +96,19 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   A cancelled run flushes the partial batch.
 - Scenarios: groups of `name`, `size`, `labels`, `subset`; `combinations`.
 - Converter: `pywr.convert_model_from_v1_json_string` returns `(ModelSchema, errors)`.
+- Edges (tested 2026-11-10): neither JSON Schema constrains connections (edges are names
+  only). pywr-next refuses, when it builds the network, an edge into an `Input`, out of an
+  `Output`, a self-loop and a duplicate (`Duplicate edge found`); its Python error only says
+  "Network schema validation failed. The network has 1 problem(s)". It accepts Link->Link,
+  Storage->Output, Input->Storage. pywr v1 1.23.0 accepts all of these without error at
+  `connect()`, `setup()` and `run()` (the edges are dead); its structural errors are
+  network-wide: "not part of any routes", "no valid routes". Probe scripts: the
+  `next_probe.py`/`next_probe2.py` approach (build a valid Input->Link->Output chain, add
+  one edge, `pywr.ModelSchema.from_json_string(...).build(".", None)`).
+- Schema constraint counts: pywr-next has 41 `minimum`, 9 `maximum`, 14 `enum`, 177 `const`;
+  pywr v1 has 20 `minimum`, 66 `enum` and, in the strict schema only, 41 `pattern`.
+  The pywr-next forms use only `required`, enum and `minimum` today; the v1 forms are
+  hand-written and do not use the schema.
 - Runner service: `pywr._pywr.run_server(name)`; abstract local socket on Linux; frames of
   a 4-byte length plus JSON; commands step, run_until, run_to_end, cancel. It stays
   listening after a run and does not exit when its client disconnects. A stdin watchdog
@@ -126,6 +141,11 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   (`-v`, so a crash names its test) were all clean. If it happens again, keep the whole
   log (no `tail`) and the dump, and look at the test named on the last line and the one
   before it. The QThread-deletion abort part is fixed (`caba1b8`). Issue #43 stays open.
+- Planned (decided 2026-11-10, not started): #48 refuse dead/invalid edges and warn on doubtful
+  ones (stage A off `dark-mode`, stage B on `pywr-next-dialect`), #49 pywr-next forms
+  constrained by the schema, #50 v1 forms (blocked until the neutral checking code from #49 is
+  on `dark-mode`). Severity rule for existing models: dead/invalid edge = error for pywr-next,
+  warning for v1. No-route problems are warnings.
 - Closing the window during a pywr v1 run only calls `worker.kill()` and does not wait for
   the thread (pywr-next waits in `NextRunWorker.shutdown()`).
 - Left undone on purpose: Python aggregation functions in outputs are not editable;
@@ -226,7 +246,7 @@ the decisions or facts that are not obvious from the diff.
   through `CLAUDE.md`), with a pointer in Claude's memory; every commit must update it.
   The stdin watchdog (section 8) was deliberately left out of this commit.
 
-- (this commit, hash to be added next time) #47: the runner service stops when the editor
+- `a446587` #47: the runner service stops when the editor
   dies. `SERVER_SNIPPET` starts a daemon thread that reads stdin and calls `os._exit(0)` on
   end-of-file; QProcess keeps the service's stdin pipe open and the OS closes it when the
   editor ends, so it needs no OS-specific call (Windows and macOS are untested here;
@@ -237,6 +257,10 @@ the decisions or facts that are not obvious from the diff.
   stdin (immediate end-of-file), so it could pass without proving anything; the new tests
   hold a real pipe. Stray `run_server` processes found earlier were from probe scripts
   that bypassed the snippet, not from the editor.
+
+- (this commit, hash to be added next time) docs: recorded the decisions for #48-#50
+  (blocking vs warning policy, order, branch plan), the tested edge rules of pywr v1 and
+  pywr-next, and the schema constraint counts. No code changed.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
