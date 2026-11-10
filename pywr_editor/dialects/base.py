@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
@@ -148,6 +149,16 @@ class ModelDialect(ABC):
      - "console": the IPython console with the model loaded;
      - "metric-sets": the shortcuts to add nodes and parameters to metric sets;
      - "convert-to-next": the conversion of the model to pywr-next """
+
+    def time_bounds(self, time_section: dict) -> "tuple[datetime, datetime] | None":
+        """
+        Returns the start and the end of the model with their time of day, for the
+        formats that have one (the toolbar only shows the dates).
+        :param time_section: The "time" dictionary.
+        :return: The start and the end, or None if the model has no time of day or they
+        are not valid.
+        """
+        return None
 
     def simple_time(self, time_section: dict) -> bool:
         """

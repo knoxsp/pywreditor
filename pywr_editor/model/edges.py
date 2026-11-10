@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
@@ -21,6 +21,11 @@ class EdgeRecord:
     """ The slot of the source node, if any. pywr-next slots are dictionaries """
     target_slot: str | int | dict | None = None
     """ The slot of the target node, if any """
+    extra: dict | None = field(default=None, compare=False, hash=False, repr=False)
+    """ What else the edge has in the model file, such as the comment, tags and
+    provenance in the "meta" of a pywr-next edge. It is kept when the edge is deleted
+    and restored by an undo. It is not part of what identifies the edge, so it is
+    ignored when records are compared """
 
     @classmethod
     def from_v1(cls, edge: Sequence) -> "EdgeRecord":

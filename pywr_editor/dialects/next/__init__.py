@@ -476,6 +476,18 @@ class NextDialect(ModelDialect):
             if not position:
                 del node["meta"]["position"]
 
+    def time_bounds(self, time_section: dict):
+        """
+        Returns the start and the end of the model with their time of day.
+        :param time_section: The "time" dictionary.
+        :return: The start and the end, or None if either is not valid.
+        """
+        from pywr_editor.dialects.next import time_domain
+
+        start = time_domain.parse_time(time_section.get("start"))
+        end = time_domain.parse_time(time_section.get("end"))
+        return (start, end) if start is not None and end is not None else None
+
     def simple_time(self, time_section: dict) -> bool:
         """
         Checks whether the toolbar can edit the time of the model: plain dates and a

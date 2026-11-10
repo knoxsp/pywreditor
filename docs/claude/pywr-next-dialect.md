@@ -171,7 +171,7 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   `--filter-files`.
 - Real test model: `/home/stephen/git/models/thames-adaptive/v2/` (62 nodes, only
   geographic positions). Use copies; do not commit it.
-- Current result: 3490 passed, 14 skipped (full suite, real-service tests on).
+- Current result: 3506 passed, 14 skipped (full suite, real-service tests on).
 
 ## 7. Known issues and open threads
 
@@ -332,7 +332,7 @@ the decisions or facts that are not obvious from the diff.
   refused, conforming accepted), plus a sweep of the 583 components of the Thames v2 model
   through their forms: no refusal, no warning.
 
-- (this commit, hash to be added next time) #50: pywr v1 forms use the v1 schema. At the end of
+- `d3ff1c9` #50: pywr v1 forms use the v1 schema. At the end of
   `Form.validate()` the node, parameter, table and scenario forms check the component as it
   will be stored. Decisions: only problems the edit *introduced* are reported; the standard
   schema's errors block Save (shown under the field, plus a message box), the strict
@@ -349,6 +349,31 @@ the decisions or facts that are not obvious from the diff.
   node, parameter and table of the 75 v1 test models through their real forms: the new check
   refused none (the forms' own validation refuses the deliberately broken test components,
   as before).
+
+- (this commit, hash to be added next time) Fixes for the Copilot review of PR #42 (7 comments,
+  all verified before fixing; all were mistakes of this work):
+  1. `EdgeRecord` has an `extra` field (compare/hash off) with the rest of the stored edge
+     (the "meta" of a pywr-next edge); `NextEdges._record` fills it and `add_record` restores
+     it, so undoing a node deletion or a disconnect keeps the comment, tags and provenance.
+     The restored edge is still appended at the end of the list (the order has no meaning).
+  2. (#50) The scenario `size` field no longer has `default_value=1`: the form dropped a size
+     of 1 and the schema requires it, so a scenario of size 1 could not be saved. A scenario
+     is now always saved with its size (an existing test was changed for this).
+  3. (#48) `check_connection()` takes the slots: edges between the same nodes that use
+     different slots are not duplicates; `find_edge_issues()` passes the slots of each edge.
+  4. (#32) `validate_timestepper()` checks the real start and end, with the time of day, for
+     the models the toolbar cannot show completely (new `ModelDialect.time_bounds()`), and
+     Run-to only has to be a day of the run (first and last included). v1 is unchanged.
+  5. (#32) Run-to starts at the date of the end (an end with a time of day made it 2000-01-01
+     and blocked every run), and follows the end when no date was saved.
+  6./7. The tests that run a child process (`test_run_thread_lifetime`, `test_without_pywr`)
+     use temporary INI settings on every platform (`tests/utils.py` `ISOLATE_SETTINGS`,
+     `child_process_env()`); the HOME override only worked on Linux and the first one did
+     not isolate at all (it had added `model_to_run.json` to the real recent files). Each
+     test asserts that the child wrote its settings in the temporary folder.
+  Tests: `tests/dialects/test_next_review_fixes.py` and a scenario test; with the source
+  fixes undone the 14 new tests fail. Lesson: do not `pkill -f` a pattern that is in your
+  own command line (it killed the shell once more).
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its

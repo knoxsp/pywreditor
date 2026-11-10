@@ -189,3 +189,24 @@ def test_a_scenario_keeps_its_name_in_the_component(qtbot, boxes):
     old, new = form.schema_component(data)
     assert new["name"] == name and "options" not in new
     assert not has_schema_box(boxes)
+
+
+@pytest.mark.parametrize("size", [1, 2])
+def test_a_scenario_of_any_size_can_be_saved(qtbot, boxes, tmp_path, size):
+    """
+    The form does not export a value that is the default of its field, and the schema
+    requires the size: a scenario of size 1 could not be saved.
+    """
+    import json
+
+    content = json.loads(open(resolve_model_path("model_1.json")).read())
+    content["scenarios"] = [{"name": "s", "size": size}]
+    file = tmp_path / "model.json"
+    file.write_text(json.dumps(content))
+    dialog = ScenariosDialog(ModelConfig(str(file)), selected_name="s")
+    qtbot.addWidget(dialog)
+    form = dialog.pages.currentWidget().form
+    data = form.validate()
+    assert data is not False, boxes
+    assert data["size"] == size
+    assert not has_schema_box(boxes)

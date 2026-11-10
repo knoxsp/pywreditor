@@ -71,7 +71,6 @@ class ScenarioFormWidget(ModelComponentForm):
                     field_type=IntegerWidget,
                     field_args={"min_value": 1},
                     value=self.get_dict_value("size", self.scenario_dict),
-                    default_value=1,
                     help_text="The number of ensembles in the scenario",
                 ),
                 FieldConfig(

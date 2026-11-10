@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.utils import resolve_model_path
+from tests.utils import ISOLATE_SETTINGS, child_process_env, resolve_model_path
 
 ROOT = Path(__file__).parents[2]
 
@@ -14,6 +14,7 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QApplication
 from pywr_editor import MainWindow
 from pywr_editor.utils import Settings
+ISOLATE_SETTINGS
 from pywr_editor.toolbar.run_controls.run_widget import RunWidget
 
 # do not write the results of the run next to the test model
@@ -40,7 +41,7 @@ while time.time() < end:
     time.sleep(0.01)
 window.model_config.reset_change_flag()
 print("finished cleanly")
-"""
+""".replace("ISOLATE_SETTINGS", ISOLATE_SETTINGS)
 
 
 def test_thread_is_not_deleted_while_the_worker_is_still_running(tmp_path):
@@ -53,11 +54,7 @@ def test_thread_is_not_deleted_while_the_worker_is_still_running(tmp_path):
     result = subprocess.run(
         [sys.executable, "-c", SCRIPT, resolve_model_path("model_to_run.json")],
         cwd=ROOT,
-        env={
-            **__import__("os").environ,
-            "QT_QPA_PLATFORM": "offscreen",
-            "PYTHONPATH": str(ROOT),
-        },
+        env=child_process_env(tmp_path),
         capture_output=True,
         text=True,
         timeout=120,
@@ -66,3 +63,5 @@ def test_thread_is_not_deleted_while_the_worker_is_still_running(tmp_path):
     assert "Destroyed while thread is still running" not in output, output[-2000:]
     assert result.returncode == 0, output[-2000:]
     assert "finished cleanly" in result.stdout
+    # the settings of the editor were written in the temporary folder
+    assert list((tmp_path / "settings").rglob("*.ini"))

@@ -542,6 +542,37 @@ class RunWidget(QWidget):
         suffix_msg = "Please make sure that the date fields are properly configured"
         date_fmt = "%d/%m/%Y"
 
+        # the toolbar only shows the dates of a model that has a time of day: check
+        # the start and the end of the model, not the dates, which can be the same
+        # (a model of hours in one day). Run-to is a date, which can be any day of
+        # the run, including the first and the last
+        time = self.model_config.timestepper
+        dialect = self.model_config.dialect
+        bounds = None if dialect.simple_time(time) else dialect.time_bounds(time)
+        if bounds is not None:
+            start, end = bounds
+            time_fmt = "%d/%m/%Y %H:%M"
+            if start >= end:
+                self.app.on_error_message(
+                    f"The start ({start.strftime(time_fmt)}) must be earlier than the "
+                    + f"end ({end.strftime(time_fmt)}) of the model. "
+                    + "Change them with the Time button of the Model tab.",
+                    False,
+                    title,
+                )
+                return False
+            if not start.date() <= run_to_date <= end.date():
+                self.app.on_error_message(
+                    f"The run-to date ({run_to_date.strftime(date_fmt)}) must be "
+                    + f"between the start ({start.strftime(date_fmt)}) and the end "
+                    + f"({end.strftime(date_fmt)}) of the model. "
+                    + suffix_msg,
+                    False,
+                    title,
+                )
+                return False
+            return True
+
         if start_date >= end_date:
             self.app.on_error_message(
                 f"The start date ({start_date.strftime(date_fmt)}) must be smaller "

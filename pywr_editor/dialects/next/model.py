@@ -275,13 +275,32 @@ class NextEdges(Edges):
         """
         return self.model.json["network"]["edges"]
 
-    @staticmethod
-    def _record(edge: dict) -> EdgeRecord:
+    EDGE_KEYS = ("from_node", "to_node", "from_slot", "to_slot")
+
+    @classmethod
+    def _record(cls, edge: dict) -> EdgeRecord:
+        extra = {k: deepcopy(v) for k, v in edge.items() if k not in cls.EDGE_KEYS}
         return EdgeRecord(
             edge.get("from_node"),
             edge.get("to_node"),
             edge.get("from_slot"),
             edge.get("to_slot"),
+            extra or None,
+        )
+
+    def add_record(self, edge: EdgeRecord) -> bool:
+        """
+        Adds an edge from a record, with what the edge had besides its end points and
+        slots (its "meta"), so that an undo restores the edge as it was.
+        :param edge: The edge record.
+        :return: True if the edge is added, False otherwise.
+        """
+        return self.add(
+            edge.source,
+            edge.target,
+            edge.source_slot,
+            edge.target_slot,
+            extra=edge.extra,
         )
 
     def records(self) -> list[EdgeRecord]:
@@ -327,6 +346,7 @@ class NextEdges(Edges):
         target_node_name: str,
         slot_source: dict | None = None,
         slot_target: dict | None = None,
+        extra: dict | None = None,
     ) -> bool:
         """
         Adds a new edge.
@@ -334,6 +354,7 @@ class NextEdges(Edges):
         :param target_node_name: The name of the target node.
         :param slot_source: The slot of the source node. Optional.
         :param slot_target: The slot of the target node. Optional.
+        :param extra: The other keys of the edge, such as its "meta". Optional.
         :return: True if the edge is added, False otherwise.
         """
         all_nodes = self.model.nodes.names
@@ -345,6 +366,7 @@ class NextEdges(Edges):
             edge["from_slot"] = slot_source
         if slot_target is not None:
             edge["to_slot"] = slot_target
+        edge.update(deepcopy(extra or {}))
         self.get_all().append(edge)
         self.model.has_changed()
         return True

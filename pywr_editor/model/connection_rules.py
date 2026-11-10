@@ -1,7 +1,7 @@
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, Literal, Mapping, Sequence
+from typing import Any, Iterable, Literal, Mapping, Sequence
 
 from pywr_editor.model.edges import EdgeRecord
 
@@ -62,13 +62,20 @@ def _article(label: str) -> str:
 
 
 def check_connection(
-    source: Endpoint, target: Endpoint, existing: Iterable[EdgeRecord] = ()
+    source: Endpoint,
+    target: Endpoint,
+    existing: Iterable[EdgeRecord] = (),
+    source_slot: Any = None,
+    target_slot: Any = None,
 ) -> ConnectionIssue | None:
     """
     Checks whether a new edge can be added.
     :param source: The node the edge starts from.
     :param target: The node the edge goes to.
     :param existing: The edges of the model, to find a duplicate.
+    :param source_slot: The slot of the source node the edge uses, if any. Two edges
+    between the same nodes that use different slots are different connections.
+    :param target_slot: The slot of the target node the edge uses, if any.
     :return: The reason the edge is not allowed, or None if it is.
     """
     if source.name == target.name:
@@ -95,7 +102,11 @@ def check_connection(
             "so no node can be connected to it",
         )
     if any(
-        edge.source == source.name and edge.target == target.name for edge in existing
+        edge.source == source.name
+        and edge.target == target.name
+        and edge.source_slot == source_slot
+        and edge.target_slot == target_slot
+        for edge in existing
     ):
         return ConnectionIssue(
             "duplicate",
@@ -120,7 +131,9 @@ def find_edge_issues(
         source, target = endpoints.get(edge.source), endpoints.get(edge.target)
         if source is None or target is None:
             continue
-        issue = check_connection(source, target, edges[:index])
+        issue = check_connection(
+            source, target, edges[:index], edge.source_slot, edge.target_slot
+        )
         if issue is not None:
             issues.append((index, issue))
     return issues

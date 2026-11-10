@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, Qt
@@ -118,3 +119,40 @@ def change_table_view_cell(
         qtbot.keyClick(table.viewport().focusWidget(), key)
     qtbot.keyClick(table.viewport().focusWidget(), Qt.Key_Enter)
     qtbot.wait(200)
+
+
+ISOLATE_SETTINGS = """
+import os
+from PySide6.QtCore import QSettings
+from pywr_editor.utils import Settings
+
+# the settings of the child process are in a temporary folder, as in the tests that run
+# in the test process (see conftest.py): ini files on every platform, because the
+# native format is the registry on Windows and a property list on macOS
+_folder = os.environ["TEST_SETTINGS_DIR"]
+Settings.storage_format = QSettings.Format.IniFormat
+for _format in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+    for _scope in (QSettings.Scope.UserScope, QSettings.Scope.SystemScope):
+        QSettings.setPath(_format, _scope, _folder)
+"""
+""" The code a script run in a child process starts with, so that the editor does not
+write to the settings of the user. The folder is in the TEST_SETTINGS_DIR variable """
+
+
+def child_process_env(tmp_path: Path, **extra: str) -> dict[str, str]:
+    """
+    Returns the environment of a child process that runs the editor: headless, with the
+    editor on the path and temporary settings (see ISOLATE_SETTINGS).
+    :param tmp_path: The temporary folder of the test.
+    :param extra: Other variables.
+    :return: The environment.
+    """
+    folder = tmp_path / "settings"
+    folder.mkdir(exist_ok=True)
+    return {
+        **os.environ,
+        "QT_QPA_PLATFORM": "offscreen",
+        "PYTHONPATH": str(Path(__file__).parents[1]),
+        "TEST_SETTINGS_DIR": str(folder),
+        **extra,
+    }

@@ -61,9 +61,11 @@ class TimeStepperWidget(QWidget):
 
         # run to date
         main_layout.addWidget(QLabel("Run to date"), 1, 3)
-        saved_run_to_date = parent.editor_settings.run_to_date
+        self.editor_settings = parent.editor_settings
+        saved_run_to_date = self.editor_settings.run_to_date
         if saved_run_to_date is None:
-            saved_run_to_date = self.model_config.end_date
+            # the date only: the end of a pywr-next model can have a time of day
+            saved_run_to_date = str(self.model_config.end_date)[:10]
         run_to_date = DateEdit(saved_run_to_date)
         run_to_date.setObjectName("run_to_date")
         # noinspection PyUnresolvedReferences
@@ -109,6 +111,13 @@ class TimeStepperWidget(QWidget):
                 widget.blockSignals(True)
                 widget.setDate(date)
                 widget.blockSignals(False)
+        # without a saved date, Run-to follows the end of the model
+        if self.editor_settings.run_to_date is None:
+            date = QDate.fromString(str(time.get("end"))[:10], "yyyy-MM-dd")
+            if date.isValid():
+                self.run_to_date.blockSignals(True)
+                self.run_to_date.setDate(date)
+                self.run_to_date.blockSignals(False)
         self.time_step.blockSignals(True)
         self.time_step.setValue(self.model_config.time_delta)
         self.time_step.blockSignals(False)
