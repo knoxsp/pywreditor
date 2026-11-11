@@ -206,13 +206,18 @@ environment's Python in subprocesses; the editor never imports pywr-next.
 ## 8. Pending (uncommitted) work
 
 Planned next (2026-11-11, user request): the **pywr-next projects** milestone, issues
-#51-#68 (tracking issue #68; order in it; #51 first). Source: pywr-next PR #939 (book
-chapter) and the stacked `pywr-project` PRs #933-#939. Key facts: project composition is
-Rust-only (`pywr-project` crate; CLI `run-project` only; the Python function and
-`InitProject` are commented out upstream) and unreleased, so #51 decides how the editor
-composes (recommended: ask pywr-next for `validate-project` / `compose-project` /
-manifest-schema export commands). Not verified by running anything. The editor already
-reads `meta.provenance` and hides `Placeholder` from type pickers (#57 changes that).
+#51-#69 (tracking issue #68). Source: pywr-next PR #939 (book chapter) and the stacked
+`pywr-project` PRs #933-#939. **Decided 2026-11-11 (user constraint: new pywr-next features
+cannot be requested):** the editor composes and validates projects itself, in Python,
+following the book (#69, the foundation; #51 closed). Facts behind it: released pywr
+2.0.0rc1 has no project functions (Python CLI: `run`, `runner-service`); upstream project
+code is only in the unreleased Rust crate, `run-project` (Rust CLI) only runs and panics on
+errors, the Python binding and `InitProject` are commented out. A project is run by composing
+to an ordinary model and using the existing runner service (#63). Risk: the upstream PRs are
+open, so the rules can change; #69 limits it with a `ProjectBackend` interface, fixtures from
+the upstream examples and an optional local comparison with the Rust tool (cargo is
+installed). Not verified by running anything. The editor already reads `meta.provenance` and
+hides `Placeholder` from type pickers (#57 changes that).
 
 Nothing uncommitted. Open and waiting on the user or another machine: #47 (Windows/macOS
 check), #45 (run the PyInstaller build and the installer), #43 (crash root cause), #24 option
@@ -472,7 +477,7 @@ the decisions or facts that are not obvious from the diff.
   `WORKLOG_GUARD_MEMORY`. The hook cannot tell whether the entries are good, only that
   they were touched: write them properly. CLAUDE.md and rule 5 above say so.
 
-- (this commit, hash to be added next time) Work log only: records the new milestone
+- 8c6f040 Work log only: records the new milestone
   "pywr-next projects" (#51-#68, label `projects`) made from the book chapter of pywr-next
   PR #939. Decisions behind the issue set: (1) the first issue is a decision (#51, label
   needs-decision) because the composition code is not reachable from Python or a CLI
@@ -484,6 +489,16 @@ the decisions or facts that are not obvious from the diff.
   project: one sidecar for the project, `editor:*` tags stay in the fragment (#67, to be
   confirmed there). No code change. Note: the commit guard checks before the command runs,
   so edit the work log and memory in an earlier command than `git commit`.
+
+- (this commit, hash to be added next time) Work log only: decision on #51. The user ruled
+  out asking pywr-next for new features, which removes the "upstream commands" option and
+  the Python-binding option (also an upstream change), so the editor re-implements project
+  composition (new issue #69; #51 closed with the decision). Reasoning checked on
+  2026-11-11: rc1 Python package has no project API; the Rust `run-project` cannot write the
+  composed model. Consequences recorded on the issues: manifest schema is hand-written from
+  the book's tables, validation is the editor's, running composes to a temporary ordinary
+  model and uses the runner service, a backend interface keeps a later upstream tool
+  swappable. No code change.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
