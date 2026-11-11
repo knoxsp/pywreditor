@@ -17,6 +17,9 @@ class Nodes:
     model: "ModelConfig"
     """ The ModelConfig instance """
 
+    node_config_class = NodeConfig
+    """ The class wrapping the dictionary of a node of the model dialect """
+
     def get_all(self) -> list[dict]:
         """
         Return the list of the nodes.
@@ -31,7 +34,7 @@ class Nodes:
         Return the list of the node names.
         :return: The node name list.
         """
-        return [node["name"] for node in self.get_all()]
+        return [self.node(node).name for node in self.get_all()]
 
     @property
     def count(self) -> int:
@@ -41,8 +44,8 @@ class Nodes:
         """
         return len(self.get_all())
 
-    @staticmethod
-    def node(node_dict: dict, deepcopy: bool = False) -> NodeConfig:
+    @classmethod
+    def node(cls, node_dict: dict, deepcopy: bool = False) -> NodeConfig:
         """
         Return the NodeConfig instance.
         :param node_dict: The node dictionary.
@@ -50,7 +53,7 @@ class Nodes:
         Default to False.
         :return: The NodeConfig instance
         """
-        return NodeConfig(node_dict, deepcopy)
+        return cls.node_config_class(node_dict, deepcopy)
 
     def set_position(
         self,
@@ -73,14 +76,11 @@ class Nodes:
         if node_name is not None:
             node_index = self.find_node_index_by_name(node_name)
 
-        schematic_key = Constants.POSITION_KEY.value
-        if "position" in self.model.json["nodes"][node_index]:
-            self.model.json["nodes"][node_index]["position"][schematic_key] = position
-        else:
-            self.model.json["nodes"][node_index]["position"] = {schematic_key: position}
+        node_dict = self.get_all()[node_index]
+        self.node(node_dict).change_position(position)
 
         self.model.has_changed()
-        return self.model.json["nodes"][node_index]
+        return node_dict
 
     def set_node_style(
         self,
@@ -97,23 +97,13 @@ class Nodes:
         :return: None
         """
         node_index = self.find_node_index_by_name(node_name)
-        node_dict = self.model.json["nodes"][node_index]
+        node = self.node(self.get_all()[node_index])
         for key, value in (
             (Constants.NODE_COLOR_KEY.value, color),
             (Constants.NODE_SIZE_KEY.value, size),
         ):
-            if value is UNCHANGED:
-                continue
-            if value is None:
-                position = node_dict.get("position")
-                if isinstance(position, dict):
-                    position.pop(key, None)
-            else:
-                if not isinstance(node_dict.get("position"), dict):
-                    node_dict["position"] = {}
-                node_dict["position"][key] = value
-        if node_dict.get("position") == {}:
-            del node_dict["position"]
+            if value is not UNCHANGED:
+                node.set_editor_value(key, value)
         self.model.has_changed()
 
     def set_node_color(self, node_name: str, color: str | None) -> None:
@@ -148,19 +138,20 @@ class Nodes:
             node_index = self.find_node_index_by_name(node_name)
 
         geographic_key = Constants.GEOGRAPHIC_KEY.value
-        node_dict = self.model.json["nodes"][node_index]
+        node = self.node(self.get_all()[node_index])
+        node_position = node.position_dict()
         if position is None:
-            if isinstance(node_dict.get("position"), dict):
-                node_dict["position"].pop(geographic_key, None)
-        elif isinstance(node_dict.get("position"), dict):
-            current = node_dict["position"].get(geographic_key)
+            if node_position is not None:
+                node_position.pop(geographic_key, None)
+        elif node_position is not None:
+            current = node_position.get(geographic_key)
             if isinstance(current, dict):
                 # a polygon or point geometry: translate it to keep its shape
                 self._translate_geometry(current, position)
             else:
-                node_dict["position"][geographic_key] = position
+                node_position[geographic_key] = position
         else:
-            node_dict["position"] = {geographic_key: position}
+            node.position_dict(create=True)[geographic_key] = position
 
         self.model.has_changed()
 
@@ -198,7 +189,7 @@ class Nodes:
             (
                 idx
                 for idx, node in enumerate(self.get_all())
-                if node["name"] == node_name
+                if self.node(node).name == node_name
             ),
             None,
         )
@@ -217,7 +208,7 @@ class Nodes:
             if as_dict:
                 return node_dict
             else:
-                return NodeConfig(props=node_dict)
+                return self.node(node_dict)
         return None
 
     def delete(self, node_name: str) -> None:
@@ -228,7 +219,7 @@ class Nodes:
         """
         node_idx = self.find_node_index_by_name(node_name)
         if node_idx is not None:
-            del self.model.json["nodes"][node_idx]
+            del self.get_all()[node_idx]
             self.model.has_changed()
             self.model.edges.delete(source_node_name=node_name)
             self.model.edges.delete(target_node_name=node_name)
@@ -239,8 +230,8 @@ class Nodes:
         :return: A list of orphaned node names or None if there are not any.
         """
         nodes_in_edges = set()
-        for edge in self.model.edges.get_all():
-            nodes_in_edges = nodes_in_edges.union(set(edge))
+        for edge in self.model.edges.records():
+            nodes_in_edges.update((edge.source, edge.target))
 
         orphaned_node_names = []
         for node_dict in self.get_all():
@@ -258,11 +249,11 @@ class Nodes:
         :param node_config: The configuration dictionary.
         :return: None
         """
-        node_keys = node_config.keys()
-        if "name" not in node_keys or "type" not in node_keys:
+        node = self.node(node_config)
+        if not node.name or "type" not in node_config:
             raise KeyError("The node configuration must have a name and a type set")
 
-        self.model.json["nodes"].append(node_config)
+        self.get_all().append(node_config)
         self.model.has_changed()
 
     def update(self, node_dict: dict) -> None:
@@ -349,16 +340,18 @@ class Nodes:
         if node_index is None:
             return None
 
-        # rename key in node dictionary
-        self.model.json["nodes"][node_index]["name"] = new_name
+        self.node(self.get_all()[node_index]).change_name(new_name)
+        self.model.edges.rename_node(node_name, new_name)
+        self.rename_references(node_name, new_name)
+        self.model.has_changed()
 
-        # rename references in edges
-        self.model.json["edges"] = JsonUtils(self.model.json["edges"]).replace_str(
-            old=node_name,
-            new=new_name,
-        )
-
-        # rename references in model components
+    def rename_references(self, node_name: str, new_name: str) -> None:
+        """
+        Renames the references to a node in the other model components.
+        :param node_name: The node name to change.
+        :param new_name: The new node name.
+        :return: None
+        """
         self.model.json = JsonUtils(self.model.json).replace_str(
             old=node_name,
             new=new_name,
@@ -370,4 +363,3 @@ class Nodes:
                 "storage_nodes",
             ],
         )
-        self.model.has_changed()

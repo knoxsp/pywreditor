@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QUndoCommand
 
-from pywr_editor.model import BaseShape, NodeConfig
+from pywr_editor.model import BaseShape, EdgeRecord, NodeConfig
 from pywr_editor.utils import Logging
 
 from ..node import SchematicNode
@@ -54,7 +54,7 @@ class DeleteItemCommand(QUndoCommand):
         # lists of deleted edges (nodes and slots) collected in the redo command. Note
         # that, if a node in an edge is renamed, and the operation is undone, the edge
         # is not restored because the node was changed
-        self.deleted_edges: list[list[str | int]] = []
+        self.deleted_edges: list[EdgeRecord] = []
 
         # list of annotation shapes collected in the redo command
         self.deleted_shape_configs: list[BaseShape] = []
@@ -131,7 +131,7 @@ class DeleteItemCommand(QUndoCommand):
         restored_edges = 0
         for edge in self.deleted_edges:
             # check that the edge is still valid
-            if self.model_config.edges.add(*edge):
+            if self.model_config.edges.add_record(edge):
                 self.logger.debug(f"Restored edge: {edge}")
                 restored_edges += 1
 

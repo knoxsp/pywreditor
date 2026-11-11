@@ -1,13 +1,13 @@
 import json
 import os
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
 
 import pyproj
 from pandas import period_range
 from PySide6.QtCore import QObject, Signal
 
+from pywr_editor.dialects import ModelDialect, detect_dialect, get_dialect
 from pywr_editor.model import (
     Constants,
     Edges,
@@ -39,13 +39,30 @@ class ModelConfig(QObject):
     model_changed = Signal()
     """ Signal emitted when a change is applied to the model configuration """
 
-    def __init__(self, json_file: str | None = None):
+    def __init__(
+        self,
+        json_file: str | None = None,
+        new_dialect: str = "v1",
+        network: str | None = None,
+    ):
         """
         Initialise the class.
         :param json_file: The path to the model file
+        :param new_dialect: The dialect of a new model, when there is no model file
+        ("v1" or "next"). The dialect of a model file is detected.
+        :param network: The name of the network to show when the model has several
+        networks (pywr-next). Default: the first one.
         """
         super().__init__()
         self.json_file = json_file
+        self.new_dialect = new_dialect
+        self.network = network
+        self.read_only = False
+        """ A model that is shown but cannot be changed or saved """
+        self.network_names: list[str] = []
+        """ The networks of a multi-network model (see NextDialect.show_network) """
+        self.read_only_note: str | None = None
+        """ What a read-only model shows, for the user """
 
         # load the model
         self.json = dict()
@@ -58,6 +75,13 @@ class ModelConfig(QObject):
         if not self.is_valid():
             return
 
+        self.dialect.setup_model(self)
+
+    def setup_v1_model(self) -> None:
+        """
+        Adds the missing sections, checks a pywr v1 model and adds its components.
+        :return: None
+        """
         # add missing keys and validate the model
         self.check_missing_keys()
         self.validate()
@@ -120,10 +144,11 @@ class ModelConfig(QObject):
     @property
     def timestepper(self) -> dict | None:
         """
-        Returns the timestepper dictionary.
-        :return: The timestepper configuration
+        Returns the section with the start and end dates and the time step
+        ("timestepper" in pywr v1, "time" in pywr-next).
+        :return: The time configuration
         """
-        return self.json["timestepper"]
+        return self.json[self.dialect.time_key]
 
     @property
     def start_date(self) -> str | None:
@@ -146,7 +171,7 @@ class ModelConfig(QObject):
         :param date: The date as string.
         :return: None
         """
-        self.json["timestepper"]["start"] = date
+        self.timestepper["start"] = date
         self.has_changed()
 
     @property
@@ -170,32 +195,26 @@ class ModelConfig(QObject):
         :param date: The date as string.
         :return: None
         """
-        self.json["timestepper"]["end"] = date
+        self.timestepper["end"] = date
         self.has_changed()
 
     @property
     def time_delta(self) -> int:
         """
-        Returns the timestepper timestep.
+        Returns the time step in days.
         :return: The timestep or 1 when not available.
         """
-        if "timestep" in self.timestepper and isinstance(
-            self.timestepper["timestep"], int
-        ):
-            try:
-                return int(self.timestepper["timestep"])
-            except ValueError:
-                return 1
-        return 1
+        days = self.dialect.timestep_days(self.timestepper)
+        return 1 if days is None else days
 
     @time_delta.setter
     def time_delta(self, time_delta: int) -> None:
         """
-        Updates the timestepper timestep.
+        Updates the time step.
         :param time_delta: The new timestep as number of days.
-        :return: The end date as datetime instance, None when not available.
+        :return: None
         """
-        self.json["timestepper"]["timestep"] = time_delta
+        self.dialect.set_timestep_days(self.timestepper, time_delta)
         self.has_changed()
 
     @property
@@ -221,32 +240,19 @@ class ModelConfig(QObject):
     @staticmethod
     def empty_model() -> dict:
         """
-        Returns the configuration for an empty model.
+        Returns the configuration for an empty pywr v1 model.
         :return: The model configuration.
         """
-        current_time = datetime.now().strftime("%d/%m/%Y %H:%M")
-        return {
-            "metadata": {
-                "minimum_version": 0.1,
-                "title": "New model",
-                "description": f"Model created on {current_time}",
-            },
-            "includes": [],
-            "timestepper": {"start": "2000-1-1", "end": "2000-12-31", "timestep": 1},
-            "scenarios": [],
-            "nodes": [],
-            "edges": [],
-            "tables": {},
-            "recorders": {},
-            Constants.EDITOR_CONFIG_KEY.value: {Constants.SHAPES_KEY.value: []},
-        }
+        return get_dialect("v1").empty_model()
 
     def load_model(self) -> None:
         """
         Loads the model configuration as dictionary.
         :return: None.
         """
-        self.json = self.empty_model()
+        self.dialect: ModelDialect = get_dialect(self.new_dialect)
+        """ The dialect of the model (pywr v1 or pywr-next) """
+        self.json = self.dialect.empty_model()
 
         if not self.json_file:
             return
@@ -272,6 +278,8 @@ class ModelConfig(QObject):
                 + "Please fix the error by manually editing the JSON file"
             )
             return
+
+        self.dialect = detect_dialect(self.json)
 
         # the editor data is stored next to the model (see sidecar.py)
         if isinstance(self.json, dict):
@@ -526,6 +534,9 @@ class ModelConfig(QObject):
         Saves the model file, and the editor data in its sidecar file (see sidecar.py)
         :return: True if the file is successfully saved, the error message otherwise.
         """
+        if self.read_only:
+            # the model on the screen is a view of the file, which is not changed
+            return "This model is read-only: it cannot be saved"
         model, editor_data = split_model(self.json)
         # the sidecar is written first: if the model cannot be written, the sidecar
         # has the new editor data and the model keeps the old one, which the sidecar

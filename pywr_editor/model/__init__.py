@@ -13,7 +13,7 @@ from .parameter_config import ParameterConfig
 from .recorder_config import RecorderConfig
 from .scenario_config import ScenarioConfig
 
-from .edges import Edges
+from .edges import EdgeRecord, Edges
 from .includes import *
 from .model_file_info import ModelFileInfo
 from .nodes import Nodes

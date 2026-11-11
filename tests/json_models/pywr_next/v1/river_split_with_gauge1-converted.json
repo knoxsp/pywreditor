@@ -1,0 +1,117 @@
+{
+  "metadata": {
+    "title": "RiverSplitWithGauge",
+    "description": "Example of an abstraction with an MRF of form y=mx+c",
+    "minimum_version": "0.1"
+  },
+  "time": {
+    "start": "2015-01-01T00:00:00",
+    "end": "2015-12-31T00:00:00",
+    "timestep": {
+      "type": "Days",
+      "days": 1
+    }
+  },
+  "network": {
+    "nodes": [
+      {
+        "meta": {
+          "name": "Catchment"
+        },
+        "type": "Catchment",
+        "flow": {
+          "type": "Literal",
+          "value": 100.0
+        }
+      },
+      {
+        "meta": {
+          "name": "Gauge"
+        },
+        "type": "RiverSplitWithGauge",
+        "mrf": {
+          "type": "Parameter",
+          "name": "Gauge-p0"
+        },
+        "mrf_cost": {
+          "type": "Literal",
+          "value": -1000.0
+        },
+        "splits": [
+          {
+            "factor": {
+              "type": "Literal",
+              "value": 0.25
+            },
+            "slot_name": "abstraction"
+          }
+        ]
+      },
+      {
+        "meta": {
+          "name": "Estuary"
+        },
+        "type": "Output"
+      },
+      {
+        "meta": {
+          "name": "Demand"
+        },
+        "type": "Output",
+        "max_flow": {
+          "type": "Literal",
+          "value": 50.0
+        },
+        "cost": {
+          "type": "Literal",
+          "value": -10.0
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from_node": "Catchment",
+        "to_node": "Gauge"
+      },
+      {
+        "from_node": "Gauge",
+        "from_slot": {
+          "type": "River"
+        },
+        "to_node": "Estuary"
+      },
+      {
+        "from_node": "Gauge",
+        "from_slot": {
+          "type": "Abstraction"
+        },
+        "to_node": "Demand"
+      }
+    ],
+    "parameters": [
+      {
+        "meta": {
+          "name": "Gauge-p0"
+        },
+        "type": "MonthlyProfile",
+        "values": {
+          "type": "Literal",
+          "values": [
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0
+          ]
+        }
+      }
+    ]
+  }
+}

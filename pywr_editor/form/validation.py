@@ -6,6 +6,10 @@ class Validation:
     error_message: str | None = None
     """ The error message. If the message is provided, the form validation is flagged
     as failed """
+    warning_message: str | None = None
+    """ A warning about a value that is accepted but is likely to cause a problem, such
+    as a reference to a component that does not exist. It is shown under the field and
+    does not stop the form from being saved. Ignored if there is an error """
 
     def __post_init__(self):
         """

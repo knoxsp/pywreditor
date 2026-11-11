@@ -103,6 +103,7 @@ Source: "dist\main\api-ms-win-crt-time-l1-1-0.dll"; DestDir: "{app}"; Flags: ign
 Source: "dist\main\api-ms-win-crt-utility-l1-1-0.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\main\base_library.zip"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\main\LEGAL NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\main\uv.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "dist\main\libcrypto-1_1.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\main\libffi-*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "dist\main\libopenblas*.dll"; DestDir: "{app}"; Flags: ignoreversion

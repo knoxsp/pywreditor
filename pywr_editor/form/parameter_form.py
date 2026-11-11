@@ -1,3 +1,5 @@
+import copy
+
 from PySide6.QtWidgets import QMessageBox, QPushButton, QWidget
 
 from pywr_editor.form import BooleanWidget, FieldConfig, ModelComponentForm
@@ -60,6 +62,19 @@ class ParameterForm(ModelComponentForm):
         )
         self.params_data = model_config.pywr_parameter_data
         self.show_warning = False
+
+    schema_kind = "parameter"
+
+    def schema_component(self, form_data: dict) -> tuple[dict | None, dict]:
+        """
+        Returns the parameter before and after the edit, as it is stored in the model
+        (the name is the key of the dictionary of parameters).
+        :param form_data: The form values.
+        :return: The parameter before the edit (None if it is new) and after it.
+        """
+        new = {k: v for k, v in form_data.items() if k != "name"}
+        old = None if self.parameter_obj is None else copy.deepcopy(self.parameter_dict)
+        return old, new
 
     def load_fields(self) -> None:
         """

@@ -13,18 +13,17 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
 )
 
-from pywr_editor.dialogs import ParametersDialog, RecordersDialog, TablesDialog
 from pywr_editor.model import Constants, ModelConfig
 from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.utils import maybe_delete_component
 from pywr_editor.widgets import ContextualMenu, ExtensionIcon
 
-from ..dialogs.node.node_dialog import NodeDialog
 from .expanded_item_states import ExpandedItemStates
 from .tree_widget_node import TreeWidgetNode
 from .tree_widget_parameter import TreeWidgetParameter, TreeWidgetParameterName
 from .tree_widget_recorder import TreeWidgetRecorder, TreeWidgetRecorderName
 from .tree_widget_table import TreeWidgetTable
+from .tree_widget_value import TreeWidgetComponent
 
 if TYPE_CHECKING:
     from pywr_editor import MainWindow
@@ -86,10 +85,20 @@ class ComponentsTree(QTreeWidget):
 
         self._populate_model_info()
         self._populate_nodes()
-        self._populate_parameters()
-        self._populate_tables()
-        self._populate_recorders()
-        self._populate_scenarios()
+        # only show the components of the model dialect. The pywr-next components
+        # are listed generically
+        kinds = {kind.key: kind for kind in self.model_config.dialect.component_kinds()}
+        v1_populators = {
+            "parameter": self._populate_parameters,
+            "table": self._populate_tables,
+            "recorder": self._populate_recorders,
+            "scenario": self._populate_scenarios,
+        }
+        for key, kind in kinds.items():
+            if kind.list_key is not None:
+                self._populate_list(kind)
+            elif key in v1_populators:
+                v1_populators[key]()
         self.insertTopLevelItems(0, [group for group in self.items.values()])
 
         # do not let user sort columns
@@ -134,6 +143,7 @@ class ComponentsTree(QTreeWidget):
                 TreeWidgetParameterName,
                 TreeWidgetRecorderName,
                 TreeWidgetTable,
+                TreeWidgetComponent,
             ),
         )
 
@@ -215,7 +225,7 @@ class ComponentsTree(QTreeWidget):
         """
         # initialise the node list
         nodes = {
-            **{node_name: [] for node_name in self.model_config.pywr_node_data.names},
+            **{name: [] for name in self.model_config.dialect.node_types().values()},
             **{Constants.CUSTOM_NODE_GROUP_NAME.value: []},
         }
 
@@ -229,7 +239,8 @@ class ComponentsTree(QTreeWidget):
             )
             self.expanded_state.store_state(item)
 
-            nodes[group].append(item)
+            # a type the editor does not know gets its own group
+            nodes.setdefault(group, []).append(item)
 
         # add groups
         parent_item = QTreeWidgetItem(self)
@@ -281,6 +292,32 @@ class ComponentsTree(QTreeWidget):
         else:
             self.expanded_state.store_state(parent_item)
         self.items["parameters"] = parent_item
+
+    def _populate_list(self, kind) -> None:
+        """
+        Populates the tree widget with a list of pywr-next components.
+        :param kind: The ComponentKind, with the key of the list in the network.
+        :return: None
+        """
+        from pywr_editor.dialects.next.schema import bundled_schema
+
+        network = self.model_config.json.get("network", {})
+        components = network.get(kind.list_key) or []
+        parent_item = QTreeWidgetItem(self)
+        parent_item.setText(0, kind.label)
+        tag = bundled_schema().tag_key(kind.definition) if kind.definition else "type"
+        for component in components:
+            if not isinstance(component, dict):
+                continue
+            sub_item = TreeWidgetComponent(component, kind.key, tag)
+            self.expanded_state.store_state(sub_item)
+            parent_item.addChild(sub_item)
+
+        if self.init:
+            self.expanded_state.add(parent_item, True)
+        else:
+            self.expanded_state.store_state(parent_item)
+        self.items[kind.list_key] = parent_item
 
     def _populate_model_info(self) -> None:
         """
@@ -484,7 +521,7 @@ class ComponentsTree(QTreeWidget):
         :return: None
         """
         # disable menu if model is running
-        if self.parent.is_model_running:
+        if self.parent.editing_locked:
             return
 
         item = self.itemAt(pos)
@@ -549,6 +586,27 @@ class ComponentsTree(QTreeWidget):
                 )
             )
             context_menu.exec(self.mapToGlobal(pos))
+        elif isinstance(item, TreeWidgetComponent):
+            context_menu = ContextualMenu()
+            context_menu.set_title(item.name)
+            edit_action = context_menu.addAction(edit_icon, "Edit")
+            # noinspection PyUnresolvedReferences
+            edit_action.triggered.connect(
+                lambda *args, kind=item.kind, name=item.name: (
+                    self.parent.open_component_dialog(kind, name)
+                )
+            )
+            if item.kind == "parameter" and self.model_config.dialect.supports(
+                "metric-sets"
+            ):
+                metric_action = context_menu.addAction(
+                    qta.icon("msc.graph", color=icon_color), "Add to metric set..."
+                )
+                # noinspection PyUnresolvedReferences
+                metric_action.triggered.connect(
+                    lambda *args, name=item.name: self.on_add_to_metric_set(name)
+                )
+            context_menu.exec(self.mapToGlobal(pos))
         elif isinstance(item, TreeWidgetRecorderName):
             recoder_name = item.name
             context_menu = ContextualMenu()
@@ -570,6 +628,20 @@ class ComponentsTree(QTreeWidget):
 
             context_menu.exec(self.mapToGlobal(pos))
 
+    def on_add_to_metric_set(self, parameter_name: str) -> None:
+        """
+        Opens the dialog to add a pywr-next parameter to a metric set.
+        :param parameter_name: The parameter name.
+        :return: None
+        """
+        from pywr_editor.dialogs.next_components.add_to_metric_set_dialog import (
+            add_to_metric_set,
+        )
+
+        add_to_metric_set(
+            self.model_config, [("Parameter", parameter_name, None)], self.parent
+        )
+
     @Slot(str)
     def on_edit_node(self, node_name: str) -> None:
         """
@@ -577,12 +649,7 @@ class ComponentsTree(QTreeWidget):
         :param node_name: The node name to edit.
         :return: None
         """
-        dialog = NodeDialog(
-            node_name=node_name,
-            model_config=self.model_config,
-            parent=self.parent,
-        )
-        dialog.show()
+        self.parent.open_node_dialog(node_name)
 
     @Slot(str)
     def on_delete_node(self, node_name: str) -> None:
@@ -602,10 +669,7 @@ class ComponentsTree(QTreeWidget):
         :param table_name: The table name to edit.
         :return: None
         """
-        dialog = TablesDialog(
-            model=self.model_config, selected_name=table_name, parent=self.parent
-        )
-        dialog.show()
+        self.parent.open_component_dialog("table", table_name)
 
     @Slot()
     def on_delete_table(self, table_name: str) -> None:
@@ -632,12 +696,7 @@ class ComponentsTree(QTreeWidget):
         :param parameter_name: The parameter name to edit.
         :return: None
         """
-        dialog = ParametersDialog(
-            model=self.model_config,
-            selected_name=parameter_name,
-            parent=self.parent,
-        )
-        dialog.show()
+        self.parent.open_component_dialog("parameter", parameter_name)
 
     @Slot()
     def on_delete_parameter(self, parameter_name: str) -> None:
@@ -664,27 +723,22 @@ class ComponentsTree(QTreeWidget):
         :param recorder_name: The recorder name to edit.
         :return: None
         """
-        dialog = RecordersDialog(
-            model=self.model_config,
-            selected_name=recorder_name,
-            parent=self.parent,
-        )
-        dialog.show()
+        self.parent.open_component_dialog("recorder", recorder_name)
 
     @Slot()
     def on_delete_recorder(self, recorder_name: str) -> None:
         """
-        Deletes the selected parameter.
+        Deletes the selected recorder.
         :param recorder_name: The recorder name to delete.
         :return: None
         """
-        # check if parameter is being used and warn before deleting
-        total_components = self.model_config.parameters.is_used(recorder_name)
+        # check if the recorder is being used and warn before deleting
+        total_components = self.model_config.recorders.is_used(recorder_name)
 
         # ask before deleting
         if maybe_delete_component(recorder_name, total_components, self):
-            # delete the parameter from the model configuration
-            self.model_config.parameters.delete(recorder_name)
+            # delete the recorder from the model configuration
+            self.model_config.recorders.delete(recorder_name)
             # update tree and status bar
             self.reload()
             self.parent.statusBar().showMessage(f'Deleted recorder "{recorder_name}"')

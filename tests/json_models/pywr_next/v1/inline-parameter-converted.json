@@ -1,0 +1,166 @@
+{
+  "metadata": {
+    "description": "An example with an inline parameter",
+    "minimum_version": "0.1",
+    "title": "Inline parameter"
+  },
+  "network": {
+    "edges": [
+      {
+        "from_node": "supply1",
+        "to_node": "link1"
+      },
+      {
+        "from_node": "link1",
+        "to_node": "demand1"
+      }
+    ],
+    "nodes": [
+      {
+        "max_flow": {
+          "name": "supply1-p0",
+          "type": "Parameter"
+        },
+        "meta": {
+          "name": "supply1"
+        },
+        "type": "Input"
+      },
+      {
+        "meta": {
+          "name": "link1"
+        },
+        "type": "Link"
+      },
+      {
+        "cost": {
+          "type": "Literal",
+          "value": -10.0
+        },
+        "max_flow": {
+          "name": "demand1-p0",
+          "type": "Parameter"
+        },
+        "meta": {
+          "name": "demand1"
+        },
+        "type": "Output"
+      }
+    ],
+    "parameters": [
+      {
+        "meta": {
+          "name": "supply1-p0"
+        },
+        "type": "MonthlyProfile",
+        "values": {
+          "type": "Literal",
+          "values": [
+            10.0,
+            20.0,
+            30.0,
+            40.0,
+            50.0,
+            60.0,
+            70.0,
+            80.0,
+            90.0,
+            100.0,
+            110.0,
+            120.0
+          ]
+        }
+      },
+      {
+        "meta": {
+          "name": "demand1-p1"
+        },
+        "type": "Constant",
+        "value": {
+          "type": "Literal",
+          "value": 0.9
+        }
+      },
+      {
+        "meta": {
+          "name": "demand1-p3"
+        },
+        "type": "Constant",
+        "value": {
+          "type": "Literal",
+          "value": 0.9
+        }
+      },
+      {
+        "agg_func": {
+          "type": "Product"
+        },
+        "meta": {
+          "name": "demand1-p0"
+        },
+        "metrics": [
+          {
+            "name": "demand1-p1",
+            "type": "Parameter"
+          },
+          {
+            "columns": {
+              "name": "Data",
+              "type": "Column"
+            },
+            "name": "demand1-p2",
+            "type": "TimeSeries"
+          },
+          {
+            "name": "demand1-p3",
+            "type": "Parameter"
+          },
+          {
+            "columns": {
+              "name": "Data",
+              "type": "Column"
+            },
+            "name": "demand1-p4",
+            "type": "TimeSeries"
+          }
+        ],
+        "phase": "Before",
+        "type": "Aggregated"
+      }
+    ],
+    "time_series": [
+      {
+        "meta": {
+          "name": "demand1-p2"
+        },
+        "kwargs": {
+          "dayfirst": true,
+          "index_col": 0,
+          "parse_dates": true
+        },
+        "type": "Pandas",
+        "path": "time-series1.csv"
+      },
+      {
+        "meta": {
+          "name": "demand1-p4"
+        },
+        "kwargs": {
+          "dayfirst": true,
+          "index_col": 0,
+          "parse_dates": true
+        },
+        "type": "Pandas",
+        "path": "time-series2.csv"
+      }
+    ]
+  },
+  "time": {
+    "end": "2015-12-31T00:00:00",
+    "start": "2015-01-01T00:00:00",
+    "timestep": {
+      "type": "Days",
+      "days": 1
+    }
+  }
+}

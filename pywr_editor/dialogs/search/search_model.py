@@ -11,13 +11,18 @@ from pywr_editor.widgets import ExtensionIcon, ParameterIcon, RecorderIcon
 
 
 class ItemType(Enum):
-    NODE = 0
+    """
+    The type of a search item. The values other than NODE match the key of a
+    component kind of the model dialect.
+    """
+
+    NODE = "node"
     """ The item type is a node """
-    PARAMETER = 1
+    PARAMETER = "parameter"
     """ The item type is a parameter """
-    RECORDER = 2
+    RECORDER = "recorder"
     """ The item type is a recorder """
-    TABLE = 3
+    TABLE = "table"
     """ The item type is a table """
 
 
@@ -31,6 +36,54 @@ class SearchModel(QAbstractListModel):
 
         self.model_config = model_config
         self.model_data = []
+        # only list the components of the model dialect
+        component_kinds = model_config.dialect.component_kinds()
+        kinds = {kind.key for kind in component_kinds if kind.list_key is None}
+        if "table" in kinds:
+            self._add_tables()
+        if "parameter" in kinds:
+            self._add_parameters()
+        if "recorder" in kinds:
+            self._add_recorders()
+        for kind in component_kinds:
+            if kind.list_key is not None:
+                self._add_list(kind)
+        self._add_nodes()
+
+    def _add_list(self, kind) -> None:
+        """
+        Adds the components of a list of a pywr-next network to the search items.
+        :param kind: The ComponentKind, with the key of the list in the network.
+        :return: None
+        """
+        from pywr_editor.dialects.next.model import humanise_type
+        from pywr_editor.dialects.next.schema import bundled_schema
+
+        schema = bundled_schema()
+        has_types = bool(kind.definition and schema.types(kind.definition))
+        tag = schema.tag_key(kind.definition) if has_types else None
+        network = self.model_config.json.get("network", {})
+        for component in network.get(kind.list_key) or []:
+            meta = component.get("meta") if isinstance(component, dict) else None
+            if not isinstance(meta, dict) or not isinstance(meta.get("name"), str):
+                continue
+            component_type = component.get(tag) if tag else None
+            prefix = f"{humanise_type(component_type)} - " if component_type else ""
+            self.model_data.append(
+                {
+                    "name": meta["name"],
+                    "icon": QIcon(),
+                    "comp_type": f"{prefix}{kind.key}",
+                    "type": kind.key,
+                }
+            )
+
+    def _add_tables(self) -> None:
+        """
+        Adds the tables to the search items.
+        :return: None
+        """
+        model_config = self.model_config
         for name in model_config.tables.names:
             self.model_data.append(
                 {
@@ -42,6 +95,13 @@ class SearchModel(QAbstractListModel):
                     "type": ItemType.TABLE.value,
                 }
             )
+
+    def _add_parameters(self) -> None:
+        """
+        Adds the parameters to the search items.
+        :return: None
+        """
+        model_config = self.model_config
         for name in model_config.parameters.names:
             param_obj = model_config.parameters.config(name, as_dict=False)
             self.model_data.append(
@@ -53,6 +113,12 @@ class SearchModel(QAbstractListModel):
                 }
             )
 
+    def _add_recorders(self) -> None:
+        """
+        Adds the recorders to the search items.
+        :return: None
+        """
+        model_config = self.model_config
         for name in model_config.recorders.names:
             recorder_obj = model_config.recorders.config(name, as_dict=False)
             self.model_data.append(
@@ -64,6 +130,12 @@ class SearchModel(QAbstractListModel):
                 }
             )
 
+    def _add_nodes(self) -> None:
+        """
+        Adds the nodes to the search items.
+        :return: None
+        """
+        model_config = self.model_config
         icon_size = QSize(25, 24)
         for name in model_config.nodes.names:
             node_obj = model_config.nodes.config(name, as_dict=False)

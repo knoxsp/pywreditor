@@ -1,6 +1,6 @@
 import math
 from copy import deepcopy as dp
-from typing import Sequence
+from typing import Any, Sequence
 
 from pywr_editor.model import ComponentConfig, Constants, PywrNodesData
 from pywr_editor.model.constants import MAX_NODE_SIZE, MIN_NODE_SIZE
@@ -41,6 +41,28 @@ class NodeConfig(ComponentConfig):
         if deepcopy is True:
             self.props = dp(self.props)
 
+    def position_dict(self, create: bool = False) -> dict | None:
+        """
+        Returns the dictionary with the node position and the editor data (style,
+        colour, size...). pywr-next nodes keep it in a different place.
+        :param create: Whether to add an empty dictionary if the node has none.
+        :return: The dictionary or None if the node does not have one.
+        """
+        position = self.props.get("position")
+        if not isinstance(position, dict):
+            if not create:
+                return None
+            position = self.props["position"] = {}
+        return position
+
+    def drop_empty_position(self) -> None:
+        """
+        Removes the position dictionary when it is empty.
+        :return: None
+        """
+        if self.props.get("position") == {}:
+            del self.props["position"]
+
     @property
     def name(self) -> str | None:
         """
@@ -49,21 +71,42 @@ class NodeConfig(ComponentConfig):
         """
         return self.props["name"]
 
+    def _position_value(self, key: str):
+        position = self.position_dict()
+        return None if position is None else position.get(key)
+
+    def editor_value(self, key: str) -> Any:
+        """
+        Returns a value the editor stores for the node, such as its colour. pywr v1
+        nodes keep it with the position; pywr-next nodes keep it in their tags.
+        :param key: The key, such as Constants.NODE_COLOR_KEY.value.
+        :return: The value, None if the node does not have one.
+        """
+        return self._position_value(key)
+
+    def set_editor_value(self, key: str, value: Any) -> None:
+        """
+        Sets or removes a value the editor stores for the node.
+        :param key: The key, such as Constants.NODE_COLOR_KEY.value.
+        :param value: The value. None removes it.
+        :return: None
+        """
+        if value is None:
+            position = self.position_dict()
+            if position is not None:
+                position.pop(key, None)
+            self.drop_empty_position()
+        else:
+            self.position_dict(create=True)[key] = value
+
     @property
     def custom_style(self) -> str | None:
         """
         Return the custom node style.
         :return: The node style or None if this is not set.
         """
-        node_style_key = Constants.NODE_STYLE_KEY.value
-        if (
-            "position" not in self.props
-            or node_style_key not in self.props["position"]
-            or not isinstance(self.props["position"][node_style_key], str)
-        ):
-            return None
-
-        return self.props["position"][node_style_key].lower()
+        value = self.editor_value(Constants.NODE_STYLE_KEY.value)
+        return value.lower() if isinstance(value, str) else None
 
     @property
     def edge_color(self) -> str | None:
@@ -71,15 +114,8 @@ class NodeConfig(ComponentConfig):
         Return the color name to use for the edge.
         :return: The edge_color property or None if this is not set.
         """
-        edge_color_key = Constants.EDGE_COLOR_KEY.value
-        if (
-            "position" not in self.props
-            or edge_color_key not in self.props["position"]
-            or not isinstance(self.props["position"][edge_color_key], str)
-        ):
-            return None
-
-        return self.props["position"][edge_color_key]
+        value = self.editor_value(Constants.EDGE_COLOR_KEY.value)
+        return value if isinstance(value, str) else None
 
     @property
     def node_color(self) -> str | None:
@@ -87,10 +123,7 @@ class NodeConfig(ComponentConfig):
         Return the name of the colour highlighting the node on the schematic.
         :return: The colour name (a key of Color.colors) or None if not set.
         """
-        position = self.props.get("position")
-        if not isinstance(position, dict):
-            return None
-        value = position.get(Constants.NODE_COLOR_KEY.value)
+        value = self.editor_value(Constants.NODE_COLOR_KEY.value)
         if isinstance(value, str) and value in Color.colors:
             return value
         return None
@@ -101,10 +134,7 @@ class NodeConfig(ComponentConfig):
         Return the scale factor of the node symbol stored for this node.
         :return: The factor, None if not set or not valid.
         """
-        position = self.props.get("position")
-        if not isinstance(position, dict):
-            return None
-        return valid_node_size(position.get(Constants.NODE_SIZE_KEY.value))
+        return valid_node_size(self.editor_value(Constants.NODE_SIZE_KEY.value))
 
     @property
     def raw_geographic(self) -> list | dict | None:
@@ -113,10 +143,7 @@ class NodeConfig(ComponentConfig):
         or a GeoJSON geometry dictionary.
         :return: The value, None if the node does not have one.
         """
-        position = self.props.get("position")
-        if not isinstance(position, dict):
-            return None
-        return position.get(Constants.GEOGRAPHIC_KEY.value)
+        return self._position_value(Constants.GEOGRAPHIC_KEY.value)
 
     @staticmethod
     def _is_xy(value) -> bool:
@@ -212,14 +239,9 @@ class NodeConfig(ComponentConfig):
         Return the node position.
         :return: The node position if available, None otherwise.
         """
-        position_key = Constants.POSITION_KEY.value
-        if (
-            "position" in self.props
-            and position_key in self.props["position"]
-            and isinstance(self.props["position"][position_key], (list, tuple))
-            and len(self.props["position"][position_key]) == 2
-        ):
-            return self.props["position"][position_key]
+        value = self._position_value(Constants.POSITION_KEY.value)
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return value
         return None
 
     def change_name(self, name: str) -> None:
@@ -236,11 +258,7 @@ class NodeConfig(ComponentConfig):
         :param position: The new position to set.
         :return: None. This only update the internal dictionary.
         """
-        position_key = Constants.POSITION_KEY.value
-        if "position" in self.props:
-            self.props["position"][position_key] = position
-        else:
-            self.props["position"] = {position_key: position}
+        self.position_dict(create=True)[Constants.POSITION_KEY.value] = position
 
     @property
     def is_visible(self) -> bool:
