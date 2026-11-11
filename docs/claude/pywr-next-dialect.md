@@ -205,7 +205,16 @@ environment's Python in subprocesses; the editor never imports pywr-next.
 
 ## 8. Pending (uncommitted) work
 
-Planned next (2026-11-11, user request): the **pywr-next projects** milestone, issues
+**ON HOLD (user decision 2026-11-11): the pywr-next projects milestone (#51-#69, tracking #68;
+label `on-hold`) is kept but not started until the upstream project work is merged to pywr-next
+`main`** (PRs #933, #934, #936, #937, #938, #939; all open on 2026-11-11). State of `main` and
+the rc1 tag: an early `pywr-project` crate (manifest: `base_model`, `network_sets`,
+`definitions`; `run-project`), without network definitions, sub-networks, multi-models,
+dependencies; the PRs rename `definitions` to `models` (no alias found). To resume: check
+those PRs' state, re-read the book chapter and `pywr-project/src/manifest/v1.rs` on main,
+update #69, remove `on-hold`, start with #69. Notes kept from the planning:
+
+The plan: the **pywr-next projects** milestone, issues
 #51-#69 (tracking issue #68). Source: pywr-next PR #939 (book chapter) and the stacked
 `pywr-project` PRs #933-#939. **Decided 2026-11-11 (user constraint: new pywr-next features
 cannot be requested):** the editor composes and validates projects itself, in Python,
@@ -490,7 +499,7 @@ the decisions or facts that are not obvious from the diff.
   confirmed there). No code change. Note: the commit guard checks before the command runs,
   so edit the work log and memory in an earlier command than `git commit`.
 
-- (this commit, hash to be added next time) Work log only: decision on #51. The user ruled
+- 2566776 Work log only: decision on #51. The user ruled
   out asking pywr-next for new features, which removes the "upstream commands" option and
   the Python-binding option (also an upstream change), so the editor re-implements project
   composition (new issue #69; #51 closed with the decision). Reasoning checked on
@@ -499,6 +508,14 @@ the decisions or facts that are not obvious from the diff.
   the book's tables, validation is the editor's, running composes to a temporary ordinary
   model and uses the runner service, a backend interface keeps a later upstream tool
   swappable. No code change.
+
+- (this commit, hash to be added next time) Work log only: the projects milestone is put on
+  hold by the user ("keep the milestone but wait until it's on main"). Done on GitHub:
+  label `on-hold` on #52-#69 and #68, milestone description starts "ON HOLD", resume
+  instructions in a comment on #68. Facts checked first: `main` has only the early crate
+  (see section 8) and the manifest key changes from `definitions` to `models` in the PRs.
+  Decision recorded: do not start any project issue before the upstream PRs are on main;
+  when resuming, follow the book as merged, not the branches. No code change.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
