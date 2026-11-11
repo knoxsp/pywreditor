@@ -13,3 +13,7 @@ Rules while working on this branch (`pywr-next-dialect`, PR #42):
 - Do not touch `/home/stephen/git/pywr/editor` (the user's `dark-mode` checkout with
   uncommitted work). Work in `/home/stephen/git/pywr/editor-next`.
 - Run tests with `QT_QPA_PLATFORM=offscreen`.
+- Every commit also updates the memory note `project_pywr_next_dialect.md` (and its
+  `MEMORY.md` line). A Claude Code hook (`~/.claude/hooks/worklog-commit-guard.sh`) blocks
+  `git commit` here until both the work log and the memory note are updated; it affects
+  no other repository.

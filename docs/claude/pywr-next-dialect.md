@@ -447,9 +447,21 @@ the decisions or facts that are not obvious from the diff.
   (never saved). Tests: `tests/dialects/test_next_multi_network.py` (14); the old
   "multi-network is refused" test now only checks the network file.
 
-- (this commit, hash to be added next time) Work log only: status brought up to date
+- 40f3d54 Work log only: status brought up to date
   (hash of 6166109, test count 3540/14, PR no longer a draft, section 7 and 8 rewritten,
   architecture lines for the read-only view and the uv bundling). No code change.
+
+- (this commit, hash to be added next time) Enforce the commit rules (user request
+  2026-11-11: "ensure memory and config files are updated on every commit with the
+  decisions"). Decision: a PreToolUse hook rather than a git hook, because `.git/hooks` is
+  shared with the user's `dark-mode` checkout (it would change their commits) and a hook in
+  this repo's `.claude/` is not loaded (the session starts in the user's checkout). The hook
+  blocks `git commit` (also `-C path`, `cd path && ...`, `git add -A && git commit`,
+  `commit -a`) when the work log is neither staged nor about to be staged, or the memory
+  note is not newer than the previous commit. Tested by piping cases to the script and by
+  a real `git commit --dry-run` (blocked). Overrides for tests: `WORKLOG_GUARD_REPO`,
+  `WORKLOG_GUARD_MEMORY`. The hook cannot tell whether the entries are good, only that
+  they were touched: write them properly. CLAUDE.md and rule 5 above say so.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
@@ -464,6 +476,11 @@ own hash, so write the entry as "(this commit)" and fill in the hash in the next
    change. This file is part of the same commit.
 3. Run the relevant tests, and the full suite before a push that closes an issue.
 4. Comment on the issue with what was built and what was not; update PR #42's body.
-5. Update the memory note `project_pywr_next_dialect.md` when decisions or status change.
+5. Update the memory note `project_pywr_next_dialect.md` with every commit (decisions and
+   status), and keep its line in `MEMORY.md` current. This is enforced: a Claude Code hook
+   (`~/.claude/hooks/worklog-commit-guard.sh`, registered as a PreToolUse hook on Bash in
+   `~/.claude/settings.json`) refuses any `git commit` in this worktree unless this work
+   log is part of the commit and the memory note was modified after the previous commit.
+   It ignores every other repository, including the user's checkout.
 6. Never touch `/home/stephen/git/pywr/editor` (the user's `dark-mode` checkout).
 7. Confirm with the user before hard-to-reverse or outward-facing actions.
