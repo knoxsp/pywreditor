@@ -205,6 +205,15 @@ environment's Python in subprocesses; the editor never imports pywr-next.
 
 ## 8. Pending (uncommitted) work
 
+Planned next (2026-11-11, user request): the **pywr-next projects** milestone, issues
+#51-#68 (tracking issue #68; order in it; #51 first). Source: pywr-next PR #939 (book
+chapter) and the stacked `pywr-project` PRs #933-#939. Key facts: project composition is
+Rust-only (`pywr-project` crate; CLI `run-project` only; the Python function and
+`InitProject` are commented out upstream) and unreleased, so #51 decides how the editor
+composes (recommended: ask pywr-next for `validate-project` / `compose-project` /
+manifest-schema export commands). Not verified by running anything. The editor already
+reads `meta.provenance` and hides `Placeholder` from type pickers (#57 changes that).
+
 Nothing uncommitted. Open and waiting on the user or another machine: #47 (Windows/macOS
 check), #45 (run the PyInstaller build and the installer), #43 (crash root cause), #24 option
 3 (editing networks and transfers), style profiles and model kinds from #44. Offered, not
@@ -451,7 +460,7 @@ the decisions or facts that are not obvious from the diff.
   (hash of 6166109, test count 3540/14, PR no longer a draft, section 7 and 8 rewritten,
   architecture lines for the read-only view and the uv bundling). No code change.
 
-- (this commit, hash to be added next time) Enforce the commit rules (user request
+- 673c5e3 Enforce the commit rules (user request
   2026-11-11: "ensure memory and config files are updated on every commit with the
   decisions"). Decision: a PreToolUse hook rather than a git hook, because `.git/hooks` is
   shared with the user's `dark-mode` checkout (it would change their commits) and a hook in
@@ -462,6 +471,19 @@ the decisions or facts that are not obvious from the diff.
   a real `git commit --dry-run` (blocked). Overrides for tests: `WORKLOG_GUARD_REPO`,
   `WORKLOG_GUARD_MEMORY`. The hook cannot tell whether the entries are good, only that
   they were touched: write them properly. CLAUDE.md and rule 5 above say so.
+
+- (this commit, hash to be added next time) Work log only: records the new milestone
+  "pywr-next projects" (#51-#68, label `projects`) made from the book chapter of pywr-next
+  PR #939. Decisions behind the issue set: (1) the first issue is a decision (#51, label
+  needs-decision) because the composition code is not reachable from Python or a CLI
+  command that writes the composed model; the other issues assume the recommended option
+  (ask upstream for commands) and say where that matters; (2) edits in a project are routed
+  to the file in `meta.provenance.origin` (#55), components of dependencies are read-only;
+  (3) the project view of a model reuses the read-only machinery of #24 (#54); (4) blocking
+  vs warning in manifest forms follows the #48-#50 policy (#62); (5) editor data for a
+  project: one sidecar for the project, `editor:*` tags stay in the fragment (#67, to be
+  confirmed there). No code change. Note: the commit guard checks before the command runs,
+  so edit the work log and memory in an earlier command than `git commit`.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
