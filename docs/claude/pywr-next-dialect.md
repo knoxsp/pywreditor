@@ -14,7 +14,8 @@ unchanged; pywr-next support is added behind `ModelDialect` and a `features` set
 gates the UI. The user chose a dialect switch over a fork.
 
 - Repository: `knoxsp/pywreditor` (PySide6). GitHub milestone "pywr-next dialect
-  support", issues #15-#47. Draft PR **#42**: `pywr-next-dialect` into `main`.
+  support", issues #15-#47. PR **#42**: `pywr-next-dialect` into `main` (a draft until 2026-11-10, then marked ready for
+  review; two Copilot reviews done and fixed, no third one requested yet).
 - Issues stay open until the PR merges ("Closes #N" in commits). #46 was closed by hand.
 - `gh issue view` fails (classic Projects GraphQL error): use `gh api repos/knoxsp/pywreditor/issues/N`.
 
@@ -110,6 +111,9 @@ sets, outputs; Python panel; add-to-metric-set), `dialogs/next_domain/` (time, s
 `dialogs/node/next_node_dialog.py`, `dialogs/convert/convert_dialog.py`,
 `dialogs/environments/install_dialog.py`, `node_shapes/pywr/next_nodes.py`,
 `toolbar/run_controls/` (`run_widget.py`, `timestepper.py`), `schematic/schematic.py`.
+Read-only multi-network view: `NextDialect.show_network`, `MainWindow.lock_read_only` /
+`editing_locked`, `LockableUndoStack`. uv bundling: `scripts/bundle_uv.py`, `build.py uv`,
+`main.spec`, `windows_setup.iss`.
 
 Environments (`pywr_editor/environments.py`): pywr-next installs the same `pywr` package
 as v1, so it gets its own environment (uv, extras `pandas,excel`). Helper programs (the
@@ -171,7 +175,9 @@ environment's Python in subprocesses; the editor never imports pywr-next.
   `--filter-files`.
 - Real test model: `/home/stephen/git/models/thames-adaptive/v2/` (62 nodes, only
   geographic positions). Use copies; do not commit it.
-- Current result: 3511 passed, 14 skipped (full suite, real-service tests on).
+- Current result (2026-11-10, at 6166109): 3540 passed, 14 skipped (full suite,
+  real-service tests on, `PYWR_EDITOR_NETWORK_TESTS=1` for the uv download test; about
+  4.5 minutes). Run it in the background with the output in a file.
 
 ## 7. Known issues and open threads
 
@@ -186,8 +192,12 @@ environment's Python in subprocesses; the editor never imports pywr-next.
 - Planned (decided 2026-11-10): #48, #49 and #50 are implemented (see section 9; the issues
   close when PR #42 merges). Nothing else is planned from the schema work. Severity rule for existing models: dead/invalid edge = error for pywr-next,
   warning for v1. No-route problems are warnings.
-- Closing the window during a pywr v1 run only calls `worker.kill()` and does not wait for
-  the thread (pywr-next waits in `NextRunWorker.shutdown()`).
+- Read-only multi-network view (#24): the window of a multi-network model shows ONE network
+  (`ModelConfig.read_only`). Any new code that edits the model or saves must respect
+  `MainWindow.editing_locked` (running or read-only) and never write when
+  `ModelConfig.read_only`. Shapes can still be dragged in memory (never saved).
+- Not tested anywhere but Linux: the runner service lifetime (#47) and the bundled uv /
+  PyInstaller build / Windows installer (#45).
 - Left undone on purpose: Python aggregation functions in outputs are not editable;
   virtual nodes cannot be added from the node library; live node values are not shown
   while stepping; recorders are not converted to metric sets; removing a node from a
@@ -195,7 +205,10 @@ environment's Python in subprocesses; the editor never imports pywr-next.
 
 ## 8. Pending (uncommitted) work
 
-Nothing.
+Nothing uncommitted. Open and waiting on the user or another machine: #47 (Windows/macOS
+check), #45 (run the PyInstaller build and the installer), #43 (crash root cause), #24 option
+3 (editing networks and transfers), style profiles and model kinds from #44. Offered, not
+done: a third Copilot review, PR #42's description needs the 2026-11-10 work added.
 
 ## 9. Commit log with decisions
 
@@ -414,7 +427,7 @@ the decisions or facts that are not obvious from the diff.
   slow), so "the install works on a machine without uv" is untested: #45 stays open for it.
   Tests: `tests/test_bundle_uv.py` (15; the download test needs `PYWR_EDITOR_NETWORK_TESTS=1`).
 
-- (this commit, hash to be added next time) Open multi-network pywr-next models read-only
+- 6166109 Open multi-network pywr-next models read-only
   (#24, option 2 of the issue; replaces the refusal). `NextDialect.show_network()` replaces
   the loaded dictionary with a single-network view (`metadata`, `time`, `scenarios` and the
   chosen network, read from its file or inline) and sets `ModelConfig.read_only`,
@@ -433,6 +446,10 @@ the decisions or facts that are not obvious from the diff.
   not network-specific, running the model, and shapes can still be dragged in memory
   (never saved). Tests: `tests/dialects/test_next_multi_network.py` (14); the old
   "multi-network is refused" test now only checks the network file.
+
+- (this commit, hash to be added next time) Work log only: status brought up to date
+  (hash of 6166109, test count 3540/14, PR no longer a draft, section 7 and 8 rewritten,
+  architecture lines for the read-only view and the uv bundling). No code change.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
