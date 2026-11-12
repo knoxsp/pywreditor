@@ -517,7 +517,7 @@ the decisions or facts that are not obvious from the diff.
   Decision recorded: do not start any project issue before the upstream PRs are on main;
   when resuming, follow the book as merged, not the branches. No code change.
 
-- (this commit) Fix the CI release build for the first development release (tag
+- 42b6da3 Fix the CI release build for the first development release (tag
   2.1.1-dialect-dev.1, 2026-11-12). Findings from the first tag run (Release workflow): Linux
   built and passed the smoke test; Windows failed in `main.spec` (`shutil.copytree` of the
   pywr `.dist-info` into `dist/main` raised FileExistsError: the folder is already there with
@@ -526,10 +526,22 @@ the decisions or facts that are not obvious from the diff.
   `python build.py uv`, so no CI build would have bundled uv (#45): added a "Download uv" step
   before "Freeze editor" in the three jobs (the download is checksum verified). Decision:
   the fix is committed on `pywr-next-dialect` locally and only the new tag is pushed, so PR #42
-  is not changed without the user looking; the tag is `2.1.1-dialect-dev.2` (the .1 tag, which
-  produced no release, was deleted). Not tested here: the Windows/macOS build and the
+  is not changed without the user looking; the tags .1 and .2 failed and were deleted, so no release was made from them. Not tested here: the Windows/macOS build and the
   installer including uv.exe (only the workflow run shows it). Releases are drafts
   (`draft: true`) and the changelog is the body; mark the release as pre-release by hand.
+
+- (this commit) Second CI fix for the development release (tag run of 2.1.1-dialect-dev.2).
+  Result of that run: Linux ok; Windows now froze and bundled uv but the Inno Setup step
+  failed (ISPP access violation in `FindFolderWithWildcard`, line for `wheel-*.dist-info`: no
+  such folder in a clean CI build); macOS again never got a runner ("job was not acquired by
+  Runner of type hosted"; GitHub notes macOS arm64 capacity limits), a runner problem, not code.
+  Decision: `windows_setup.iss` listed ~100 DLLs/folders by hand from the 2023 developer
+  machine (e.g. `libssl-1_1.dll`, which Python 3.11 does not have), so it could not match a
+  clean build; replaced with one line `dist\main\*` (recursesubdirs) and removed the unused
+  wildcard macros. Everything it listed came from `dist\main`, so the installed files are the
+  same set for a correct build (and uv.exe, the pywr dist-info and the `.pyd` files are
+  picked up by the wildcard). Not tested locally (Windows only). macOS is rerun with
+  `gh run rerun --failed`; the workflow was not changed for it. New tag `2.1.1-dialect-dev.3`.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
