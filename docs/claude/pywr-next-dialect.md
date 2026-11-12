@@ -517,6 +517,20 @@ the decisions or facts that are not obvious from the diff.
   Decision recorded: do not start any project issue before the upstream PRs are on main;
   when resuming, follow the book as merged, not the branches. No code change.
 
+- (this commit) Fix the CI release build for the first development release (tag
+  2.1.1-dialect-dev.1, 2026-11-12). Findings from the first tag run (Release workflow): Linux
+  built and passed the smoke test; Windows failed in `main.spec` (`shutil.copytree` of the
+  pywr `.dist-info` into `dist/main` raised FileExistsError: the folder is already there with
+  PyInstaller 6.4.0 on the runner) -> `dirs_exist_ok=True`; macOS was cancelled before any
+  step ran (runner never started, not a code failure) -> rerun. Also `build.yaml` never ran
+  `python build.py uv`, so no CI build would have bundled uv (#45): added a "Download uv" step
+  before "Freeze editor" in the three jobs (the download is checksum verified). Decision:
+  the fix is committed on `pywr-next-dialect` locally and only the new tag is pushed, so PR #42
+  is not changed without the user looking; the tag is `2.1.1-dialect-dev.2` (the .1 tag, which
+  produced no release, was deleted). Not tested here: the Windows/macOS build and the
+  installer including uv.exe (only the workflow run shows it). Releases are drafts
+  (`draft: true`) and the changelog is the body; mark the release as pre-release by hand.
+
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
 own hash, so write the entry as "(this commit)" and fill in the hash in the next commit.

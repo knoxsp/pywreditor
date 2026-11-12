@@ -154,4 +154,7 @@ if IS_MACOS:
 
 # PyInstaller does not want to copy the following files/folder in the data attr
 if IS_WINDOWS:
-    shutil.copytree(pywr_dist.as_posix(), f"./dist/main/{pywr_dist.name}")
+    # the folder may already be in the build (the CI build fails otherwise)
+    shutil.copytree(
+        pywr_dist.as_posix(), f"./dist/main/{pywr_dist.name}", dirs_exist_ok=True
+    )
