@@ -530,7 +530,7 @@ the decisions or facts that are not obvious from the diff.
   installer including uv.exe (only the workflow run shows it). Releases are drafts
   (`draft: true`) and the changelog is the body; mark the release as pre-release by hand.
 
-- (this commit) Second CI fix for the development release (tag run of 2.1.1-dialect-dev.2).
+- d92ad2a Second CI fix for the development release (tag run of 2.1.1-dialect-dev.2).
   Result of that run: Linux ok; Windows now froze and bundled uv but the Inno Setup step
   failed (ISPP access violation in `FindFolderWithWildcard`, line for `wheel-*.dist-info`: no
   such folder in a clean CI build); macOS again never got a runner ("job was not acquired by
@@ -541,7 +541,18 @@ the decisions or facts that are not obvious from the diff.
   wildcard macros. Everything it listed came from `dist\main`, so the installed files are the
   same set for a correct build (and uv.exe, the pywr dist-info and the `.pyd` files are
   picked up by the wildcard). Not tested locally (Windows only). macOS is rerun with
-  `gh run rerun --failed`; the workflow was not changed for it. New tag `2.1.1-dialect-dev.3`.
+  `gh run rerun --failed`; the workflow was not changed for it. Tag `2.1.1-dialect-dev.3` then built Linux and Windows (with the installer) fine.
+
+- (this commit) macOS build fix. Run of tag .3: Linux and Windows green (installer built);
+  macOS got a runner only on `gh run rerun --failed` and then failed at "Install Dependencies":
+  `tables==3.9.2` (pinned in requirements.txt) has no macOS arm64 wheel and its source build needs
+  HDF5 headers. Decision: in the macOS job only, install requirements without the tables pin and
+  then `tables==3.10.0` (first release with a cp311 macOS arm64 wheel, same numpy/numexpr/blosc2
+  needs); `requirements.txt` is not changed, so Linux/Windows and the dev setup stay on 3.9.2.
+  Rejected: brew hdf5 + HDF5_DIR (current brew HDF5 is probably newer than tables 3.9.2 supports;
+  source build is slow). Untested: that editor code works with tables 3.10.0 on macOS (the smoke
+  test in the job opens a model only). The macOS "Freeze", smoke test and dmg steps have never
+  run yet. New tag `2.1.1-dialect-dev.4`; .3 deleted (it had no release).
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
