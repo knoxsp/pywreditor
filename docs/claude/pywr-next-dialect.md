@@ -554,7 +554,7 @@ the decisions or facts that are not obvious from the diff.
   test in the job opens a model only). The macOS "Freeze", smoke test and dmg steps have never
   run yet. Tag `2.1.1-dialect-dev.4` then got past tables.
 
-- (this commit) macOS build fix 2. Run of tag .4: tables fine; `pip install pywr==1.23.0`
+- c8cc02c macOS build fix 2. Run of tag .4: tables fine; `pip install pywr==1.23.0`
   (requirements.txt) has no macOS arm64 wheel, so it compiled from source and stopped at
   `glpk.h: file not found`. Decision: in the macOS job `brew install glpk`, point the compiler
   at it with CPATH/LIBRARY_PATH and build arm64 only (`ARCHFLAGS="-arch arm64"`: the python.org
@@ -562,7 +562,13 @@ the decisions or facts that are not obvious from the diff.
   would fail to link). Consequence: the dmg is arm64 (Apple silicon) only, Intel Macs are not
   covered by this dev build. Untested: that PyInstaller finds libglpk.dylib for the frozen
   pywr extension (the smoke test opens a model, so it would show only if the solver is used at
-  startup). New tag `2.1.1-dialect-dev.5`; .4 deleted (no release).
+  startup). Tag `2.1.1-dialect-dev.5`: glpk compiled and linked, then the build stopped at lpsolve.
+
+- (this commit) macOS build fix 3. Run of tag .5: pywr compiled `cython_glpk` against the brew
+  glpk, then failed on `lpsolve/lp_lib.h`. Decision: set `PYWR_BUILD_LPSOLVE=false` (pywr
+  1.x `setup.py` reads it; lpsolve is an optional solver the editor never selects, GLPK is the
+  default) instead of installing lpsolve. Consequence: the macOS build's pywr has no lpsolve
+  solver (a model that asks for it would fail there). New tag `2.1.1-dialect-dev.6`; .5 deleted.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its

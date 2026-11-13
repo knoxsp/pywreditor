@@ -100,6 +100,8 @@ jobs:
         # Homebrew library is not universal)
         env:
           ARCHFLAGS: "-arch arm64"
+          # the lpsolve solver needs a library that is not installed and is not used
+          PYWR_BUILD_LPSOLVE: "false"
         run: |
           brew install glpk
           export CPATH="$(brew --prefix glpk)/include"
