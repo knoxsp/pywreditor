@@ -95,8 +95,15 @@ jobs:
         uses: actions/checkout@v4
       - name: Install Dependencies
         # tables 3.9.2 has no wheel for the arm64 runner and cannot be built without
-        # HDF5: use the first release that has one (3.10.0)
+        # HDF5: use the first release that has one (3.10.0). pywr has no macOS arm64
+        # wheel either: it is built from the source, which needs GLPK (arm64 only: the
+        # Homebrew library is not universal)
+        env:
+          ARCHFLAGS: "-arch arm64"
         run: |
+          brew install glpk
+          export CPATH="$(brew --prefix glpk)/include"
+          export LIBRARY_PATH="$(brew --prefix glpk)/lib"
           python -m pip install --upgrade pip
           grep -v '^tables==' requirements.txt > "$RUNNER_TEMP/requirements-macos.txt"
           pip install -r "$RUNNER_TEMP/requirements-macos.txt" tables==3.10.0

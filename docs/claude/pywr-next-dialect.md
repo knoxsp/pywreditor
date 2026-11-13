@@ -543,7 +543,7 @@ the decisions or facts that are not obvious from the diff.
   picked up by the wildcard). Not tested locally (Windows only). macOS is rerun with
   `gh run rerun --failed`; the workflow was not changed for it. Tag `2.1.1-dialect-dev.3` then built Linux and Windows (with the installer) fine.
 
-- (this commit) macOS build fix. Run of tag .3: Linux and Windows green (installer built);
+- 837701f macOS build fix. Run of tag .3: Linux and Windows green (installer built);
   macOS got a runner only on `gh run rerun --failed` and then failed at "Install Dependencies":
   `tables==3.9.2` (pinned in requirements.txt) has no macOS arm64 wheel and its source build needs
   HDF5 headers. Decision: in the macOS job only, install requirements without the tables pin and
@@ -552,7 +552,17 @@ the decisions or facts that are not obvious from the diff.
   Rejected: brew hdf5 + HDF5_DIR (current brew HDF5 is probably newer than tables 3.9.2 supports;
   source build is slow). Untested: that editor code works with tables 3.10.0 on macOS (the smoke
   test in the job opens a model only). The macOS "Freeze", smoke test and dmg steps have never
-  run yet. New tag `2.1.1-dialect-dev.4`; .3 deleted (it had no release).
+  run yet. Tag `2.1.1-dialect-dev.4` then got past tables.
+
+- (this commit) macOS build fix 2. Run of tag .4: tables fine; `pip install pywr==1.23.0`
+  (requirements.txt) has no macOS arm64 wheel, so it compiled from source and stopped at
+  `glpk.h: file not found`. Decision: in the macOS job `brew install glpk`, point the compiler
+  at it with CPATH/LIBRARY_PATH and build arm64 only (`ARCHFLAGS="-arch arm64"`: the python.org
+  Python builds universal2 by default and the brew library is arm64 only, so the x86_64 half
+  would fail to link). Consequence: the dmg is arm64 (Apple silicon) only, Intel Macs are not
+  covered by this dev build. Untested: that PyInstaller finds libglpk.dylib for the frozen
+  pywr extension (the smoke test opens a model, so it would show only if the solver is used at
+  startup). New tag `2.1.1-dialect-dev.5`; .4 deleted (no release).
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
