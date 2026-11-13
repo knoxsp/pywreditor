@@ -139,6 +139,9 @@ jobs:
   Release:
     needs: [Windows-build, Linux-build, macOS-build]
     runs-on: ubuntu-latest
+    # the default token of this repository is read-only and cannot create the release
+    permissions:
+      contents: write
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout Source

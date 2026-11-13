@@ -564,11 +564,21 @@ the decisions or facts that are not obvious from the diff.
   pywr extension (the smoke test opens a model, so it would show only if the solver is used at
   startup). Tag `2.1.1-dialect-dev.5`: glpk compiled and linked, then the build stopped at lpsolve.
 
-- (this commit) macOS build fix 3. Run of tag .5: pywr compiled `cython_glpk` against the brew
+- fd7948d macOS build fix 3. Run of tag .5: pywr compiled `cython_glpk` against the brew
   glpk, then failed on `lpsolve/lp_lib.h`. Decision: set `PYWR_BUILD_LPSOLVE=false` (pywr
   1.x `setup.py` reads it; lpsolve is an optional solver the editor never selects, GLPK is the
   default) instead of installing lpsolve. Consequence: the macOS build's pywr has no lpsolve
   solver (a model that asks for it would fail there). New tag `2.1.1-dialect-dev.6`; .5 deleted.
+
+- (this commit) Release job permission. Run of tag .6: Windows, Linux and macOS all green, but the
+  "Release" job got HTTP 403 ("Resource not accessible by integration"): the repository's
+  default GITHUB_TOKEN is read-only. Fix: `permissions: contents: write` on that job. For
+  this release the draft was created by hand with `gh release create --draft --prerelease` from
+  the run's artifacts (tag `2.1.1-dialect-dev.6`, 4 files, body = short notes + CHANGELOG.md), so
+  the permission fix is NOT in the tag; it is only on the branch (local, not pushed). First
+  release summary: builds went through after 5 tag attempts (.1-.5 deleted, no releases from
+  them); the macOS dmg is arm64-only and without lpsolve; only the Linux and macOS builds
+  have a smoke test, the Windows installer was never run. The draft is not published: the user decides.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
