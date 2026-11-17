@@ -24,6 +24,7 @@ from pywr_editor.model import (
     Shapes,
     Tables,
 )
+from pywr_editor.model.change_log import ChangeLog, ChangeSet
 from pywr_editor.model.constants import UNCHANGED
 from pywr_editor.model.node_config import valid_node_size
 from pywr_editor.model.sidecar import (
@@ -38,6 +39,9 @@ from pywr_editor.style import Color
 class ModelConfig(QObject):
     model_changed = Signal()
     """ Signal emitted when a change is applied to the model configuration """
+    change_recorded = Signal(object)
+    """ Signal emitted with the ChangeSet when the change log stores a change. It is
+    emitted before model_changed """
 
     def __init__(self, json_file: str | None = None):
         """
@@ -53,6 +57,10 @@ class ModelConfig(QObject):
         self.load_error = None
         self.sidecar_error: str | None = None
         """ The reason why the file with the editor data cannot be read """
+        self.change_log = ChangeLog()
+        """ The changes applied to the model since it was opened, as discrete diffs.
+        The log only starts once the model is loaded, so the fixes applied to a model
+        when it is opened are not logged """
         self.load_model()
         # stop performing other tasks if the model cannot be loaded
         if not self.is_valid():
@@ -86,13 +94,28 @@ class ModelConfig(QObject):
         # prioritises its own
         self.validate_custom_components()
 
-    def has_changed(self) -> None:
+        self.change_log.start(self.json)
+
+    def has_changed(self, label: str | None = None) -> None:
         """
-        Flag that the model has changed.
+        Flag that the model has changed, and log what changed. This must be called
+        after the model dictionary is changed.
+        :param label: A description of the change for the change log. Optional.
         :return: None
         """
         self.changed_ = True
+        change_set = self.change_log.record(self.json, label)
+        if change_set is not None:
+            self.change_recorded.emit(change_set)
         self.model_changed.emit()
+
+    @property
+    def last_change(self) -> ChangeSet | None:
+        """
+        Returns the last change applied to the model.
+        :return: The change set, or None if the model was not changed.
+        """
+        return self.change_log.change_sets[-1] if self.change_log else None
 
     def reset_change_flag(self) -> None:
         """
@@ -551,6 +574,7 @@ class ModelConfig(QObject):
         except Exception as e:
             return f"The model cannot be saved because:\n\n{type(e).__name__}: {e}\n\n"
 
+        self.change_log.mark_saved(self.json)
         self.reload_file_info()
 
         return True

@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QUndoCommand
-
 from pywr_editor.model import NodeConfig
+from pywr_editor.model.undo import ModelUndoCommand, tracked
 from pywr_editor.utils import Logging
 
 from ..node import SchematicNode
@@ -12,7 +11,7 @@ if TYPE_CHECKING:
     from pywr_editor.schematic import AbstractSchematicItem, Schematic
 
 
-class MoveItemCommand(QUndoCommand):
+class MoveItemCommand(ModelUndoCommand):
     """
     Undo command used to undo/redo position change of schematic items (nodes, edges
     and shapes).
@@ -69,6 +68,7 @@ class MoveItemCommand(QUndoCommand):
         else:
             self.model_config.nodes.set_position(node_name=name, position=position)
 
+    @tracked
     def redo(self) -> None:
         """
         Saves the position of the moved nodes.
@@ -113,6 +113,7 @@ class MoveItemCommand(QUndoCommand):
                     )
             self.schematic.reload()
 
+    @tracked
     def undo(self) -> None:
         """
         Restores the previous position.

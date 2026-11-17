@@ -134,21 +134,23 @@ class TestSchematicConnectNodes:
 
         assert ["Link3", "Reservoir"] in all_schematic_edges
 
-        # 6. Undo, rename connected node and redo
+        # 6. Undo, rename connected node and redo. The rename is a step of the undo
+        # stack too, and replaces the connection that could be redone
         qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
         model_config.nodes.rename("Reservoir", "Lake")
+        assert redo_button.isEnabled() is False
+        assert undo_button.isEnabled() is True
 
-        qtbot.mouseClick(redo_button, Qt.MouseButton.LeftButton)
-
-        # command becomes obsolete and edge is not restored
+        # the edge is not restored
         assert model_config.edges.find("Link3", "Lake")[0] is None
         assert model_config.edges.find("Link3", "Reservoir")[0] is None
 
-        # buttons are disabled
-        qtbot.wait(400)  # setObsolete is delayed by the command
-        assert redo_button.isEnabled() is False
-        assert undo_button.isEnabled() is False
-
-        # command object is deleted and not accessible anymore
+        # the command that could be redone is deleted and not accessible anymore
         with pytest.raises(RuntimeError):
             assert undo_command.isObsolete() is True
+
+        # undoing the step restores the name
+        qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
+        assert "Reservoir" in model_config.nodes.names
+        assert "Lake" not in model_config.nodes.names
+        assert redo_button.isEnabled() is True

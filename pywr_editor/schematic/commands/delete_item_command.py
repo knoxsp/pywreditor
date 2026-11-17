@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QUndoCommand
-
 from pywr_editor.model import BaseShape, NodeConfig
+from pywr_editor.model.undo import ModelUndoCommand, tracked
 from pywr_editor.utils import Logging
 
 from ..node import SchematicNode
@@ -12,7 +11,7 @@ if TYPE_CHECKING:
     from pywr_editor.schematic import AbstractSchematicItem, Schematic
 
 
-class DeleteItemCommand(QUndoCommand):
+class DeleteItemCommand(ModelUndoCommand):
     """
     Undo command used to undo/redo schematic items (nodes, edges and shapes)
     deletion.
@@ -59,6 +58,7 @@ class DeleteItemCommand(QUndoCommand):
         # list of annotation shapes collected in the redo command
         self.deleted_shape_configs: list[BaseShape] = []
 
+    @tracked
     def redo(self) -> None:
         """
         Delete the schematic items from the schematic and model configuration.
@@ -117,6 +117,7 @@ class DeleteItemCommand(QUndoCommand):
             for node_name in self.deleted_node_names:
                 self.schematic.app.node_data_panel.on_node_deleted(node_name)
 
+    @tracked
     def undo(self) -> None:
         """
         Restores the deleted nodes, edges and shapes into the schematic.

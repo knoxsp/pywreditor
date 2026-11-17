@@ -1,15 +1,14 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QUndoCommand
-
 from pywr_editor.model import NodeConfig
+from pywr_editor.model.undo import ModelUndoCommand, tracked
 from pywr_editor.utils import Logging
 
 if TYPE_CHECKING:
     from pywr_editor.schematic import Schematic
 
 
-class AddNodeCommand(QUndoCommand):
+class AddNodeCommand(ModelUndoCommand):
     def __init__(
         self,
         schematic: "Schematic",
@@ -28,10 +27,14 @@ class AddNodeCommand(QUndoCommand):
         self.schematic = schematic
         self.added_node_dict = added_node_dict
         self.node_config: NodeConfig | None = None
+        self.node_name: str = added_node_dict["name"]
+        """ The name of the node when the command is done. The undo stack makes sure
+        that the node has this name, as edits made later are undone before this one """
         self.model_config = self.schematic.model_config
         self.deleted_edges: list[list[str | int]] = []
         self.setText("add new node")
 
+    @tracked
     def redo(self) -> None:
         """
         Adds the node for the first time or restore it.
@@ -54,6 +57,7 @@ class AddNodeCommand(QUndoCommand):
         else:
             # add node
             self.model_config.nodes.add(self.node_config.props)
+            self.node_name = self.node_config.props["name"]
             self.logger.debug(f"Restored node config: {self.node_config.props}")
 
             # add edges
@@ -75,12 +79,13 @@ class AddNodeCommand(QUndoCommand):
         self.schematic.reload()
         self.schematic.app.components_tree.reload()
 
+    @tracked
     def undo(self) -> None:
         """
         Removes the previously-added node.
         :return: None
         """
-        node_name = self.node_config.name
+        node_name = self.node_name
         # store the latest configuration to be restored
         self.node_config = self.model_config.nodes.config(node_name, as_dict=False)
 

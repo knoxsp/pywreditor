@@ -349,9 +349,6 @@ class Nodes:
         if node_index is None:
             return None
 
-        # rename key in node dictionary
-        self.model.json["nodes"][node_index]["name"] = new_name
-
         # rename references in edges
         self.model.json["edges"] = JsonUtils(self.model.json["edges"]).replace_str(
             old=node_name,
@@ -370,4 +367,9 @@ class Nodes:
                 "storage_nodes",
             ],
         )
+
+        # rename the node. This is done on the model that replace_str() returns, so the
+        # dictionary that the undo commands of the schematic hold keeps the old name,
+        # which the node has again when the rename is undone
+        self.model.json["nodes"][node_index]["name"] = new_name
         self.model.has_changed()

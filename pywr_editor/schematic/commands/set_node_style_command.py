@@ -1,14 +1,13 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QUndoCommand
-
 from pywr_editor.model.constants import UNCHANGED
+from pywr_editor.model.undo import ModelUndoCommand, tracked
 
 if TYPE_CHECKING:
     from pywr_editor.schematic import Schematic
 
 
-class SetNodeStyleCommand(QUndoCommand):
+class SetNodeStyleCommand(ModelUndoCommand):
     """
     Undo command used to undo/redo the colour and size of one or more nodes.
     """
@@ -54,14 +53,16 @@ class SetNodeStyleCommand(QUndoCommand):
                 item.apply_style()
         self.model_config.has_changed()
 
+    @tracked
     def redo(self) -> None:
         self.apply({name: (self.color, self.size) for name in self.prev})
 
+    @tracked
     def undo(self) -> None:
         self.apply(self.prev)
 
 
-class SetNodeTypeStyleCommand(QUndoCommand):
+class SetNodeTypeStyleCommand(ModelUndoCommand):
     """
     Undo command used to undo/redo the colour and size of a node type.
     """
@@ -96,8 +97,10 @@ class SetNodeTypeStyleCommand(QUndoCommand):
             if item.model_node.type == self.node_type:
                 item.apply_style()
 
+    @tracked
     def redo(self) -> None:
         self.apply(self.color, self.size)
 
+    @tracked
     def undo(self) -> None:
         self.apply(self.prev_color, self.prev_size)
