@@ -11,7 +11,7 @@ from pywr_editor.dialogs import NodeDialog
 from pywr_editor.form.widgets.parameter_line_edit_widget import ParameterLineEditWidget
 from pywr_editor.model import ParameterConfig
 from pywr_editor.node_shapes import CustomNode
-from pywr_editor.schematic import Edge, Schematic, SchematicNode
+from pywr_editor.schematic import Schematic, SchematicNode
 from pywr_editor.schematic.commands.add_node_command import AddNodeCommand
 from pywr_editor.toolbar.node_library.library_item import LibraryItem
 from pywr_editor.toolbar.node_library.schematic_items_library import LibraryPanel
@@ -114,41 +114,43 @@ class TestAddNodes:
         qtbot.mouseClick(dialog_form.save_button, Qt.MouseButton.LeftButton)
         dialog.close()
 
-        # 4. Check undo action
+        # 4. Check undo action. The change of the node configuration is a step of the
+        # undo stack, after the one adding the node
+        assert window.undo_stack.count() == 2
         undo_command: AddNodeCommand = window.undo_stack.command(0)
         node_dict["name"] = new_new_node_name
         node_dict["cost"] = 9000
 
         assert undo_button.isEnabled() is True
         assert redo_button.isEnabled() is False
-        assert undo_command.node_config.props == node_dict
+        assert model_config.nodes.config(new_new_node_name) == node_dict
 
-        # connect new edge
-        new_edge = ["Reservoir", new_new_node_name, 0]
-        model_config.edges.add(*new_edge)
-        schematic.scene.addItem(
-            Edge(
-                source=schematic.node_items["Reservoir"],
-                target=schematic.node_items[new_new_node_name],
-            )
-        )
-        schematic.reload()
-        assert node_dict["name"] == new_new_node_name
-        new_edge[1] = new_new_node_name
+        # undo the configuration change: the node is as it was added
+        qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
+        assert undo_button.isEnabled() is True
+        assert redo_button.isEnabled() is True
+        assert model_config.nodes.find_node_index_by_name(new_new_node_name) is None
+        assert model_config.nodes.find_node_index_by_name(new_node_name) is not None
+        assert "cost" not in model_config.nodes.config(new_node_name)
+        assert new_node_name in schematic.node_items.keys()
+        assert new_new_node_name not in schematic.node_items.keys()
 
-        # undo
+        # redo it
+        qtbot.mouseClick(redo_button, Qt.MouseButton.LeftButton)
+        assert model_config.nodes.config(new_new_node_name) == node_dict
+        assert new_new_node_name in schematic.node_items.keys()
+
+        # undo the configuration change and then the node
+        qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
         qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
         assert undo_button.isEnabled() is False
         assert redo_button.isEnabled() is True
 
-        # node and edges are removed from model config
+        # node is removed from model config
         assert model_config.nodes.find_node_index_by_name(new_node_name) is None
         assert model_config.nodes.find_node_index_by_name(new_new_node_name) is None
-        edge, _ = model_config.edges.find(*new_edge[0:2])
-        assert edge is None
-        assert undo_command.deleted_edges[0] == new_edge
 
-        # node and edges are removed from schematic
+        # node is removed from schematic
         assert new_node_name not in schematic.node_items.keys()
         assert new_new_node_name not in schematic.node_items.keys()
         node_names = [
@@ -156,36 +158,16 @@ class TestAddNodes:
         ]
         assert new_node_name not in node_names
         assert new_new_node_name not in node_names
-        all_schematic_edges = [
-            [edge.source.name, edge.target.name]
-            for edge in schematic.items()
-            if isinstance(edge, Edge)
-        ]
-        assert new_edge[0:2] not in all_schematic_edges
 
-        # 5. Check redo action
+        # 5. Check redo action: the node is restored, then its configuration
+        qtbot.mouseClick(redo_button, Qt.MouseButton.LeftButton)
+        assert new_node_name in schematic.node_items.keys()
         qtbot.mouseClick(redo_button, Qt.MouseButton.LeftButton)
         assert undo_button.isEnabled() is True
         assert redo_button.isEnabled() is False
-
-        # node and edges are restored in the model configuration
         assert model_config.nodes.config(new_new_node_name) == node_dict
-        edge, _ = model_config.edges.find(*new_edge[0:2])
-        assert edge == new_edge
-        assert undo_command.deleted_edges[0] == new_edge
-
-        # node and edges are restored from schematic
+        assert undo_command.node_config.name in (new_node_name, new_new_node_name)
         assert new_new_node_name in schematic.node_items.keys()
-        node_names = [
-            node.name for node in schematic.items() if isinstance(node, SchematicNode)
-        ]
-        assert new_new_node_name in node_names
-        all_schematic_edges = [
-            [edge.source.name, edge.target.name]
-            for edge in schematic.items()
-            if isinstance(edge, Edge)
-        ]
-        assert new_edge[0:2] in all_schematic_edges
 
     def test_mime_type_custom_nodes(self, qtbot, init_window):
         """

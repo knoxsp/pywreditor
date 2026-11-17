@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QUndoCommand
-
+from pywr_editor.model.undo import ModelUndoCommand, tracked
 from pywr_editor.utils import Logging
 
 if TYPE_CHECKING:
@@ -9,7 +8,7 @@ if TYPE_CHECKING:
     from pywr_editor.schematic import Schematic
 
 
-class AddShapeCommand(QUndoCommand):
+class AddShapeCommand(ModelUndoCommand):
     def __init__(
         self,
         schematic: "Schematic",
@@ -30,6 +29,7 @@ class AddShapeCommand(QUndoCommand):
         self.model_config = self.schematic.model_config
         self.setText("add new shape")
 
+    @tracked
     def redo(self) -> None:
         """
         Adds the shape for the first time or restore it.
@@ -56,6 +56,7 @@ class AddShapeCommand(QUndoCommand):
         )
         self.schematic.app.status_message.emit(status_message)
 
+    @tracked
     def undo(self) -> None:
         """
         Removes the previously-added shape.

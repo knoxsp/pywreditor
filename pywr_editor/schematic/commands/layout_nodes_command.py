@@ -1,12 +1,12 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QUndoCommand
+from pywr_editor.model.undo import ModelUndoCommand, tracked
 
 if TYPE_CHECKING:
     from pywr_editor.schematic import Schematic
 
 
-class LayoutNodesCommand(QUndoCommand):
+class LayoutNodesCommand(ModelUndoCommand):
     """
     Undo command used to undo/redo the automatic layout of the nodes, which changes
     the schematic position of many nodes at once.
@@ -55,10 +55,12 @@ class LayoutNodesCommand(QUndoCommand):
         self.model_config.has_changed()
         self.schematic.reload()
 
+    @tracked
     def redo(self) -> None:
         self.apply(self.new_positions)
         if not self.geographic:
             self.schematic.fit_view()
 
+    @tracked
     def undo(self) -> None:
         self.apply(self.prev_positions)

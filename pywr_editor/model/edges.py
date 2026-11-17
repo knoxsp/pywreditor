@@ -133,8 +133,8 @@ class Edges:
                 if edge[0:2] != [source_node_name, target_node_name]
             ]
 
-        self.model.has_changed()
         self.model.json["edges"] = edges_to_keep
+        self.model.has_changed()
 
     def color(self, source_node_name: str) -> str | None:
         """

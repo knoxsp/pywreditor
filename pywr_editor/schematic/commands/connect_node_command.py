@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QUndoCommand
 
 from pywr_editor.model import NodeConfig
+from pywr_editor.model.undo import ModelUndoCommand, tracked
 from pywr_editor.utils import Logging
 
 from ..edge import Edge
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from pywr_editor.schematic import Schematic
 
 
-class ConnectNodeCommand(QUndoCommand):
+class ConnectNodeCommand(ModelUndoCommand):
     def __init__(
         self,
         schematic: "Schematic",
@@ -45,6 +45,7 @@ class ConnectNodeCommand(QUndoCommand):
         self.setText("connect node")
         self.make_obsolete = False
 
+    @tracked
     def redo(self) -> None:
         """
         Connect the node.
@@ -90,6 +91,7 @@ class ConnectNodeCommand(QUndoCommand):
         )
         self.app.components_tree.reload()
 
+    @tracked
     def undo(self) -> None:
         """
         Disconnect the nodes that were previously connected with the redo command.

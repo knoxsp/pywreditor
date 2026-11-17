@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 import PySide6
-from PySide6.QtCore import QTimer, Signal, Slot
+from PySide6.QtCore import QDate, QTimer, Signal, Slot
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QDockWidget, QFileDialog, QMainWindow, QMessageBox
 from pywr_editor.console import ConsolePanel
 from pywr_editor.dialogs import (
     AboutButton,
+    ChangesDialog,
     EdgeSlotsDialog,
     GisLayersDialog,
     IncludesDialog,
@@ -37,6 +38,13 @@ from pywr_editor.dialogs import (
     ValidationDialog,
 )
 from pywr_editor.model import ModelConfig
+from pywr_editor.model.change_log import ChangeSet
+from pywr_editor.model.sidecar import split_model
+from pywr_editor.model.undo import (
+    ChangeSetCommand,
+    ModelUndoCommand,
+    is_schematic_change,
+)
 from pywr_editor.schematic import Schematic, get_scaling_factor
 from pywr_editor.style import AppStylesheet, Theme
 from pywr_editor.toolbar import (
@@ -188,6 +196,8 @@ class MainWindow(QMainWindow):
 
         # Actions
         self.undo_stack = QUndoStack(self)
+        # the edits that are not done by the schematic can be undone too
+        self.model_config.change_recorded.connect(self.on_change_recorded)
         self.app_actions = Actions(window=self)
         Theme.on_change(self, lambda w: w.app_actions.refresh_icons())
         self.register_model_actions()
@@ -319,6 +329,16 @@ class MainWindow(QMainWindow):
                 tooltip="Show the JSON document in the viewer",
                 shortcut=QKeySequence("Ctrl+J"),
                 connection=self.show_json,
+            )
+        )
+
+        self.app_actions.add(
+            Action(
+                key="show-changes",
+                name="What has\n changed",
+                icon=":/toolbar/show-json",
+                tooltip="Show every change applied to the model since it was opened",
+                connection=self.show_changes,
             )
         )
 
@@ -754,6 +774,7 @@ class MainWindow(QMainWindow):
         )
         file_panel.add_button(self.app_actions.get("search-in-model"))
         file_panel.add_button(self.app_actions.get("open-json-reader"))
+        file_panel.add_button(self.app_actions.get("show-changes"))
 
         settings_panel = model_tab.add_panel("Settings")
         settings_panel.add_button(self.app_actions.get("edit-metadata"))
@@ -1072,9 +1093,118 @@ class MainWindow(QMainWindow):
         Opens the JSON viewer.
         :return: None
         """
-        viewer = JsonCodeViewer(parent=self, file_content=self.model_config.clean_json)
+        # the versions the model can be compared with, as they are in the model file
+        compare_with = {}
+        for name, since_saved in (
+            ("the last saved version", True),
+            ("the model as it was opened", False),
+        ):
+            baseline = self.model_config.change_log.baseline(since_saved)
+            if baseline is not None:
+                compare_with[name] = split_model(baseline)[0]
+        viewer = JsonCodeViewer(
+            parent=self,
+            file_content=self.model_config.clean_json,
+            compare_with=compare_with,
+        )
         viewer.setWindowTitle(self.model_config.file.file_name)
         viewer.exec()
+
+    @Slot(object)
+    def on_change_recorded(self, change_set: ChangeSet) -> None:
+        """
+        Adds an edit of the model to the undo stack, unless the schematic does it.
+        :param change_set: The change set of the edit.
+        :return: None
+        """
+        # commands are changing the model, or are about to be added to the stack
+        if ModelUndoCommand.is_running() or is_schematic_change(change_set.changes):
+            return
+        self.undo_stack.push(
+            ChangeSetCommand(
+                self.model_config,
+                change_set.changes,
+                refresh=self.refresh_after_undo,
+                on_error=lambda message: QMessageBox.warning(self, "Undo", message),
+            )
+        )
+
+    def refresh_after_undo(self, sections: set[str]) -> None:
+        """
+        Updates the widgets after an edit of the model was undone or done again.
+        :param sections: The sections of the model that changed.
+        :return: None
+        """
+        if sections & {"nodes", "edges"}:
+            self.schematic.reload()
+        self.components_tree.reload()
+        if "timestepper" in sections:
+            self.sync_timestepper_widgets()
+
+    def sync_timestepper_widgets(self) -> None:
+        """
+        Shows the timestepper of the model in the toolbar, without changing the model.
+        :return: None
+        """
+        config = self.model_config
+        for name, value in (
+            ("start_date", config.start_date),
+            ("end_date", config.end_date),
+        ):
+            widget = self.findChild(DateEdit, name)
+            date = QDate.fromString(value or "", "yyyy-MM-dd")
+            if widget is not None and date.isValid():
+                widget.blockSignals(True)
+                widget.setDate(date)
+                widget.blockSignals(False)
+        step = self.findChild(SpinBox, "time_step")
+        if step is not None:
+            step.blockSignals(True)
+            step.setValue(config.time_delta)
+            step.blockSignals(False)
+
+    @Slot()
+    def show_changes(self) -> None:
+        """
+        Opens the dialog listing the changes applied to the model.
+        :return: None
+        """
+        dialog = ChangesDialog(
+            model_config=self.model_config,
+            parent=self,
+            prepare=self.save_before_changing_files,
+            reopen=self.reopen_model,
+        )
+        dialog.show()
+
+    def save_before_changing_files(self) -> bool:
+        """
+        Makes sure the model has no unsaved changes before its files are changed by
+        another program (git). The user is asked to save the model.
+        :return: True if the files can be changed, False if the user cancelled or the
+        model could not be saved.
+        """
+        if not self.model_config.has_changes:
+            return True
+        answer = QMessageBox.question(
+            self,
+            "Save the model",
+            "The model has changes that are not saved. They must be saved before the "
+            "model files are changed.\n\nSave the model?",
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        return answer == QMessageBox.StandardButton.Save and self.save_model()
+
+    def reopen_model(self) -> None:
+        """
+        Loads the model file again in a new window, after the file was changed by git.
+        :return: None
+        """
+        self.timer.stop()
+        self.prompt_unsaved_changes = False
+        MainWindow(self.model_file)
+        self.close()
 
     @Slot()
     def open_metadata_dialog(self) -> None:

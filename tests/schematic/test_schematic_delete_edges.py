@@ -87,20 +87,20 @@ class TestDeleteEdges:
                 all_schematic_edges.append([item.source.name, item.target.name])
         assert ["Reservoir", "Link1"] in all_schematic_edges
 
-        # 4. Redo, rename connected node and undo
+        # 4. Redo, rename connected node and undo. The rename is a step of the undo
+        # stack too, so undoing restores the name first
         qtbot.mouseClick(redo_button, Qt.MouseButton.LeftButton)
         model_config.nodes.rename("Reservoir", "Lake")
-
-        qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
-
-        # command becomes obsolete and edge is not restored
-        assert model_config.edges.find("Lake", "Link1")[0] is None
         assert model_config.edges.find("Reservoir", "Link1")[0] is None
 
-        # command object is deleted and not accessible anymore
-        with pytest.raises(RuntimeError):
-            assert undo_command.isObsolete() is True
+        qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
+        assert "Reservoir" in model_config.nodes.names
+        assert "Lake" not in model_config.nodes.names
+        # the edge is still deleted
+        assert model_config.edges.find("Reservoir", "Link1")[0] is None
+        assert redo_button.isEnabled() is True
 
-        # buttons are disabled
-        assert redo_button.isEnabled() is False
-        assert undo_button.isEnabled() is False
+        # undoing the deletion restores the edge, as the node has its name again
+        qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
+        assert model_config.edges.find("Reservoir", "Link1")[0] is not None
+        assert undo_command.isObsolete() is False

@@ -7,6 +7,21 @@ All issue numbers are relative to <https://github.com/pywr-editor/editor>
 
 ### Added
 
+- A "What has changed" button in the Model tab. Every edit to the model is stored as a discrete diff (what was
+added, removed or changed, and its previous value), listed newest first and marked when not saved yet. The log is
+kept while the model is open and can be exported as JSON
+- A Summary tab in the What has changed dialog shows the overall difference between the model and its last saved
+version (or the model as it was opened), grouped by section. A value edited several times is listed once and edits
+that were undone are not listed
+- The JSON viewer has a Diff tab showing, line by line, what is different between the model and its last saved version
+(or the model as it was opened), in the format of the model file
+- If the model is in a git repository, the What has changed dialog also lists the latest 100 commits changing the model
+and shows what each changed in the model (not the lines of the file). A previous version can be restored, and the
+uncommitted changes can be stashed and applied again. Git is only changed when asked, and the changes are stashed
+before a version is restored, so they are not lost
+- Every edit of the model can be undone and redone, not only the ones made on the schematic: parameters, recorders,
+tables, scenarios, imports, the metadata, the timestepper and the node settings. Edits made together (for example
+by saving a dialog) are one step. An edit made after an undo replaces the steps that could be redone
 - Geographic view: nodes can be placed by their geographic position and shown on top of OpenStreetMap tiles. A toggle
 switches between the schematic and the geographic coordinate systems, nodes can be moved in either, and a minimap
 gives an overview. The map CRS, GIS layers (shapefiles) and other options are managed from the Schematic -> Map

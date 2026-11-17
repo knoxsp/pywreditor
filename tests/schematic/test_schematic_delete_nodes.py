@@ -89,6 +89,7 @@ class TestDeleteSchematicNodes:
         redo_button: QPushButton,
         model_config: ModelConfig,
         schematic: Schematic,
+        can_undo_more: bool = False,
     ) -> None:
         """
         Undo the node deletion action and check that the node and its edges are
@@ -101,6 +102,7 @@ class TestDeleteSchematicNodes:
         :param redo_button: The redo button instance.
         :param model_config: The ModelConfig instance.
         :param schematic: The schematic instance.
+        :param can_undo_more: Whether other steps can be undone after this one.
         :return: None
         """
         node_name = original_node_config["name"]
@@ -109,7 +111,7 @@ class TestDeleteSchematicNodes:
 
         # undo
         qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
-        assert undo_button.isEnabled() is False
+        assert undo_button.isEnabled() is can_undo_more
         assert redo_button.isEnabled() is True
 
         # node is restored
@@ -206,12 +208,12 @@ class TestDeleteSchematicNodes:
         qtbot.mouseClick(dialog_form.save_button, Qt.MouseButton.LeftButton)
         dialog.close()
 
-        # 4. Test redo operation
-        # get new schematic item instance
+        # 4. The edit is a step of the undo stack, which discards the deletion that
+        # could be redone. Delete the node again
+        assert redo_button.isEnabled() is False
         node = schematic.node_items[new_name]
         removed_edges = node.edges
-
-        qtbot.mouseClick(redo_button, Qt.MouseButton.LeftButton)
+        node.on_delete_item()
         assert undo_button.isEnabled() is True
         assert redo_button.isEnabled() is False
 
@@ -220,6 +222,9 @@ class TestDeleteSchematicNodes:
             node_name=new_name,
             schematic=schematic,
             removed_edges=removed_edges,
+        )
+        undo_command: DeleteItemCommand = window.undo_stack.command(
+            window.undo_stack.count() - 1
         )
 
         # 5. Restore node with new configuration
@@ -242,13 +247,14 @@ class TestDeleteSchematicNodes:
             redo_button=redo_button,
             model_config=model_config,
             schematic=schematic,
+            can_undo_more=True,
         )
 
     def test_undo_node_rename(self, qtbot, init_window) -> None:
         """
         Tests that, when a node is deleted and a node that what previously connected
-        to it is renamed, the deleted edge is not restored. The deleted edge is not
-        valid anymore because the node changed name.
+        to it is renamed, the rename is undone before the deletion. The deleted edge
+        is restored with the node, as the node that it connects has its name again.
         """
         node_name = "Link2"
         window, schematic, node_op_panel = init_window
@@ -261,24 +267,20 @@ class TestDeleteSchematicNodes:
 
         node_item.on_delete_item()
 
-        # rename Link1 and undo
+        # rename Link1 and undo the rename
         model_config.nodes.rename("Link1", "New Link1")
+        assert model_config.edges.find("New Link1", node_name)[0] is None
         qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
 
-        # edge is not in model config
-        assert model_config.edges.find("Link1", node_name)[0] is None
-        assert model_config.edges.find("New Link1", node_name)[0] is None
+        assert "Link1" in model_config.nodes.names
+        assert "New Link1" not in model_config.nodes.names
+        assert node_name not in schematic.node_items
 
-        # edge item on schematic is not restored
+        # undo the deletion: the node and its edges are restored
+        qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
+        assert model_config.edges.find("Link1", node_name)[0] is not None
         node_item = schematic.node_items[node_name]
-        assert len(node_item.edges) == 2
-
-        assert [n.name for n in node_item.connected_nodes["source_nodes"]] == [
-            "Link3",
-        ]
-        assert [n.name for n in node_item.connected_nodes["target_nodes"]] == [
-            "Link4",
-        ]
+        assert len(node_item.edges) == 3
 
     def test_delete_nodes(self, qtbot, init_window) -> None:
         """

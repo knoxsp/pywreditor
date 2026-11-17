@@ -1,15 +1,14 @@
 from typing import TYPE_CHECKING, Union
 
-from PySide6.QtGui import QUndoCommand
-
 from pywr_editor.model import LineArrowShape, RectangleShape
+from pywr_editor.model.undo import ModelUndoCommand, tracked
 from pywr_editor.utils import Logging
 
 if TYPE_CHECKING:
     from pywr_editor.schematic import Schematic, SchematicArrow, SchematicRectangle
 
 
-class ResizeShapeCommand(QUndoCommand):
+class ResizeShapeCommand(ModelUndoCommand):
     """
     Undo command used to undo/redo size change of a shape. This command
     supports the following shapes: rectangle and line arrow.
@@ -43,6 +42,7 @@ class ResizeShapeCommand(QUndoCommand):
 
         self.setText("resized 1 shape")
 
+    @tracked
     def redo(self) -> None:
         """
         Resizes the shape.
@@ -138,6 +138,7 @@ class ResizeShapeCommand(QUndoCommand):
             )
             self.schematic.reload()
 
+    @tracked
     def undo(self) -> None:
         """
         Restores the previous position and size.
