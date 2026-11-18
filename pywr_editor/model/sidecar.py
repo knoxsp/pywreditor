@@ -40,6 +40,9 @@ NODE_EDITOR_KEYS = (
     Constants.NODE_SIZE_KEY.value,
 )
 """ The keys in the "position" of a node that the editor stores """
+INLINE_MARKER_KEY = "saved_inline"
+""" key in the "pywr_editor" block of a model file that marks the data as written by a
+save that could not write the sidecar, so it is newer than the sidecar """
 RESERVED_KEYS = ("model", "version", NODES_KEY)
 
 
@@ -262,12 +265,17 @@ def inline_editor_data(model: dict, data: dict) -> dict:
     in the "nodes" key, which read_into_model() reads back.
     :param model: The model dictionary to write in the model file, without the data.
     :param data: The editor data from split_model().
-    :return: A copy of the model with the data in the "pywr_editor" key. The model is
-    returned as it is if there is no data.
+    :return: A copy of the model with the data in the "pywr_editor" key, marked with
+    INLINE_MARKER_KEY: an older sidecar, which a failed write leaves in place, must
+    not override this data when the model is loaded. The model is returned as it is
+    if there is no data.
     """
     if not has_content(data):
         return model
-    return {**model, Constants.EDITOR_CONFIG_KEY.value: data}
+    return {
+        **model,
+        Constants.EDITOR_CONFIG_KEY.value: {**data, INLINE_MARKER_KEY: True},
+    }
 
 
 def merge_editor_data(model: dict, data: dict) -> None:
@@ -346,9 +354,18 @@ def read_into_model(json_file: str | os.PathLike, model: dict) -> str | None:
     :return: The error message if the sidecar cannot be read, None otherwise.
     """
     data, error = read_sidecar(json_file)
-    # the data of the nodes that the editor keeps in the model file when it cannot
-    # write the sidecar (see inline_editor_data)
     inline = model.get(Constants.EDITOR_CONFIG_KEY.value)
+    if isinstance(inline, dict) and inline.pop(INLINE_MARKER_KEY, False):
+        # the editor could not write the sidecar when it saved the model (see
+        # inline_editor_data): the data in the model file is newer than the sidecar,
+        # which is ignored until the next save replaces it. The data of the nodes
+        # is merged in the nodes, the rest stays in the "pywr_editor" key
+        inline_nodes = inline.pop(NODES_KEY, None)
+        if isinstance(inline_nodes, dict):
+            merge_editor_data(model, {NODES_KEY: inline_nodes})
+        return error
+    # the data of the nodes that the editor keeps in the model file when it cannot
+    # write the sidecar (see inline_editor_data), written before the marker existed
     inline_nodes = inline.pop(NODES_KEY, None) if isinstance(inline, dict) else None
     if error is None and data:
         merge_editor_data(model, data)

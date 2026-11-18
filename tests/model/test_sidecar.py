@@ -367,3 +367,66 @@ class TestGeometryWithoutCentroid:
         clean["nodes"][1]["position"]["geographic"] = [5.0, 6.0]
         merge_editor_data(clean, data)
         assert clean["nodes"][1]["position"]["geographic"] == [5.0, 6.0]
+
+
+class TestInlineDataNewerThanSidecar:
+    """
+    Tests the data kept in the model file when the sidecar cannot be written, while an
+    older sidecar exists from a previous save.
+    """
+
+    @staticmethod
+    def _save_with_failing_sidecar(config, monkeypatch):
+        def fail(*args, **kwargs):
+            raise PermissionError("read-only")
+
+        with monkeypatch.context() as context:
+            context.setattr("pywr_editor.model.model_config.write_sidecar", fail)
+            assert config.save() is True
+        assert config.sidecar_save_error is not None
+
+    def test_inline_data_wins_over_an_older_sidecar(self, write_model, monkeypatch):
+        path = write_model(base_model())
+        config = ModelConfig(path)
+        assert config.save() is True
+        assert read(sidecar_path(path))["shapes"][0]["id"] == "s1"
+
+        # change the editor data, then fail to write the sidecar
+        config.json["pywr_editor"]["shapes"] = [{"id": "s2"}]
+        config.json["nodes"][0]["position"]["node_color"] = "green"
+        self._save_with_failing_sidecar(config, monkeypatch)
+        # the sidecar still has the old data
+        assert read(sidecar_path(path))["shapes"][0]["id"] == "s1"
+
+        reloaded = ModelConfig(path)
+        assert reloaded.load_error is None
+        assert reloaded.editor_config["shapes"][0]["id"] == "s2"
+        assert reloaded.nodes.node(reloaded.json["nodes"][0]).node_color == "green"
+        # the bookkeeping of the fallback is not part of the editor config
+        assert "nodes" not in reloaded.editor_config
+        assert "saved_inline" not in reloaded.editor_config
+
+    def test_next_save_writes_the_sidecar_and_removes_the_inline_data(
+        self, write_model, monkeypatch
+    ):
+        path = write_model(base_model())
+        config = ModelConfig(path)
+        config.save()
+        config.json["pywr_editor"]["shapes"] = [{"id": "s2"}]
+        self._save_with_failing_sidecar(config, monkeypatch)
+
+        reloaded = ModelConfig(path)
+        assert reloaded.save() is True
+        assert reloaded.sidecar_save_error is None
+        assert "pywr_editor" not in read(path)
+        assert read(sidecar_path(path))["shapes"][0]["id"] == "s2"
+        assert ModelConfig(path).editor_config["shapes"][0]["id"] == "s2"
+
+    def test_sidecar_still_wins_over_data_of_older_editors(self, write_model):
+        # the data written by older versions of the editor has no marker
+        path = write_model(base_model())
+        ModelConfig(path).save()
+        legacy = base_model()
+        legacy["pywr_editor"]["shapes"] = [{"id": "old"}]
+        Path(path).write_text(json.dumps(legacy))
+        assert ModelConfig(path).editor_config["shapes"][0]["id"] == "s1"
