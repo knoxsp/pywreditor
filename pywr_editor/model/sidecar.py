@@ -257,7 +257,7 @@ def split_model(model: dict) -> tuple[dict, dict]:
     return clean, data
 
 
-def inline_editor_data(model: dict, data: dict) -> dict:
+def inline_editor_data(model: dict, data: dict, sidecar_exists: bool = False) -> dict:
     """
     Puts the editor data in the model file itself. This is used when the sidecar
     cannot be written, so that the model can be saved and the data is not lost: the
@@ -265,13 +265,18 @@ def inline_editor_data(model: dict, data: dict) -> dict:
     in the "nodes" key, which read_into_model() reads back.
     :param model: The model dictionary to write in the model file, without the data.
     :param data: The editor data from split_model().
+    :param sidecar_exists: Whether a sidecar is in place, which the failed write could
+    not replace or remove.
     :return: A copy of the model with the data in the "pywr_editor" key, marked with
     INLINE_MARKER_KEY: an older sidecar, which a failed write leaves in place, must
-    not override this data when the model is loaded. The model is returned as it is
-    if there is no data.
+    not override this data when the model is loaded. When there is no data, the block
+    only has the marker if a sidecar is in place (the data was cleared and the sidecar
+    must not bring it back); otherwise the model is returned as it is.
     """
     if not has_content(data):
-        return model
+        data = {}
+        if not sidecar_exists:
+            return model
     return {
         **model,
         Constants.EDITOR_CONFIG_KEY.value: {**data, INLINE_MARKER_KEY: True},

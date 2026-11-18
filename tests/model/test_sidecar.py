@@ -430,3 +430,45 @@ class TestInlineDataNewerThanSidecar:
         legacy["pywr_editor"]["shapes"] = [{"id": "old"}]
         Path(path).write_text(json.dumps(legacy))
         assert ModelConfig(path).editor_config["shapes"][0]["id"] == "s1"
+
+    def test_cleared_data_is_not_brought_back_by_an_older_sidecar(
+        self, write_model, monkeypatch
+    ):
+        path = write_model(base_model())
+        config = ModelConfig(path)
+        assert config.save() is True
+        assert sidecar_path(path).exists()
+
+        # the user removes all the editor data, and the old sidecar cannot be removed
+        config.json["pywr_editor"] = {}
+        for node in config.json["nodes"]:
+            node.get("position", {}).pop("geographic", None)
+            for key in ("node_color", "node_size", "node_style", "edge_color"):
+                node.get("position", {}).pop(key, None)
+        self._save_with_failing_sidecar(config, monkeypatch)
+        assert sidecar_path(path).exists()
+
+        reloaded = ModelConfig(path)
+        assert reloaded.load_error is None
+        assert not reloaded.editor_config.get("shapes")
+        assert not reloaded.editor_config.get("map")
+        assert "saved_inline" not in reloaded.editor_config
+        assert reloaded.nodes.node(reloaded.json["nodes"][0]).node_color is None
+
+        # the next save removes the sidecar
+        assert reloaded.save() is True
+        assert not sidecar_path(path).exists()
+        assert "pywr_editor" not in read(path)
+
+    def test_no_block_is_written_without_data_or_sidecar(
+        self, write_model, monkeypatch
+    ):
+        model = base_model()
+        model["pywr_editor"] = {}
+        for node in model["nodes"]:
+            node.pop("position", None)
+        path = write_model(model)
+        config = ModelConfig(path)
+        assert not sidecar_path(path).exists()
+        self._save_with_failing_sidecar(config, monkeypatch)
+        assert "pywr_editor" not in read(path)

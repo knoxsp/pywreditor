@@ -611,7 +611,9 @@ class ModelConfig(QObject):
                 f"{type(e).__name__}: {e}\n\n"
                 "The model is saved, with the editor data inside the model file."
             )
-            model = inline_editor_data(model, editor_data)
+            model = inline_editor_data(
+                model, editor_data, sidecar_path(self.json_file).exists()
+            )
 
         try:
             with open(self.json_file, "w") as outfile:

@@ -3,7 +3,7 @@
 This is the working record of the work Claude has done in this repository to make the
 pywr v1 editor edit pywr-next (pywr 2.x) models. **Read it before starting work, so the
 codebase does not have to be re-read.** Update it in every commit (see "Rules for every
-commit"). Last updated for the review-issues commit (#71-#80; see the end of section 9). Nothing is pending
+commit"). Last updated for the #72 follow-up commits (see the end of section 9). Nothing is pending
 unless section 8 says so.
 
 ## 1. Goal and approach
@@ -580,7 +580,7 @@ the decisions or facts that are not obvious from the diff.
   them); the macOS dmg is arm64-only and without lpsolve; only the Linux and macOS builds
   have a smoke test, the Windows installer was never run. The draft is not published: the user decides.
 
-- (this commit) Review issues of PR #42, #71-#80 (found by a review of the PR; all "not
+- 770ea09 Review issues of PR #42, #71-#80 (found by a review of the PR; all "not
   reproduced" when filed, so each was reproduced with a failing test first). Fixed #71-#78,
   declined #79 and #80 with evidence. One commit because the fixes share files.
   - #71 `listen_for_changes` reloaded legacy models in a loop. Cause was wider than the issue:
@@ -634,6 +634,25 @@ the decisions or facts that are not obvious from the diff.
   - Not done: posting comments on #71-#80, pushing, PR #42 body (the user decides).
   - Test recipe used: a pywr-next venv in the scratchpad (`uv venv`, `uv pip install
     pywr==2.0.0rc1 pandas openpyxl`) as `PYWR_NEXT_PYTHON`; tests run with `~/venv/bin/python`.
+- 3297798 #72 follow-up 1 (that commit did not update this log; added in the next one). If a
+  sidecar from an earlier save existed and the next sidecar write failed, the model was saved
+  with the newer data inline, but `read_into_model` merged the OLDER sidecar over it and the
+  newer data was lost silently. Decision: `inline_editor_data` adds `sidecar.INLINE_MARKER_KEY`
+  (`saved_inline`: True) to the inline `pywr_editor` block. On load a block with the marker wins
+  and the sidecar is ignored; the marker (and `nodes`) is removed on load, so it is never in
+  `editor_config`. The next successful save writes a new sidecar and drops the inline block.
+  Inline data WITHOUT the marker (older editors) is unchanged: the sidecar still wins. Tests:
+  `TestInlineDataNewerThanSidecar` in `tests/model/test_sidecar.py`.
+- (this commit) #72 follow-up 2: cleared data. If the user removes ALL the editor data and the
+  sidecar write fails, `write_sidecar` cannot remove the old sidecar, and `inline_editor_data`
+  returned the model without a block, so the old sidecar brought the removed data back on load.
+  Decision: `inline_editor_data(model, data, sidecar_exists)` writes a block with only the
+  marker when there is no data but a sidecar is in place (`model_config.save` passes
+  `sidecar_path(...).exists()`); with no data and no sidecar nothing is written, as before. On
+  load the marker block wins, so the old sidecar is ignored; the next successful save removes
+  it. Tests: `test_cleared_data_is_not_brought_back_by_an_older_sidecar` (fails without the
+  fix) and `test_no_block_is_written_without_data_or_sidecar`. Comments on #71-#80 and the push
+  of 770ea09 were done at the user's request on 2026-11-18; this commit is not pushed yet.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its
