@@ -242,18 +242,128 @@ class TestSave:
         assert sidecar.with_name(sidecar.name + ".bak").read_text() == "{ not json"
         assert read(sidecar)["shapes"][0]["id"] == "s1"
 
-    def test_save_reports_a_sidecar_that_cannot_be_written(
-        self, write_model, monkeypatch
-    ):
+    def test_model_is_saved_when_the_sidecar_cannot_be_written(self, write_model):
+        """
+        Tests that the editor data does not prevent the model from being saved: it is
+        kept in the model file, as the previous versions of the editor did, so it is
+        not lost, and the problem is reported.
+        """
         path = write_model(base_model())
+        # a file in place of the folder of the sidecars
+        (Path(path).parent / SIDECAR_FOLDER).write_text("not a folder")
         config = ModelConfig(path)
+        config.json["metadata"]["title"] = "Changed"
 
-        def fail(*args, **kwargs):
-            raise PermissionError("read-only folder")
+        assert config.save() is True
+        assert config.sidecar_save_error is not None
+        assert str(sidecar_path(path).parent) in config.sidecar_save_error
+        saved = read(path)
+        assert saved["metadata"]["title"] == "Changed"
+        assert saved["pywr_editor"]["shapes"][0]["id"] == "s1"
+        # no half-written file is left
+        assert not list(Path(path).parent.glob("**/*.tmp"))
 
-        monkeypatch.setattr("pywr_editor.model.model_config.write_sidecar", fail)
-        message = config.save()
-        assert message is not True
-        assert "read-only folder" in message
-        # the model is not written, so the data is not lost
-        assert "pywr_editor" in read(path)
+        # the data is read back from the model file
+        reloaded = ModelConfig(path)
+        assert reloaded.load_error is None
+        assert reloaded.editor_config["shapes"][0]["id"] == "s1"
+        assert reloaded.nodes.node(reloaded.json["nodes"][0]).node_color == "red"
+        assert reloaded.nodes.node(reloaded.json["nodes"][1]).geographic_rings != []
+        assert "nodes" not in reloaded.editor_config
+
+    def test_sidecar_failure_is_cleared_by_the_next_save(self, write_model):
+        path = write_model(base_model())
+        blocker = Path(path).parent / SIDECAR_FOLDER
+        blocker.write_text("not a folder")
+        config = ModelConfig(path)
+        assert config.save() is True
+        assert config.sidecar_save_error is not None
+
+        blocker.unlink()
+        assert config.save() is True
+        assert config.sidecar_save_error is None
+        assert "pywr_editor" not in read(path)
+        assert read(sidecar_path(path))["shapes"][0]["id"] == "s1"
+
+    def test_pywr_next_model_is_saved_when_the_sidecar_cannot_be_written(
+        self, tmp_path
+    ):
+        model = {
+            "metadata": {"name": "next"},
+            "network": {
+                "nodes": [
+                    {
+                        "meta": {
+                            "name": "Area",
+                            "position": {"schematic": [1, 2], "geographic": POLYGON},
+                        },
+                        "type": "Output",
+                    }
+                ],
+                "edges": [],
+            },
+            "pywr_editor": {"shapes": [{"id": "s1"}]},
+        }
+        path = tmp_path / "next.json"
+        path.write_text(json.dumps(model))
+        (tmp_path / SIDECAR_FOLDER).write_text("not a folder")
+        config = ModelConfig(str(path))
+        assert config.load_error is None
+        assert config.save() is True
+        saved = read(path)
+        # pywr-next cannot read a polygon in the position of a node
+        assert isinstance(saved["network"]["nodes"][0]["meta"]["position"]["geographic"], list)
+        reloaded = ModelConfig(str(path))
+        node = reloaded.json["network"]["nodes"][0]
+        assert node["meta"]["position"]["geographic"] == POLYGON
+        assert reloaded.editor_config["shapes"][0]["id"] == "s1"
+
+
+class TestGeometryWithoutCentroid:
+    """A geometry that has no centroid (e.g. an empty polygon) must not be lost."""
+
+    EMPTY = {"type": "Polygon", "coordinates": []}
+
+    def test_v1_geometry_is_kept(self):
+        model = base_model()
+        model["nodes"][1]["position"]["geographic"] = self.EMPTY
+        clean, data = split_model(model)
+        # the model file has no invalid position, and the geometry is not lost
+        assert "geographic" not in clean["nodes"][1]["position"]
+        assert data["nodes"]["Area"]["geographic_geometry"] == self.EMPTY
+
+        merge_editor_data(clean, data)
+        assert clean["nodes"][1]["position"]["geographic"] == self.EMPTY
+
+    def test_next_geometry_is_kept(self):
+        model = {
+            "network": {
+                "nodes": [
+                    {
+                        "meta": {
+                            "name": "Area",
+                            "position": {
+                                "schematic": [1, 2],
+                                "geographic": self.EMPTY,
+                            },
+                        },
+                        "type": "Output",
+                    }
+                ],
+                "edges": [],
+            }
+        }
+        clean, data = split_model(model)
+        assert "geographic" not in clean["network"]["nodes"][0]["meta"]["position"]
+        merge_editor_data(clean, data)
+        position = clean["network"]["nodes"][0]["meta"]["position"]
+        assert position["geographic"] == self.EMPTY
+        assert position["schematic"] == [1, 2]
+
+    def test_a_point_set_outside_of_the_editor_wins(self):
+        model = base_model()
+        model["nodes"][1]["position"]["geographic"] = self.EMPTY
+        clean, data = split_model(model)
+        clean["nodes"][1]["position"]["geographic"] = [5.0, 6.0]
+        merge_editor_data(clean, data)
+        assert clean["nodes"][1]["position"]["geographic"] == [5.0, 6.0]

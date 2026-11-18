@@ -92,6 +92,37 @@ class TestGisOverlay:
         schematic.toggle_coordinate_system()
         assert self.groups(schematic) == []
 
+    def test_failing_layer_does_not_stop_the_others(
+        self, init_window, tmp_path, monkeypatch
+    ):
+        """
+        Tests that an unexpected error while reading a layer is reported for that
+        layer, and that the schematic still draws the other layers.
+        """
+        window, schematic = init_window
+        bad = self.add_layer(schematic, write_layer(tmp_path / "bad.geojson", POINT))
+        good = self.add_layer(schematic, write_layer(tmp_path / "good.geojson", LINE))
+
+        from pywr_editor.schematic.map.gis_overlay import GisLayerLoader
+
+        original = GisLayerLoader.load
+
+        def load(loader, layer, file_path):
+            if layer.id == bad:
+                raise TypeError("'int' object is not subscriptable")
+            return original(loader, layer, file_path)
+
+        monkeypatch.setattr(GisLayerLoader, "load", load)
+        schematic.toggle_coordinate_system()
+
+        assert good in schematic.gis_overlay.groups
+        assert bad not in schematic.gis_overlay.groups
+        info = schematic.gis_overlay.inspect(
+            schematic.model_config.gis_layers.find(bad)
+        )
+        assert info.data is None
+        assert "TypeError" in info.error
+
     def test_point_is_drawn_where_the_node_is(self, init_window, tmp_path):
         """
         A point at the location of Link1 is drawn at the node position.

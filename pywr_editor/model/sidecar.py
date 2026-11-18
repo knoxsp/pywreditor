@@ -178,9 +178,14 @@ def write_sidecar(
     payload.update(data)
     # write the file in one go, so that a failure does not leave half of it
     temporary = path.with_name(path.name + ".tmp")
-    with open(temporary, "w") as fid:
-        json.dump(payload, fid, indent=2)
-    os.replace(temporary, path)
+    try:
+        with open(temporary, "w") as fid:
+            json.dump(payload, fid, indent=2)
+        os.replace(temporary, path)
+    except BaseException:
+        # do not leave a half-written file
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _centroid(geometry: dict) -> list[float] | None:
@@ -249,6 +254,22 @@ def split_model(model: dict) -> tuple[dict, dict]:
     return clean, data
 
 
+def inline_editor_data(model: dict, data: dict) -> dict:
+    """
+    Puts the editor data in the model file itself. This is used when the sidecar
+    cannot be written, so that the model can be saved and the data is not lost: the
+    previous versions of the editor kept the data there. The nodes entries are stored
+    in the "nodes" key, which read_into_model() reads back.
+    :param model: The model dictionary to write in the model file, without the data.
+    :param data: The editor data from split_model().
+    :return: A copy of the model with the data in the "pywr_editor" key. The model is
+    returned as it is if there is no data.
+    """
+    if not has_content(data):
+        return model
+    return {**model, Constants.EDITOR_CONFIG_KEY.value: data}
+
+
 def merge_editor_data(model: dict, data: dict) -> None:
     """
     Adds the editor data read from the sidecar to the model dictionary. The sidecar
@@ -298,9 +319,13 @@ def merge_editor_data(model: dict, data: dict) -> None:
         if isinstance(geometry, dict):
             centroid = _centroid(geometry)
             point = position.get(Constants.GEOGRAPHIC_KEY.value)
-            if (
-                centroid is not None
-                and isinstance(point, list)
+            if centroid is None:
+                # a geometry without a centroid (e.g. an empty polygon) has no point
+                # in the model: it is restored if the model still has none
+                if Constants.GEOGRAPHIC_KEY.value not in position:
+                    position[Constants.GEOGRAPHIC_KEY.value] = geometry
+            elif (
+                isinstance(point, list)
                 and len(point) == 2
                 and all(
                     isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -321,6 +346,12 @@ def read_into_model(json_file: str | os.PathLike, model: dict) -> str | None:
     :return: The error message if the sidecar cannot be read, None otherwise.
     """
     data, error = read_sidecar(json_file)
+    # the data of the nodes that the editor keeps in the model file when it cannot
+    # write the sidecar (see inline_editor_data)
+    inline = model.get(Constants.EDITOR_CONFIG_KEY.value)
+    inline_nodes = inline.pop(NODES_KEY, None) if isinstance(inline, dict) else None
     if error is None and data:
         merge_editor_data(model, data)
+    elif isinstance(inline_nodes, dict):
+        merge_editor_data(model, {NODES_KEY: inline_nodes})
     return error

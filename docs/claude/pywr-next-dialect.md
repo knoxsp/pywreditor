@@ -3,7 +3,7 @@
 This is the working record of the work Claude has done in this repository to make the
 pywr v1 editor edit pywr-next (pywr 2.x) models. **Read it before starting work, so the
 codebase does not have to be re-read.** Update it in every commit (see "Rules for every
-commit"). Last updated for the watchdog commit (see the end of section 9). Nothing is pending
+commit"). Last updated for the review-issues commit (#71-#80; see the end of section 9). Nothing is pending
 unless section 8 says so.
 
 ## 1. Goal and approach
@@ -570,7 +570,7 @@ the decisions or facts that are not obvious from the diff.
   default) instead of installing lpsolve. Consequence: the macOS build's pywr has no lpsolve
   solver (a model that asks for it would fail there). New tag `2.1.1-dialect-dev.6`; .5 deleted.
 
-- (this commit) Release job permission. Run of tag .6: Windows, Linux and macOS all green, but the
+- 517fc9e Release job permission. Run of tag .6: Windows, Linux and macOS all green, but the
   "Release" job got HTTP 403 ("Resource not accessible by integration"): the repository's
   default GITHUB_TOKEN is read-only. Fix: `permissions: contents: write` on that job. For
   this release the draft was created by hand with `gh release create --draft --prerelease` from
@@ -579,6 +579,61 @@ the decisions or facts that are not obvious from the diff.
   release summary: builds went through after 5 tag attempts (.1-.5 deleted, no releases from
   them); the macOS dmg is arm64-only and without lpsolve; only the Linux and macOS builds
   have a smoke test, the Windows installer was never run. The draft is not published: the user decides.
+
+- (this commit) Review issues of PR #42, #71-#80 (found by a review of the PR; all "not
+  reproduced" when filed, so each was reproduced with a failing test first). Fixed #71-#78,
+  declined #79 and #80 with evidence. One commit because the fixes share files.
+  - #71 `listen_for_changes` reloaded legacy models in a loop. Cause was wider than the issue:
+    the file text was compared with `as_string` (the model in memory, re-serialised), which
+    never equals the file for any model the editor normalises on load. Decision: compare the
+    file with ITSELF. `ModelConfig.file_signature` (mtime_ns, size, sha256) is set when the
+    file is loaded and saved; `file_changed_externally()` stats the file on each poll and hashes
+    it only when the stat changed (a touch without a change updates the signature). `as_string`
+    is kept (used by tests and nothing else). A model that is not opened clean (`has_changes`
+    True after load, e.g. missing `parameters`/`recorders`/`tables`) is never reloaded: this was
+    already the case.
+  - #72 a sidecar that cannot be written (read-only folder, a file named `.pywr-editor`) no
+    longer blocks saving the model. Decision: the old rule "do not write the model, so the data
+    is not lost" was right for legacy models (their editor data lives in the model file), so the
+    model is written WITH the editor data inline (`pywr_editor` key, `sidecar.inline_editor_data`,
+    node data under `pywr_editor.nodes`), as old editor versions did; `read_into_model` reads
+    `pywr_editor.nodes` back when there is no sidecar data (the sidecar still wins). pywr-next
+    accepts the extra top-level key (checked against 2.0.0rc1); a Polygon in `meta.position` it
+    does NOT accept, which is why the split model (centroids) is written and not the in-memory
+    one. `ModelConfig.sidecar_save_error` holds the message; `MainWindow.save_model` shows a
+    warning box. `write_sidecar` removes its `.tmp` file on failure.
+  - #73 `find_uv` searched `Path("")` (the working directory) outside a frozen build. Now the
+    bundle folders are searched only when `sys._MEIPASS` is set or `sys.frozen`; otherwise
+    `shutil.which`. Also fixed `test_the_build_files_bundle_uv`, which failed before this work
+    (it still expected the per-file Windows installer list changed in d92ad2a).
+  - #74 malformed GeoJSON coordinates: `_flatten` ignores geometries whose nesting is wrong,
+    `_xy` ignores positions that are not lists of two numbers, and `GisOverlay.inspect` turns any
+    other exception of a layer into that layer's error (the other layers still draw).
+  - #75 limits before the parse: `MAX_FILE_SIZE` (256 MiB, checked with `stat` before the file is
+    read) and the Shapefile shape count (`len(reader)`) before the shapes are read. Layer vertices
+    outside Web Mercator are dropped with `GeoTransform.is_finite`, as for nodes. NOT done: the
+    load still runs on the GUI thread (a worker thread is a larger change); the size limit is
+    what bounds the freeze.
+  - #76 layer IDs: `GisLayerConfig.generate_id(existing)` retries until the ID is unused (8
+    characters, was 6); `GisLayers.__post_init__` gives a new ID to the later layers of a model
+    that share an ID (the first keeps it; not marked as a change).
+  - #77 a geometry without centroid (e.g. an empty polygon) is still taken out of the model
+    file, but `merge_editor_data` now restores it from the sidecar when the model has no
+    `geographic` point for the node (a point set outside the editor still wins).
+  - #78 `runner_protocol.parse_date` drops the time zone of the dates of the service (wall-clock
+    kept) so they can be compared with the naive dates of the model; `FakeRunner(date_suffix=)`.
+  - #79 NOT changed. (1) The run buttons cannot stay disabled: `_finish()` always emits
+    `finished`, which `RunWidget.worker_has_finished` turns into "all enabled". (2) Results after
+    a cancel are by design: stopping a run keeps its partial results (`completed=False` in the
+    metadata), as the v1 worker does and `test_stop_cancels_a_run_in_progress` asserts. Not
+    reproduced with a real service that answers `step` with `completed`.
+  - #80 NOT changed, test added. With the real converter (pywr 2.0.0rc1) the schematic and
+    geographic positions reach `meta.position`; the style goes to the tags; the footprint is
+    restored when the point equals the centroid and the saved model has only the centroid
+    (`test_positions_and_styles_survive_the_conversion`, gated by `PYWR_NEXT_PYTHON`).
+  - Not done: posting comments on #71-#80, pushing, PR #42 body (the user decides).
+  - Test recipe used: a pywr-next venv in the scratchpad (`uv venv`, `uv pip install
+    pywr==2.0.0rc1 pandas openpyxl`) as `PYWR_NEXT_PYTHON`; tests run with `~/venv/bin/python`.
 
 ### Next entries
 Add a row here with every new commit: hash, issue, decisions. A commit cannot contain its

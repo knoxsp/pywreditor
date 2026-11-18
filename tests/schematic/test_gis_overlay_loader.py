@@ -288,6 +288,77 @@ class TestGeoJsonLoader:
         with pytest.raises(GisLayerError, match="too large.*features"):
             GisLayerLoader().load(layer(path), str(path))
 
+    @pytest.mark.parametrize(
+        "geometry",
+        [
+            {"type": "MultiPoint", "coordinates": [1, 2]},
+            {"type": "MultiPoint", "coordinates": [None, "x"]},
+            {"type": "Point", "coordinates": [None, None]},
+            {"type": "Point", "coordinates": ["a", "b"]},
+            {"type": "LineString", "coordinates": [1, 2, 3]},
+            {"type": "LineString", "coordinates": [None, None]},
+            {"type": "MultiLineString", "coordinates": [1, 2]},
+            {"type": "Polygon", "coordinates": [1, 2]},
+            {"type": "Polygon", "coordinates": [[None, None, None]]},
+            {"type": "MultiPolygon", "coordinates": [1, 2]},
+            {"type": "MultiPolygon", "coordinates": [[1], [2]]},
+            {"type": "GeometryCollection", "geometries": [1, None, {"type": 3}]},
+        ],
+    )
+    def test_malformed_coordinates_are_ignored(self, tmp_path, geometry):
+        """
+        Tests that the coordinates that are not lists of numbers do not raise
+        errors: the geometry is ignored and the rest of the layer is loaded.
+        """
+        path = write_geojson(
+            tmp_path / "malformed.geojson",
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    feature(geometry),
+                    feature({"type": "Point", "coordinates": [1, 1]}),
+                ],
+            },
+        )
+        result = GisLayerLoader().load(layer(path), str(path))
+        assert len(result.geometries) == 1
+        assert result.geometries[0].kind == "point"
+        assert any("ignored" in w or "no supported" in w for w in result.warnings)
+
+    def test_vertices_outside_of_web_mercator_are_dropped(self, tmp_path):
+        """
+        Tests that the vertices beyond the limits of Web Mercator (latitudes above
+        85.05, which the nodes refuse as well) are not drawn.
+        """
+        path = write_geojson(
+            tmp_path / "poles.geojson",
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    feature({"type": "Point", "coordinates": [0, 89.9]}),
+                    feature({"type": "Point", "coordinates": [0, 85]}),
+                    feature({"type": "LineString", "coordinates": [[0, 0], [0, 89]]}),
+                    feature({"type": "LineString", "coordinates": [[0, 0], [10, 50]]}),
+                ],
+            },
+        )
+        result = GisLayerLoader().load(layer(path), str(path))
+        assert [g.kind for g in result.geometries] == ["point", "line"]
+        assert any("ignored" in w for w in result.warnings)
+
+    def test_big_geojson_is_refused_before_it_is_read(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("pywr_editor.schematic.map.gis_overlay.MAX_FILE_SIZE", 50)
+        path = write_geojson(
+            tmp_path / "big.geojson", feature({"type": "Point", "coordinates": [1, 1]})
+        )
+
+        def fail(*args, **kwargs):
+            raise AssertionError("the file was parsed")
+
+        monkeypatch.setattr("pywr_editor.schematic.map.gis_overlay.json.load", fail)
+        with pytest.raises(GisLayerError, match="too large.*MiB"):
+            GisLayerLoader().load(layer(path), str(path))
+
     def test_unsupported_format(self, tmp_path):
         path = tmp_path / "layers.gpkg"
         path.write_bytes(b"SQLite format 3")
@@ -400,4 +471,19 @@ class TestShapefileLoader:
         path = tmp_path / "broken.shp"
         path.write_bytes(b"this is not a shapefile")
         with pytest.raises(GisLayerError, match="not a valid Shapefile"):
+            GisLayerLoader().load(layer(path), str(path))
+
+    def test_too_many_features_are_refused_before_they_are_read(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr("pywr_editor.schematic.map.gis_overlay.MAX_FEATURES", 2)
+        path = write_shapefile(
+            tmp_path / "many", shapefile.POINT, [(1, 1), (2, 2), (3, 3)], WGS84_WKT
+        )
+
+        def fail(self):
+            raise AssertionError("the shapes were read")
+
+        monkeypatch.setattr(shapefile.Reader, "shapes", fail)
+        with pytest.raises(GisLayerError, match="too large.*features"):
             GisLayerLoader().load(layer(path), str(path))

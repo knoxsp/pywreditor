@@ -69,6 +69,53 @@ def test_convert_a_real_model(v1_file):
 
 
 @REAL
+def test_positions_and_styles_survive_the_conversion(tmp_path, v1_file):
+    """
+    Tests that every kind of position of a pywr v1 node reaches the pywr-next model,
+    with the footprint of the node in the sidecar and its style in its tags: the
+    editor splits the v1 model as a v1 model and merges the editor data into the
+    converted model as a pywr-next model.
+    """
+    footprint = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]],
+    }
+    model = ModelConfig(str(v1_file))
+    model.json["nodes"].append({"name": "Without position", "type": "Link"})
+    first, second, third = (n["name"] for n in model.json["nodes"][-3:])
+    model.json["nodes"][-3]["position"] = {
+        "schematic": [10, 20],
+        "geographic": footprint,
+        "node_color": "red",
+    }
+    model.json["nodes"][-2]["position"] = {"geographic": [-1.5, 52.0]}
+    model.json["nodes"][-1].pop("position", None)
+
+    result = conversion.convert_model(os.environ["PYWR_NEXT_PYTHON"], model.json)
+    nodes = {n["meta"]["name"]: n["meta"] for n in result.model["network"]["nodes"]}
+    assert nodes[first]["position"]["schematic"] == [10, 20]
+    assert nodes[first]["position"]["geographic"] == footprint
+    assert nodes[first]["tags"]["editor:node_color"] == "red"
+    assert nodes[second]["position"] == {"geographic": [-1.5, 52.0]}
+    assert "position" not in nodes[third]
+
+    target = tmp_path / "model_next.json"
+    conversion.save_converted_model(result.model, target)
+    saved = json.loads(target.read_text())
+    saved_nodes = {n["meta"]["name"]: n["meta"] for n in saved["network"]["nodes"]}
+    # pywr-next only reads a point in the position of a node
+    assert saved_nodes[first]["position"]["geographic"] == pytest.approx([2.0, 2.0])
+
+    reopened = ModelConfig(str(target))
+    assert reopened.load_error is None
+    reopened_nodes = {
+        n["meta"]["name"]: n["meta"] for n in reopened.json["network"]["nodes"]
+    }
+    assert reopened_nodes[first]["position"]["geographic"] == footprint
+    assert reopened_nodes[first]["position"]["schematic"] == [10, 20]
+
+
+@REAL
 def test_save_and_open_the_converted_model(tmp_path, v1_file):
     model = ModelConfig(str(v1_file))
     result = conversion.convert_model(os.environ["PYWR_NEXT_PYTHON"], model.json)

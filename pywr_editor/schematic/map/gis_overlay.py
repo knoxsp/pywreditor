@@ -1,5 +1,4 @@
 import json
-import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from pywr_editor.model import GisLayerConfig
 
+from .geo_transform import GeoTransform
 from .projection import Projector, is_valid_crs
 
 if TYPE_CHECKING:
@@ -35,6 +35,9 @@ SUPPORTED_SUFFIXES = {".shp": "shapefile", ".geojson": "geojson", ".json": "geoj
 MAX_FEATURES = 200_000
 """ The maximum number of features of a layer. Each feature is a graphics item, and
 drawing more makes the schematic too slow """
+MAX_FILE_SIZE = 256 * 1024 * 1024
+""" The maximum size of a layer file, in bytes. The file is read in memory by the
+editor, on the thread of the window, so a larger file is refused before it is read """
 MAX_VERTICES = 1_000_000
 """ The maximum number of vertices of a layer. A layer with more vertices would make
 the editor unresponsive """
@@ -122,6 +125,17 @@ class GisLayerLoader:
         if layer.crs is not None and not is_valid_crs(layer.crs):
             warnings.append(f'The CRS "{layer.crs}" is not valid and it was ignored')
         user_crs = layer.crs if layer.crs and is_valid_crs(layer.crs) else None
+
+        try:
+            size = path.stat().st_size
+        except OSError as error:
+            raise GisLayerError(f"The file cannot be read: {error}")
+        if size > MAX_FILE_SIZE:
+            raise GisLayerError(
+                f"The file is too large ({size / 1024**2:,.0f} MiB, the limit is "
+                f"{MAX_FILE_SIZE / 1024**2:,.0f} MiB). Simplify it or split it in "
+                "several layers"
+            )
 
         if layer.file_type == "shapefile":
             features, file_crs, file_warnings = self._read_shapefile(path)
@@ -229,11 +243,16 @@ class GisLayerLoader:
         warnings: list[str] = []
         try:
             with shapefile.Reader(str(path)) as reader:
+                # check the number of shapes before reading them
+                if len(reader) > MAX_FEATURES:
+                    raise self._too_many_features()
                 geometries = [
                     shape.__geo_interface__
                     for shape in reader.shapes()
                     if shape.shapeType != shapefile.NULL
                 ]
+        except GisLayerError:
+            raise
         except Exception as error:
             # the parser raises many kinds of errors (e.g. struct.error) when
             # the file is truncated or corrupted
@@ -255,6 +274,13 @@ class GisLayerLoader:
                 warnings.append("The CRS in the .prj file is not valid: it was ignored")
 
         return geometries, crs, warnings
+
+    @staticmethod
+    def _too_many_features() -> GisLayerError:
+        return GisLayerError(
+            f"The layer is too large (more than {MAX_FEATURES:,} features). "
+            "Simplify it or split it in several layers"
+        )
 
     geometry_types = (
         "Point",
@@ -285,19 +311,43 @@ class GisLayerLoader:
         if not isinstance(coords, (list, tuple)):
             return []
 
-        if kind == "Point":
-            return [("point", [[coords]])]
-        if kind == "MultiPoint":
-            return [("point", [[point] for point in coords])]
-        if kind == "LineString":
-            return [("line", [list(coords)])]
-        if kind == "MultiLineString":
-            return [("line", [list(line) for line in coords])]
-        if kind == "Polygon":
-            return [("polygon", [list(ring) for ring in coords])]
-        if kind == "MultiPolygon":
-            return [("polygon", [list(ring) for poly in coords for ring in poly])]
+        # the coordinates come from a file that can be malformed (e.g. a point where
+        # a list of points is expected): the geometry is ignored
+        try:
+            if kind == "Point":
+                return [("point", [[coords]])]
+            if kind == "MultiPoint":
+                return [("point", [[point] for point in coords])]
+            if kind == "LineString":
+                return [("line", [list(coords)])]
+            if kind == "MultiLineString":
+                return [("line", [list(line) for line in coords])]
+            if kind == "Polygon":
+                return [("polygon", [list(ring) for ring in coords])]
+            if kind == "MultiPolygon":
+                return [("polygon", [list(ring) for poly in coords for ring in poly])]
+        except (TypeError, ValueError):
+            pass
         return []
+
+    @staticmethod
+    def _xy(coordinate: Any) -> tuple[float, float] | None:
+        """
+        Reads the x and y values of a GeoJSON position.
+        :param coordinate: The position, a list of numbers. The z and m values are
+        ignored.
+        :return: The x and y values, or None if the position is not valid.
+        """
+        if (
+            isinstance(coordinate, (list, tuple))
+            and len(coordinate) >= 2
+            and all(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+                for value in coordinate[:2]
+            )
+        ):
+            return float(coordinate[0]), float(coordinate[1])
+        return None
 
     def _project(
         self, features: list[dict], projector: Projector
@@ -309,10 +359,7 @@ class GisLayerLoader:
         :return: The geometries, the number of vertices and the warnings.
         """
         if len(features) > MAX_FEATURES:
-            raise GisLayerError(
-                f"The layer is too large (more than {MAX_FEATURES:,} features). "
-                "Simplify it or split it in several layers"
-            )
+            raise self._too_many_features()
 
         geometries: list[GisGeometry] = []
         vertex_count = 0
@@ -328,15 +375,20 @@ class GisLayerLoader:
             for kind, parts in flattened:
                 projected_parts = []
                 for part in parts:
-                    # ignore the z and m values
-                    xs = [c[0] for c in part if len(c) >= 2]
-                    ys = [c[1] for c in part if len(c) >= 2]
-                    merc_x, merc_y = projector.lonlat_to_merc_many(xs, ys)
-                    # the coordinates that cannot be projected are infinite
+                    # the positions that are not lists of numbers are ignored, as
+                    # well as the z and m values
+                    positions = [self._xy(c) for c in part]
+                    positions = [xy for xy in positions if xy is not None]
+                    merc_x, merc_y = projector.lonlat_to_merc_many(
+                        [xy[0] for xy in positions], [xy[1] for xy in positions]
+                    )
+                    # the coordinates that cannot be projected are infinite, and
+                    # the ones that are outside of the world (e.g. the latitudes
+                    # above 85.05) would be drawn far from the nodes
                     points = [
                         (x, y)
                         for x, y in zip(merc_x, merc_y)
-                        if math.isfinite(x) and math.isfinite(y)
+                        if GeoTransform.is_finite((x, y))
                     ]
                     minimum = {"point": 1, "line": 2, "polygon": 3}[kind]
                     if len(points) < minimum:
@@ -521,6 +573,11 @@ class GisOverlay(QObject):
             )
         except GisLayerError as error:
             info = GisLayerInfo(error=str(error))
+        except Exception as error:
+            # a layer must never prevent the schematic from being drawn
+            info = GisLayerInfo(
+                error=f"The layer cannot be loaded: {type(error).__name__}: {error}"
+            )
         finally:
             QGuiApplication.restoreOverrideCursor()
         self._cache[layer.id] = (signature, info)

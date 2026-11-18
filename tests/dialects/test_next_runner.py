@@ -295,6 +295,25 @@ class TestWorker:
         worker.kill()
         wait_for(qtbot, recorder, "finished")
 
+    @pytest.mark.parametrize("suffix", ["Z", "+00:00", "+01:00"])
+    def test_dates_with_a_time_zone(self, qtbot, start_worker, suffix):
+        """
+        Tests that the run controls work when the service reports the time zone of the
+        dates, which cannot be compared with the dates of the model.
+        """
+        worker, runner, recorder = start_worker(FakeRunner(date_suffix=suffix))
+        wait_ready(qtbot, recorder)
+        worker.step()
+        wait_for(qtbot, recorder, "step_done")
+        worker.run_to()
+        wait_for(qtbot, recorder, "run_to_done")
+        wait_for(qtbot, recorder, "run_to_date_reached")
+        assert recorder.progress[-1]["current_timestamp"] == pd.Timestamp("2015-01-04")
+        worker.kill()
+        wait_for(qtbot, recorder, "finished")
+        assert recorder.count("model_error") == 0
+        assert runner.errors == []
+
     def test_end_date_then_stop_writes_outputs(self, qtbot, start_worker, tmp_path):
         """
         Tests that the run controls are told when the last timestep is reached, and

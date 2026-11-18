@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from collections import Counter
@@ -27,6 +28,7 @@ from pywr_editor.model import (
 from pywr_editor.model.constants import UNCHANGED
 from pywr_editor.model.node_config import valid_node_size
 from pywr_editor.model.sidecar import (
+    inline_editor_data,
     read_into_model,
     sidecar_path,
     split_model,
@@ -70,6 +72,12 @@ class ModelConfig(QObject):
         self.load_error = None
         self.sidecar_error: str | None = None
         """ The reason why the file with the editor data cannot be read """
+        self.file_signature: tuple[int, int, str] | None = None
+        """ The modification time, the size and the hash of the model file the last
+        time it was loaded or saved by the editor. See file_changed_externally() """
+        self.sidecar_save_error: str | None = None
+        """ Why the file with the editor data could not be written by the last save,
+        in which case the data is in the model file. None if there was no problem """
         self.load_model()
         # stop performing other tasks if the model cannot be loaded
         if not self.is_valid():
@@ -269,6 +277,7 @@ class ModelConfig(QObject):
                 return
 
         try:
+            self.file_signature = self._file_signature()
             with open(self.json_file, "r") as file:
                 self.json = json.load(file)
         except Exception as e:
@@ -516,6 +525,50 @@ class ModelConfig(QObject):
         """
         return split_model(self.json)[0]
 
+    def _file_signature(self) -> tuple[int, int, str] | None:
+        """
+        Returns what identifies the content of the model file.
+        :return: The modification time, the size and the hash of the content, or None
+        if the file cannot be read.
+        """
+        if not self.json_file:
+            return None
+        try:
+            stat = os.stat(self.json_file)
+            with open(self.json_file, "rb") as file:
+                digest = hashlib.sha256(file.read()).hexdigest()
+        except OSError:
+            return None
+        return stat.st_mtime_ns, stat.st_size, digest
+
+    def file_changed_externally(self) -> bool:
+        """
+        Checks whether the model file has been changed since the editor loaded or
+        saved it, by another program. The content of the file is compared with itself
+        and not with the model in memory, which is never identical to it (the file
+        does not have the editor data and the editor adds the missing sections to the
+        model). The file is read only when its modification time or size changed.
+        :return: True if the file has a different content. False if it is the same,
+        or if it cannot be read (e.g. a program is replacing it): it is checked again
+        at the next call.
+        """
+        if not self.json_file or self.file_signature is None:
+            return False
+        try:
+            stat = os.stat(self.json_file)
+        except OSError:
+            return False
+        if self.file_signature[:2] == (stat.st_mtime_ns, stat.st_size):
+            return False
+        signature = self._file_signature()
+        if signature is None:
+            return False
+        if signature[2] == self.file_signature[2]:
+            # the file was touched without changing its content
+            self.file_signature = signature
+            return False
+        return True
+
     @property
     def as_string(self) -> str | bool:
         """
@@ -538,9 +591,11 @@ class ModelConfig(QObject):
             # the model on the screen is a view of the file, which is not changed
             return "This model is read-only: it cannot be saved"
         model, editor_data = split_model(self.json)
-        # the sidecar is written first: if the model cannot be written, the sidecar
-        # has the new editor data and the model keeps the old one, which the sidecar
-        # overrides when the model is loaded
+        # the sidecar is written first. If it cannot be written (e.g. a read-only
+        # folder), the model is still saved, with the editor data in it, as the
+        # previous versions of the editor did: this is read back when the model is
+        # loaded, and no data is lost
+        self.sidecar_save_error = None
         try:
             write_sidecar(
                 self.json_file,
@@ -550,11 +605,13 @@ class ModelConfig(QObject):
             )
             self.sidecar_error = None
         except Exception as e:
-            return (
+            self.sidecar_save_error = (
                 "The editor data (the shapes, node styles and map settings) cannot be "
                 f"saved in {sidecar_path(self.json_file)} because:\n\n"
                 f"{type(e).__name__}: {e}\n\n"
+                "The model is saved, with the editor data inside the model file."
             )
+            model = inline_editor_data(model, editor_data)
 
         try:
             with open(self.json_file, "w") as outfile:
@@ -563,6 +620,7 @@ class ModelConfig(QObject):
             return f"The model cannot be saved because:\n\n{type(e).__name__}: {e}\n\n"
 
         self.reload_file_info()
+        self.file_signature = self._file_signature()
 
         return True
 

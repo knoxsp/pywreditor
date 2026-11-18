@@ -24,6 +24,7 @@ class FakeRunner(QObject):
         fail_with: dict | None = None,
         write_file_on_end: bool = True,
         reject_hello: dict | None = None,
+        date_suffix: str = "",
     ):
         """
         :param total: The number of timesteps of the run.
@@ -36,6 +37,8 @@ class FakeRunner(QObject):
         :param write_file_on_end: Write a file in the output folder when the run
         completes or is cancelled.
         :param reject_hello: The rejection payload sent instead of "accepted".
+        :param date_suffix: Added to the dates of the progress, such as "Z" for a
+        service that reports the time zone of the dates.
         """
         super().__init__()
         self.total = total
@@ -45,6 +48,7 @@ class FakeRunner(QObject):
         self.fail_with = fail_with
         self.write_file_on_end = write_file_on_end
         self.reject_hello = reject_hello
+        self.date_suffix = date_suffix
 
         self.server = QLocalServer(self)
         self.socket: QLocalSocket | None = None
@@ -93,10 +97,12 @@ class FakeRunner(QObject):
             "completed_timesteps": done,
             "total_timesteps": self.total,
             "last_completed_date": (
-                self.date(done - 1).isoformat(timespec="seconds") if done else None
+                self.date(done - 1).isoformat(timespec="seconds") + self.date_suffix
+                if done
+                else None
             ),
             "next_date": (
-                self.date(done).isoformat(timespec="seconds")
+                self.date(done).isoformat(timespec="seconds") + self.date_suffix
                 if done < self.total
                 else None
             ),

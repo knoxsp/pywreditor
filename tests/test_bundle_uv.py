@@ -98,8 +98,8 @@ class TestBundledUvIsFound:
     def test_the_build_files_bundle_uv(self):
         spec = (ROOT / "main.spec").read_text()
         assert 'binaries.append((str(uv_executable), "."))' in spec
-        # the Windows installer lists its files one by one
-        assert 'dist\\main\\uv.exe' in (ROOT / "windows_setup.iss").read_text()
+        # the Windows installer installs the whole folder of the build, uv included
+        assert 'Source: "dist\\main\\*"' in (ROOT / "windows_setup.iss").read_text()
         assert "## uv" in (ROOT / "LEGAL NOTICES.md").read_text()
 
 

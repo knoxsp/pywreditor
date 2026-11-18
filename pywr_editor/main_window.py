@@ -1191,6 +1191,12 @@ class MainWindow(QMainWindow):
             else:
                 self.save.emit()
                 self.undo_stack.setClean()
+                if self.model_config.sidecar_save_error:
+                    QMessageBox().warning(
+                        self,
+                        "The editor data is saved in the model",
+                        self.model_config.sidecar_save_error,
+                    )
         else:
             file_dialog = QFileDialog()
             file_dialog.setNameFilter("JSON file (*.json)")
@@ -1650,18 +1656,15 @@ class MainWindow(QMainWindow):
 
         # noinspection PyBroadException
         try:
-            with open(self.model_file, "r") as file:
-                # only reload the editor if there are not changes made using the editor
-                if (
-                    file.read() != self.model_config.as_string
-                    and not self.model_config.has_changes
-                ):
-                    self.logger.debug(
-                        "Reloading model because it was changed externally"
-                    )
-                    self.timer.stop()
-                    self.close()
-                    MainWindow(self.model_file)
+            # only reload the editor if there are not changes made using the editor
+            if (
+                self.model_config.file_changed_externally()
+                and not self.model_config.has_changes
+            ):
+                self.logger.debug("Reloading model because it was changed externally")
+                self.timer.stop()
+                self.close()
+                MainWindow(self.model_file)
         except Exception:
             pass
 

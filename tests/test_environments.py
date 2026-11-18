@@ -149,3 +149,19 @@ def test_settings_button(qtbot, monkeypatch, tmp_path):
     assert dialogs[0].location.text().startswith(str(tmp_path))
     dialogs[0].close()
     window.close()
+
+
+def test_find_uv_ignores_the_working_directory(monkeypatch, tmp_path):
+    """
+    Tests that a "uv" in the folder the editor is started from is never used (a model
+    folder can be untrusted): only the folders of a frozen build and the PATH are
+    searched.
+    """
+    name = "uv.exe" if sys.platform == "win32" else "uv"
+    (tmp_path / name).write_text("")
+    (tmp_path / name).chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert find_uv() is None

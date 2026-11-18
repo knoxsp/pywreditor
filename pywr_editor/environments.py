@@ -76,10 +76,18 @@ def find_uv() -> str | None:
     :return: The path to uv, or None if it is not available.
     """
     name = "uv.exe" if sys.platform == "win32" else "uv"
-    bundle_dirs = [Path(getattr(sys, "_MEIPASS", "")), Path(sys.executable).parent]
+    # only the folders of a frozen (PyInstaller) build are searched. Outside of one
+    # there is no bundled uv, and Path("") is the working directory, which can be the
+    # folder of an untrusted model
+    bundle_dirs: list[Path] = []
+    bundle_dir = getattr(sys, "_MEIPASS", None)
+    if bundle_dir:
+        bundle_dirs.append(Path(bundle_dir))
+    if getattr(sys, "frozen", False):
+        bundle_dirs.append(Path(sys.executable).parent)
     for folder in bundle_dirs:
         candidate = folder / name
-        if str(folder) and candidate.is_file():
+        if candidate.is_file():
             return str(candidate)
     return shutil.which("uv")
 

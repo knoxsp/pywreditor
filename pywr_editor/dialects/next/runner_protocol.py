@@ -280,9 +280,15 @@ def parse_date(value: Any) -> datetime | None:
     """
     Reads a date of the service.
     :param value: The date as a string, or None.
-    :return: The date, None if there is none.
+    :return: The date, None if there is none. The date is naive, like the dates of
+    the model and of the commands of the editor: the time zone of the service, if it
+    reports one (e.g. "Z"), is dropped and the time of the day is kept. An aware date
+    cannot be compared with a naive one.
     """
-    return datetime.fromisoformat(value) if value else None
+    if not value:
+        return None
+    date = datetime.fromisoformat(value)
+    return date.replace(tzinfo=None) if date.tzinfo is not None else date
 
 
 @dataclass(frozen=True)
