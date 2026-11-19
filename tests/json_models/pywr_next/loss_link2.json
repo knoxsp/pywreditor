@@ -1,0 +1,118 @@
+{
+  "metadata": {
+    "title": "Loss Link Test 1",
+    "description": "Test LossLink with zero loss",
+    "minimum_version": "0.1"
+  },
+  "time": {
+    "start": "2015-01-01",
+    "end": "2015-01-03",
+    "timestep": {
+      "type": "Days",
+      "days": 1
+    }
+  },
+  "network": {
+    "nodes": [
+      {
+        "meta": {
+          "name": "input1"
+        },
+        "type": "Catchment",
+        "flow": {
+          "type": "Literal",
+          "value": 15.0
+        }
+      },
+      {
+        "meta": {
+          "name": "loss1"
+        },
+        "type": "LossLink",
+        "loss_factor": {
+          "type": "Net",
+          "factor": {
+            "type": "Literal",
+            "value": 0.0
+          }
+        }
+      },
+      {
+        "meta": {
+          "name": "demand1"
+        },
+        "type": "Output",
+        "max_flow": {
+          "type": "Literal",
+          "value": 10.0
+        },
+        "cost": {
+          "type": "Literal",
+          "value": -10
+        }
+      },
+      {
+        "meta": {
+          "name": "spill1"
+        },
+        "type": "Output",
+        "cost": {
+          "type": "Literal",
+          "value": 10
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from_node": "input1",
+        "to_node": "loss1"
+      },
+      {
+        "from_node": "loss1",
+        "to_node": "demand1"
+      },
+      {
+        "from_node": "input1",
+        "to_node": "spill1"
+      }
+    ],
+    "metric_sets": [
+      {
+        "meta": {"name": "nodes"},
+        "metrics": [
+          {
+            "type": "Node",
+            "name": "loss1",
+            "attribute": "Inflow"
+          },
+          {
+            "type": "Node",
+            "name": "loss1",
+            "attribute": "Outflow"
+          },
+          {
+            "type": "Node",
+            "name": "loss1",
+            "attribute": "Loss"
+          },
+          {
+            "type": "Node",
+            "name": "spill1",
+            "attribute": "Inflow"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "meta": {"name": "node-outputs"},
+        "type": "CSV",
+        "format": "Long",
+        "filename": "loss_link2-expected.csv",
+        "metric_set": [
+          "nodes"
+        ]
+      }
+    ]
+  }
+}

@@ -62,8 +62,12 @@ try:
 except Exception:
     plt = None
 
-import pywr
-from pywr.model import Model
+try:
+    import pywr
+    from pywr.model import Model
+except ImportError:
+    # pywr v1 is not installed in the console's environment
+    pywr = Model = None
 
 for _module in _config["python_modules"]:
     # accept a file name such as "parameters.py"
@@ -94,12 +98,16 @@ def reload_model():
         # connected, because the output of this script would be lost
         _banner_shown = True
         print(
-            f"Pywr {pywr.__version__} (Python {_sys.version.split()[0]})\n"
+            f"Pywr {pywr.__version__ if pywr else 'is not installed'} "
+            f"(Python {_sys.version.split()[0]})\n"
             "Available: model, nodes, parameters, recorders, scenarios, model_data, "
             "np, pd, plt\n"
             "Helpers: reload_model(), runs(), results()\n"
             "Run with model.run(). Use the Interrupt button to stop a long run.\n"
         )
+    if Model is None:
+        print("pywr v1 is not installed, so the model cannot be loaded.")
+        return
     try:
         with open(_config["model_json"]) as fid:
             data = _json.load(fid)

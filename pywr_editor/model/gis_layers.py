@@ -3,7 +3,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any, Collection, Sequence
 
 from PySide6.QtCore import QUuid
 from PySide6.QtGui import QColor
@@ -63,12 +63,24 @@ class GisLayerConfig:
             self.id = self.layer_dict.get("id", None)
 
     @staticmethod
-    def generate_id() -> str:
+    def _new_id() -> str:
+        """
+        Creates a random layer ID.
+        :return: The first 8 characters of a UUID.
+        """
+        return QUuid.createUuid().toString(QUuid.StringFormat.Id128)[:8]
+
+    @staticmethod
+    def generate_id(existing: Collection[str] = ()) -> str:
         """
         Creates a new layer ID.
-        :return: A unique layer ID.
+        :param existing: The IDs that are already used by other layers. Optional.
+        :return: A layer ID which is not in the existing IDs.
         """
-        return QUuid().createUuid().toString()[1:7]
+        layer_id = GisLayerConfig._new_id()
+        while layer_id in existing:
+            layer_id = GisLayerConfig._new_id()
+        return layer_id
 
     @property
     def name(self) -> str:
@@ -175,6 +187,30 @@ class GisLayers:
     model: "ModelConfig"
     """ The ModelConfig instance """
 
+    def __post_init__(self):
+        """
+        Gives a different ID to the layers that share one (e.g. when layers of two
+        models were merged), as the layers are found, updated, deleted and cached by
+        their ID. The first layer keeps its ID.
+        :return: None
+        """
+        layers = self.model.map_config[Constants.GIS_LAYERS_KEY.value]
+        used: set[str] = set()
+        for layer_dict in layers:
+            if isinstance(layer_dict, dict) and isinstance(layer_dict.get("id"), str):
+                used.add(layer_dict["id"])
+        seen: set[str] = set()
+        for layer_dict in layers:
+            if not isinstance(layer_dict, dict):
+                continue
+            layer_id = layer_dict.get("id")
+            if not isinstance(layer_id, str):
+                continue
+            if layer_id in seen:
+                layer_dict["id"] = GisLayerConfig.generate_id(used | seen)
+                layer_id = layer_dict["id"]
+            seen.add(layer_id)
+
     def get_all(self) -> list[GisLayerConfig]:
         """
         Returns the list of GIS overlay layers, in the order they should be
@@ -188,6 +224,17 @@ class GisLayers:
                 layers.append(layer)
 
         return layers
+
+    def _ids(self) -> set[str]:
+        """
+        Returns the IDs that are used by the layers.
+        :return: The IDs.
+        """
+        return {
+            layer_dict["id"]
+            for layer_dict in self.model.map_config[Constants.GIS_LAYERS_KEY.value]
+            if isinstance(layer_dict, dict) and isinstance(layer_dict.get("id"), str)
+        }
 
     def find_index(self, layer_id: str) -> int | None:
         """
@@ -248,7 +295,7 @@ class GisLayers:
         :return: The new layer dictionary.
         """
         layer_dict = {
-            "id": GisLayerConfig.generate_id(),
+            "id": GisLayerConfig.generate_id(self._ids()),
             "name": name or Path(path).stem,
             "path": self.portable_path(self.model.path_to_relative(path)),
             "visible": True,

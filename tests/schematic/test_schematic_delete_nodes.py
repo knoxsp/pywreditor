@@ -105,7 +105,9 @@ class TestDeleteSchematicNodes:
         """
         node_name = original_node_config["name"]
         assert undo_command.deleted_node_configs[0].props == original_node_config
-        assert sorted(undo_command.deleted_edges) == sorted(original_edges)
+        assert sorted(e.to_v1() for e in undo_command.deleted_edges) == sorted(
+            original_edges
+        )
 
         # undo
         qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)
@@ -330,7 +332,9 @@ class TestDeleteSchematicNodes:
         undo_command: DeleteItemCommand = window.undo_stack.command(0)
         for ni, node_config in enumerate(undo_command.deleted_node_configs):
             assert node_config.props == original_node_config_dict[node_config.name]
-        assert sorted(undo_command.deleted_edges) == sorted(original_edges)
+        assert sorted(e.to_v1() for e in undo_command.deleted_edges) == sorted(
+            original_edges
+        )
 
         # undo
         undo_command.undo()

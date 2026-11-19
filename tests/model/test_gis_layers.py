@@ -91,6 +91,58 @@ class TestGisLayers:
         assert all_layers[0].id == layer_dict["id"]
         assert gis_layers.model.has_changes is True
 
+    def test_new_ids_are_unique(self, monkeypatch):
+        """
+        Tests that a new layer never takes the ID of an existing layer, even when the
+        ID generator returns it again.
+        """
+        gis_layers = self.gis_layers()
+        first = gis_layers.add("a.geojson")
+        generated = iter([first["id"], first["id"], "different"])
+        monkeypatch.setattr(
+            "pywr_editor.model.gis_layers.GisLayerConfig._new_id",
+            staticmethod(lambda: next(generated)),
+        )
+        second = gis_layers.add("b.geojson")
+        assert second["id"] == "different"
+        assert len({layer.id for layer in gis_layers.get_all()}) == 2
+
+    def test_duplicated_ids_are_replaced(self):
+        """
+        Tests that the layers of a model that share an ID (e.g. layers merged from
+        two models) are addressed one by one: the first keeps its ID.
+        """
+        model = ModelConfig(resolve_model_path("model_1.json"))
+        layers = model.writable_map_config["layers"]
+        layers += [
+            {"id": "dup", "path": "a.geojson"},
+            {"id": "dup", "path": "b.geojson"},
+            {"id": "dup", "path": "c.geojson"},
+            {"id": "other", "path": "d.geojson"},
+        ]
+        gis_layers = GisLayers(model)
+
+        ids = [layer["id"] for layer in layers]
+        assert len(set(ids)) == 4
+        assert ids[0] == "dup" and ids[3] == "other"
+        assert [layer["path"] for layer in layers] == [
+            "a.geojson",
+            "b.geojson",
+            "c.geojson",
+            "d.geojson",
+        ]
+
+        # each layer can be updated and deleted without touching the others
+        gis_layers.delete(ids[1])
+        assert [layer["path"] for layer in layers] == [
+            "a.geojson",
+            "c.geojson",
+            "d.geojson",
+        ]
+        gis_layers.update(ids[2], {"id": ids[2], "path": "changed.geojson"})
+        assert layers[1]["path"] == "changed.geojson"
+        assert layers[0]["path"] == "a.geojson"
+
     def test_find(self):
         """
         Tests the find and find_index methods.

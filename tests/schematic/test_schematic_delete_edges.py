@@ -70,7 +70,7 @@ class TestDeleteEdges:
         assert redo_button.isEnabled() is False
         assert undo_command.source_node.name == "Reservoir"
         assert undo_command.target_node.name == "Link1"
-        assert undo_command.edge_config == ["Reservoir", "Link1"]
+        assert undo_command.edge_config.to_v1() == ["Reservoir", "Link1"]
 
         # 3. Undo command
         qtbot.mouseClick(undo_button, Qt.MouseButton.LeftButton)

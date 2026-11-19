@@ -12,9 +12,10 @@ from tests.utils import resolve_model_path
 
 class TestDialogParameterTypeSelectorWidget:
     @staticmethod
-    def form(value: dict, filtered_keys: list[str] | None) -> ParameterForm:
+    def form(qtbot, value: dict, filtered_keys: list[str] | None) -> ParameterForm:
         """
         Initialises the form.
+        :param qtbot: The qtbot fixture.
         :param value: The dictionary representing the parameter.
         :param filtered_keys: A list of parameter keys only to include in the widget.
         :return: An instance of ParameterForm.
@@ -25,6 +26,9 @@ class TestDialogParameterTypeSelectorWidget:
             field_args = None
 
         model = ModelConfig(resolve_model_path("model_1.json"))
+        parent = QWidget()
+        # delete the parent and the form at the end of the test (see issue #43)
+        qtbot.addWidget(parent)
         form = ParameterForm(
             model_config=ModelConfig(resolve_model_path("model_1.json")),
             parameter_obj=ParameterConfig(value),
@@ -39,7 +43,7 @@ class TestDialogParameterTypeSelectorWidget:
                 ]
             },
             save_button=QPushButton("Save"),
-            parent=QWidget(),
+            parent=parent,
         )
         form.enable_optimisation_section = False
         form.load_fields()
@@ -115,7 +119,7 @@ class TestDialogParameterTypeSelectorWidget:
         """
         Tests the widget when a valid parameter type is used.
         """
-        form = self.form(param_dict, filtered_keys)
+        form = self.form(qtbot, param_dict, filtered_keys)
         param_type_field = form.find_field("type")
         # noinspection PyTypeChecker
         param_type_widget: ParameterTypeSelectorWidget = param_type_field.widget
@@ -158,7 +162,7 @@ class TestDialogParameterTypeSelectorWidget:
         Tests the widget when only certain parameter types are allowed, but the passed
         parameter is not.
         """
-        form = self.form(param_dict, filtered_keys)
+        form = self.form(qtbot, param_dict, filtered_keys)
         param_type_field = form.find_field("type")
         # noinspection PyTypeChecker
         param_type_widget: ParameterTypeSelectorWidget = param_type_field.widget

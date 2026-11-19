@@ -97,8 +97,10 @@ class TestScenariosDialog:
         # model configuration
         assert model_config.scenarios.exists(new_name) is False
         assert model_config.scenarios.exists(renamed_scenario_name) is True
+        # the size is always saved: the schema requires it, also when it is 1
         assert model_config.scenarios.config(renamed_scenario_name) == {
-            "name": renamed_scenario_name
+            "name": renamed_scenario_name,
+            "size": 1,
         }
 
     def test_rename_parameter(self, qtbot, model_config, dialog):

@@ -1,5 +1,5 @@
 import copy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QCloseEvent
@@ -17,13 +17,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pywr_editor.model import (
-    Diagnostic,
-    PreflightWorker,
-    validate_model,
-    validate_schema,
-)
-from pywr_editor.model.validation import schema_info
+from pywr_editor.model import Diagnostic, PreflightWorker
 from pywr_editor.utils import Logging
 
 if TYPE_CHECKING:
@@ -41,19 +35,21 @@ class SchemaWorker(QObject):
     finished = Signal(list)
     """ Signal emitted with the schema diagnostics """
 
-    def __init__(self, model_dict: dict):
+    def __init__(self, model_dict: dict, validate: Callable[[dict], list]):
         """
         Initialises the worker. Validating the schema takes a few seconds with a
         large model.
         :param model_dict: A copy of the model dictionary.
+        :param validate: The schema validation of the model dialect.
         """
         super().__init__()
         self.model_dict = model_dict
+        self.validate = validate
 
     @Slot()
     def run(self) -> None:
         # noinspection PyUnresolvedReferences
-        self.finished.emit(validate_schema(self.model_dict))
+        self.finished.emit(self.validate(self.model_dict))
 
 
 class ValidationDialog(QDialog):
@@ -99,13 +95,10 @@ class ValidationDialog(QDialog):
         self.table.cellActivated.connect(self.on_row_activated)
         self.table.cellDoubleClicked.connect(self.on_row_activated)
 
-        info = schema_info()
         note = QLabel(
-            "The structure is checked against the pywr-v1-schema "
-            f"{info['pywr_v1_schema_version']} "
-            f"(for pywr {info['target_pywr_version']}) "
-            "and by the editor. These checks do not guarantee that the model solves "
-            "at every time-step. Double-click a row to go to the component."
+            f"{self.model_config.dialect.validation_note()} These checks do not "
+            "guarantee that the model solves at every time-step. Double-click a row "
+            "to go to the component."
         )
         note.setWordWrap(True)
         note.setEnabled(False)
@@ -123,6 +116,10 @@ class ValidationDialog(QDialog):
             "and solver of a run, without stepping it"
         )
         self.preflight_button.clicked.connect(self.run_preflight)
+        # the check loads the model with pywr v1
+        self.preflight_button.setVisible(
+            self.model_config.dialect.supports("preflight")
+        )
         self.close_button = QPushButton("Close")
         self.close_button.clicked.connect(self.close)
 
@@ -165,11 +162,16 @@ class ValidationDialog(QDialog):
         """
         if self.is_validating:
             return
-        self.model_diagnostics = validate_model(self.model_config)
+        self.model_diagnostics = self.model_config.dialect.validate_model(
+            self.model_config
+        )
         self.schema_diagnostics = []
         self.populate()
 
-        self.schema_worker = SchemaWorker(copy.deepcopy(self.model_config.clean_json))
+        self.schema_worker = SchemaWorker(
+            copy.deepcopy(self.model_config.clean_json),
+            self.model_config.dialect.validate_schema,
+        )
         self.schema_thread = QThread(self)
         self.schema_worker.moveToThread(self.schema_thread)
         # noinspection PyUnresolvedReferences

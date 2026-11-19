@@ -17,7 +17,6 @@ from pywr_editor.style import Color
 from pywr_editor.utils import ModelComponentTooltip
 from pywr_editor.widgets import ContextualMenu
 
-from ..model import NodeConfig
 from .abstract_schematic_item import AbstractSchematicItem
 from .commands.add_node_command import AddNodeCommand
 from .commands.disconnect_node_command import DisconnectNodeCommand
@@ -103,7 +102,8 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         # allow interaction
         self.setFlag(
             QGraphicsItem.ItemIsMovable,
-            self.view.editor_settings.is_schematic_locked is False,
+            self.view.editor_settings.is_schematic_locked is False
+            and not getattr(self.view.app, "is_read_only", False),
         )
         self.setFlag(QGraphicsItem.ItemIsSelectable)
         # enable notifications for position and transformation changes
@@ -374,9 +374,22 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
                 and not connected_node.model_node.is_virtual
                 and self not in connected_node.connected_nodes["source_nodes"]
                 and self not in connected_node.connected_nodes["target_nodes"]
+                # the rules of the model format, such as that nothing can be
+                # connected to an Input
+                and self.connection_issue(connected_node) is None
             )
         else:
             return not self.model_node.is_virtual
+
+    def connection_issue(self, source_node: "SchematicNode"):
+        """
+        Checks whether an edge from another node to this one is allowed.
+        :param source_node: The node the edge starts from.
+        :return: The reason the edge is not allowed (a ConnectionIssue), or None if
+        it is.
+        """
+        model = self.view.app.model_config
+        return model.dialect.check_connection(model, source_node.name, self.name)
 
     def delete_edge(
         self, node_name: str, edge_type: Literal["source", "target"]
@@ -479,7 +492,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :param event: The event being triggered.
         :return: None
         """
-        if self.view.app.is_model_running or self.view.connecting_node_props.enabled:
+        if self.view.app.editing_locked or self.view.connecting_node_props.enabled:
             return
 
         # keep a multiple selection when right-clicking one of its nodes
@@ -525,6 +538,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
                 lambda *args: self.view.set_nodes_hidden(names, hide)
             )
             self.add_style_action(context_menu, names)
+            self.add_metric_set_action(context_menu, targets)
             return context_menu
 
         # edit node action
@@ -562,6 +576,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         )
 
         self.add_style_action(context_menu, [self.name])
+        self.add_metric_set_action(context_menu, [self])
 
         # locate action
         locate_action = context_menu.addAction(
@@ -594,6 +609,41 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
 
         return context_menu
 
+    def add_metric_set_action(
+        self, menu: ContextualMenu, targets: list["SchematicNode"]
+    ) -> None:
+        """
+        Adds the action to put nodes in a metric set, if the model has metric sets.
+        :param menu: The menu.
+        :param targets: The nodes to add.
+        :return: None
+        """
+        model = self.view.model_config
+        if not model.dialect.supports("metric-sets"):
+            return
+        components = [
+            (
+                "VirtualNode" if node.model_node.is_virtual else "Node",
+                node.name,
+                node.model_node.props.get("type"),
+            )
+            for node in targets
+        ]
+        action = menu.addAction(
+            qta.icon("msc.graph", color=Color("gray", 500).qcolor),
+            "Add to metric set...",
+        )
+
+        def open_dialog(*args) -> None:
+            from pywr_editor.dialogs.next_components.add_to_metric_set_dialog import (
+                add_to_metric_set,
+            )
+
+            add_to_metric_set(model, components, self.view.app)
+
+        # noinspection PyUnresolvedReferences
+        action.triggered.connect(open_dialog)
+
     def add_style_action(self, menu: ContextualMenu, names: list[str]) -> None:
         """
         Adds the action to open the dialog to change the colour and size of nodes.
@@ -615,7 +665,9 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         :return: None
         """
         # add new name and shift the coordinates
-        new_node_props = NodeConfig(self.model_node.props, deepcopy=True)
+        new_node_props = self.view.model_config.nodes.node(
+            self.model_node.props, deepcopy=True
+        )
         new_node_props.change_name(f"Node {QUuid().createUuid().toString()[1:7]}")
         new_node_props.change_position([self.x + 100, self.y])
 
@@ -656,14 +708,7 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         Edits a node configuration.
         :return: None
         """
-        from pywr_editor.dialogs import NodeDialog
-
-        dialog = NodeDialog(
-            node_name=self.name,
-            model_config=self.view.model_config,
-            parent=self.view.app,
-        )
-        dialog.show()
+        self.view.app.open_node_dialog(self.name)
 
     @Slot()
     def on_show_node_data(self) -> None:
@@ -671,7 +716,12 @@ class SchematicNode(AbstractSchematicItem, QGraphicsItemGroup):
         Shows the node configuration in the dockable node data panel.
         :return: None
         """
-        self.view.app.node_data_panel.show_node(self.name)
+        app = self.view.app
+        if not app.model_config.dialect.supports("node-data-panel"):
+            # the panel shows the v1 node form: open the node dialog instead
+            app.open_node_dialog(self.name)
+            return
+        app.node_data_panel.show_node(self.name)
 
 
 class SchematicLabel(QGraphicsTextItem):

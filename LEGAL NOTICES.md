@@ -48,6 +48,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 A copy of the license is available here: https://github.com/pyqtgraph/pyqtgraph/blob/master/LICENSE.txt
 
+## uv
+The installers include the uv executable (https://github.com/astral-sh/uv), which the editor uses to install pywr-next. uv is dual-licensed under the MIT License or the Apache License 2.0, at your option.
+
+Copyright (c) 2023 Astral Software Inc.
+
+Licenses are available here: https://github.com/astral-sh/uv/blob/main/LICENSE-MIT and https://github.com/astral-sh/uv/blob/main/LICENSE-APACHE
+
 ## Colibre Icon Theme
  Copyright (C) 2018 Andreas Kainz <kainz.a@gmail.com>
  Copyright (c) 2020-2022 Rizal Muttaqin <riz_17_oke@yahoo.co.id>

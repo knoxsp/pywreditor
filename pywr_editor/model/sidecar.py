@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from pywr_editor.model.constants import Constants
+from pywr_editor.model.editor_tags import read_tag, write_tag
 
 """
  The editor keeps its own data (the shapes drawn on the schematic, the size of the
@@ -20,9 +21,10 @@ from pywr_editor.model.constants import Constants
 
  The sidecar names the model it belongs to. While the model is open, the editor keeps
  the data in the model dictionary (in the "pywr_editor" key and in the "position" of
- the nodes) and separates it from the model when the model is saved, and merges it
- back when the model is loaded. Models that still contain the data (saved by previous
- versions of the editor) are read as they are, and are saved without it.
+ the nodes, which is in their "meta" in pywr-next models) and separates it from the
+ model when the model is saved, and merges it back when the model is loaded. Models
+ that still contain the data (saved by previous versions of the editor) are read as
+ they are, and are saved without it.
 """
 
 SIDECAR_FOLDER = ".pywr-editor"
@@ -38,7 +40,67 @@ NODE_EDITOR_KEYS = (
     Constants.NODE_SIZE_KEY.value,
 )
 """ The keys in the "position" of a node that the editor stores """
+INLINE_MARKER_KEY = "saved_inline"
+""" key in the "pywr_editor" block of a model file that marks the data as written by a
+save that could not write the sidecar, so it is newer than the sidecar """
 RESERVED_KEYS = ("model", "version", NODES_KEY)
+
+
+def _is_next(model: dict) -> bool:
+    # pywr-next models keep the nodes in "network", with the name and the position
+    # in their "meta"
+    return isinstance(model.get("network"), dict)
+
+
+def _model_nodes(model: dict) -> list | None:
+    nodes = model["network"].get("nodes") if _is_next(model) else model.get("nodes")
+    return nodes if isinstance(nodes, list) else None
+
+
+def _node_name(node: dict, is_next: bool) -> object:
+    if is_next:
+        meta = node.get("meta")
+        return meta.get("name") if isinstance(meta, dict) else None
+    return node.get("name")
+
+
+def _node_position(node: dict, is_next: bool, create: bool = False) -> dict | None:
+    owner = node
+    if is_next:
+        owner = node.get("meta")
+        if not isinstance(owner, dict):
+            if not create:
+                return None
+            owner = node["meta"] = {}
+    if create and "position" not in owner:
+        owner["position"] = {}
+    position = owner.get("position")
+    return position if isinstance(position, dict) else None
+
+
+def _move_to_tags(node: dict, values: dict) -> None:
+    # moves the editor values of a pywr-next node to the tags of its meta
+    for key in NODE_EDITOR_KEYS:
+        if key in values:
+            meta = node.setdefault("meta", {})
+            tags = meta.setdefault("tags", {})
+            if read_tag(tags, key) is None:
+                write_tag(tags, key, values[key])
+
+
+def _with_position(node: dict, position: dict, is_next: bool) -> dict:
+    # a copy of the node with the position replaced (removed when empty)
+    clean_node = dict(node)
+    owner = clean_node
+    if is_next:
+        owner = clean_node["meta"] = dict(node["meta"])
+    if position:
+        owner["position"] = position
+    else:
+        del owner["position"]
+    return clean_node
+
+
 CONTENT_KEYS = (
     Constants.SHAPES_KEY.value,
     Constants.NODE_TYPES_KEY.value,
@@ -119,9 +181,14 @@ def write_sidecar(
     payload.update(data)
     # write the file in one go, so that a failure does not leave half of it
     temporary = path.with_name(path.name + ".tmp")
-    with open(temporary, "w") as fid:
-        json.dump(payload, fid, indent=2)
-    os.replace(temporary, path)
+    try:
+        with open(temporary, "w") as fid:
+            json.dump(payload, fid, indent=2)
+        os.replace(temporary, path)
+    except BaseException:
+        # do not leave a half-written file
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _centroid(geometry: dict) -> list[float] | None:
@@ -147,18 +214,20 @@ def split_model(model: dict) -> tuple[dict, dict]:
     nodes_data: dict[str, dict] = {}
 
     clean = {key: value for key, value in model.items() if key != editor_key}
-    nodes = model.get("nodes")
-    if isinstance(nodes, list):
+    is_next = _is_next(model)
+    nodes = _model_nodes(model)
+    if nodes is not None:
         clean_nodes = []
         for node in nodes:
-            position = node.get("position") if isinstance(node, dict) else None
-            if not isinstance(position, dict):
+            position = _node_position(node, is_next) if isinstance(node, dict) else None
+            if position is None:
                 clean_nodes.append(node)
                 continue
 
             position = dict(position)
             entry = {}
-            for key in NODE_EDITOR_KEYS:
+            # pywr-next nodes keep their appearance in their tags, in the model
+            for key in () if is_next else NODE_EDITOR_KEYS:
                 if key in position:
                     entry[key] = position.pop(key)
 
@@ -173,20 +242,45 @@ def split_model(model: dict) -> tuple[dict, dict]:
                 else:
                     position[Constants.GEOGRAPHIC_KEY.value] = centroid
 
-            clean_node = dict(node)
-            if position:
-                clean_node["position"] = position
-            else:
-                del clean_node["position"]
-            clean_nodes.append(clean_node)
+            clean_nodes.append(_with_position(node, position, is_next))
 
-            if entry and isinstance(node.get("name"), str):
-                nodes_data[node["name"]] = entry
-        clean["nodes"] = clean_nodes
+            name = _node_name(node, is_next)
+            if entry and isinstance(name, str):
+                nodes_data[name] = entry
+        if is_next:
+            clean["network"] = {**model["network"], "nodes": clean_nodes}
+        else:
+            clean["nodes"] = clean_nodes
 
     if nodes_data:
         data[NODES_KEY] = nodes_data
     return clean, data
+
+
+def inline_editor_data(model: dict, data: dict, sidecar_exists: bool = False) -> dict:
+    """
+    Puts the editor data in the model file itself. This is used when the sidecar
+    cannot be written, so that the model can be saved and the data is not lost: the
+    previous versions of the editor kept the data there. The nodes entries are stored
+    in the "nodes" key, which read_into_model() reads back.
+    :param model: The model dictionary to write in the model file, without the data.
+    :param data: The editor data from split_model().
+    :param sidecar_exists: Whether a sidecar is in place, which the failed write could
+    not replace or remove.
+    :return: A copy of the model with the data in the "pywr_editor" key, marked with
+    INLINE_MARKER_KEY: an older sidecar, which a failed write leaves in place, must
+    not override this data when the model is loaded. When there is no data, the block
+    only has the marker if a sidecar is in place (the data was cleared and the sidecar
+    must not bring it back); otherwise the model is returned as it is.
+    """
+    if not has_content(data):
+        data = {}
+        if not sidecar_exists:
+            return model
+    return {
+        **model,
+        Constants.EDITOR_CONFIG_KEY.value: {**data, INLINE_MARKER_KEY: True},
+    }
 
 
 def merge_editor_data(model: dict, data: dict) -> None:
@@ -208,17 +302,27 @@ def merge_editor_data(model: dict, data: dict) -> None:
     nodes_data = data.get(NODES_KEY)
     if not isinstance(nodes_data, dict):
         return
-    for node in model.get("nodes", []):
-        if not isinstance(node, dict) or node.get("name") not in nodes_data:
+    is_next = _is_next(model)
+    for node in _model_nodes(model) or []:
+        if not isinstance(node, dict):
             continue
-        entry = nodes_data[node["name"]]
+        name = _node_name(node, is_next)
+        if not isinstance(name, str) or name not in nodes_data:
+            continue
+        entry = nodes_data[name]
         if not isinstance(entry, dict):
             continue
-        position = node.setdefault("position", {})
-        if not isinstance(position, dict):
+        if is_next:
+            # an older sidecar has the appearance of pywr-next nodes, which is now
+            # kept in their tags
+            _move_to_tags(node, entry)
+            if not isinstance(entry.get(GEOMETRY_KEY), dict):
+                continue
+        position = _node_position(node, is_next, create=True)
+        if position is None:
             continue
 
-        for key in NODE_EDITOR_KEYS:
+        for key in () if is_next else NODE_EDITOR_KEYS:
             if key in entry:
                 position[key] = entry[key]
 
@@ -228,9 +332,13 @@ def merge_editor_data(model: dict, data: dict) -> None:
         if isinstance(geometry, dict):
             centroid = _centroid(geometry)
             point = position.get(Constants.GEOGRAPHIC_KEY.value)
-            if (
-                centroid is not None
-                and isinstance(point, list)
+            if centroid is None:
+                # a geometry without a centroid (e.g. an empty polygon) has no point
+                # in the model: it is restored if the model still has none
+                if Constants.GEOGRAPHIC_KEY.value not in position:
+                    position[Constants.GEOGRAPHIC_KEY.value] = geometry
+            elif (
+                isinstance(point, list)
                 and len(point) == 2
                 and all(
                     isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -251,6 +359,21 @@ def read_into_model(json_file: str | os.PathLike, model: dict) -> str | None:
     :return: The error message if the sidecar cannot be read, None otherwise.
     """
     data, error = read_sidecar(json_file)
+    inline = model.get(Constants.EDITOR_CONFIG_KEY.value)
+    if isinstance(inline, dict) and inline.pop(INLINE_MARKER_KEY, False):
+        # the editor could not write the sidecar when it saved the model (see
+        # inline_editor_data): the data in the model file is newer than the sidecar,
+        # which is ignored until the next save replaces it. The data of the nodes
+        # is merged in the nodes, the rest stays in the "pywr_editor" key
+        inline_nodes = inline.pop(NODES_KEY, None)
+        if isinstance(inline_nodes, dict):
+            merge_editor_data(model, {NODES_KEY: inline_nodes})
+        return error
+    # the data of the nodes that the editor keeps in the model file when it cannot
+    # write the sidecar (see inline_editor_data), written before the marker existed
+    inline_nodes = inline.pop(NODES_KEY, None) if isinstance(inline, dict) else None
     if error is None and data:
         merge_editor_data(model, data)
+    elif isinstance(inline_nodes, dict):
+        merge_editor_data(model, {NODES_KEY: inline_nodes})
     return error

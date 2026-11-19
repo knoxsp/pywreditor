@@ -33,10 +33,9 @@ from pywr_editor.dialogs import InspectorTree
 from pywr_editor.model import (
     BaseShape,
     Constants,
-    Edges,
+    EdgeRecord,
     LineArrowShape,
     ModelConfig,
-    NodeConfig,
     RectangleShape,
     TextShape,
 )
@@ -420,11 +419,14 @@ class Schematic(QGraphicsView):
                 self.add_node(node_props=node_props, position_override=position)
                 continue
 
-            # position is not available: place the node in the centre
+            # position is not available: place the node where it is on the map, or in
+            # the centre if it has no geographic position either. The position is
+            # saved with the model like any other change
             if node_config.position is None:
                 node_props = self.model_config.nodes.set_position(
                     node_index=node_index,
-                    position=[self.schematic_width / 2, self.schematic_height / 2],
+                    position=self.geo_to_scene(node_config.geographic_position)
+                    or [self.schematic_width / 2, self.schematic_height / 2],
                 )
 
             # draw the node
@@ -433,16 +435,17 @@ class Schematic(QGraphicsView):
         self.update_geo_view_banner()
 
         # draw the edges
-        model_edges = Edges(self.model_config)
         for source_node_name, source_node_obj in self.node_items.items():
             target_nodes = self.model_config.edges.targets(source_node_name)
             if target_nodes is not None:
-                for target_node_name in target_nodes:
+                # one edge is drawn between two nodes, also when the model has several
+                # (that use different slots)
+                for target_node_name in dict.fromkeys(target_nodes):
                     target_node_obj = self.node_items[target_node_name]
                     edge = Edge(
                         source=source_node_obj,
                         target=target_node_obj,
-                        edge_color_name=model_edges.color(source_node_name),
+                        edge_color_name=self.model_config.edges.color(source_node_name),
                         hide_arrow=self.editor_settings.are_edge_arrows_hidden,
                     )
                     edge.setVisible(
@@ -499,7 +502,7 @@ class Schematic(QGraphicsView):
 
         return node_obj
 
-    def delete_node(self, node_name: str) -> list[list[str | int]]:
+    def delete_node(self, node_name: str) -> list[EdgeRecord]:
         """
         Deletes the provided node and its edges from the schematic and model
         configuration.
@@ -508,19 +511,19 @@ class Schematic(QGraphicsView):
         """
         # find the node shape on the schematic
         node_item = self.node_items[node_name]
-        deleted_edges: list[list[str]] = []
+        deleted_edges: list[EdgeRecord] = []
 
         # delete edges on the schematic when node is source node
         for c_node in node_item.connected_nodes["target_nodes"]:
             edge_item = c_node.delete_edge(node_name=node_item.name, edge_type="source")
             if edge_item:
-                deleted_edges.append(self.delete_edge(edge_item))
+                deleted_edges += self.delete_edge(edge_item)
 
         # delete edges on the schematic when node is target node
         for c_node in node_item.connected_nodes["source_nodes"]:
             edge_item = c_node.delete_edge(node_name=node_item.name, edge_type="target")
             if edge_item:
-                deleted_edges.append(self.delete_edge(edge_item))
+                deleted_edges += self.delete_edge(edge_item)
 
         # remove the graphic item in schematic and model config
         self.model_config.nodes.delete(node_name)
@@ -559,19 +562,21 @@ class Schematic(QGraphicsView):
         del self.shape_items[shape_id]
         self.scene.removeItem(shape_item)
 
-    def delete_edge(self, edge_item: Edge) -> list[str | int]:
+    def delete_edge(self, edge_item: Edge) -> list[EdgeRecord]:
         """
-        Deletes the edge from the schematic and model configuration.
+        Deletes the edge from the schematic and model configuration. The schematic
+        draws one edge for the nodes, however many edges (using different slots) the
+        model has between them: all are deleted.
         :param edge_item: The schematic Edge instance.
-        :return: The deleted model edge (nodes and slot names).
+        :return: The deleted model edges (nodes, slots and the rest of the edge).
         """
         self.scene.removeItem(edge_item)
-        # delete edge from model config and returned deleted model edge
-        edge, _ = self.model_config.edges.find(
+        # delete edges from model config and return the deleted model edges
+        edges = self.model_config.edges.find_records(
             edge_item.source.name, edge_item.target.name
         )
-        self.model_config.edges.delete(edge)
-        return edge
+        self.model_config.edges.delete(edge_item.source.name, edge_item.target.name)
+        return edges
 
     def add_abort_node_connection_button(self) -> None:
         """
@@ -1155,12 +1160,12 @@ class Schematic(QGraphicsView):
                 "Switch to the geographic view to estimate the node positions", 5000
             )
             return
-        if getattr(self.app, "is_model_running", False):
+        if getattr(self.app, "editing_locked", False):
             return
 
         names, known = [], {}
         for node_props in self.model_config.nodes.get_all():
-            name = node_props["name"]
+            name = self.model_config.nodes.node(node_props).name
             names.append(name)
             point = self.geo_point(
                 self.model_config.nodes.node(node_props).geographic_position
@@ -1175,7 +1180,7 @@ class Schematic(QGraphicsView):
         xs = [p[0] for p in known.values()] or [0.0]
         ys = [p[1] for p in known.values()] or [0.0]
         extent = max(max(xs) - min(xs), max(ys) - min(ys))
-        edges = [(edge[0], edge[1]) for edge in self.model_config.edges.get_all()]
+        edges = [(e.source, e.target) for e in self.model_config.edges.records()]
         inferred = infer_positions(known, names, edges, spread=extent / 150)
         if len(inferred) == 0:
             self.app.statusBar().showMessage(
@@ -1209,7 +1214,7 @@ class Schematic(QGraphicsView):
                 "Switch to the schematic view to lay out the nodes", 5000
             )
             return
-        if getattr(self.app, "is_model_running", False):
+        if getattr(self.app, "editing_locked", False):
             return
 
         names = [item.name for item in self.node_items.values()]
@@ -1217,7 +1222,7 @@ class Schematic(QGraphicsView):
             name: (item.pos().x(), item.pos().y())
             for name, item in self.node_items.items()
         }
-        edges = [(edge[0], edge[1]) for edge in self.model_config.edges.get_all()]
+        edges = [(e.source, e.target) for e in self.model_config.edges.records()]
         snap = self.editor_settings.is_snap_to_grid_enabled
         grid_size = max(self.editor_settings.grid_size, 1)
         # keep the nodes a few cells apart so that snapping does not crowd them
@@ -1739,6 +1744,15 @@ class Schematic(QGraphicsView):
         else:
             self.app.statusBar().showMessage("Schematic export aborted")
 
+    def set_read_only(self) -> None:
+        """
+        Locks the nodes of a read-only model, so that they cannot be moved.
+        :return: None
+        """
+        for item in self.items():
+            if isinstance(item, (SchematicNode, AbstractSchematicShape)):
+                item.setFlag(QGraphicsItem.ItemIsMovable, False)
+
     def set_run_mode(self, enable: bool) -> None:
         """
         Enables the run mode when the model is running.
@@ -1757,54 +1771,66 @@ class Schematic(QGraphicsView):
                     item.setFlag(QGraphicsItem.ItemIsMovable, False)
                     item.setFlag(QGraphicsItem.ItemIsSelectable, False)
 
-                    # draw new tooltip
-                    model = self.app.run_widget.worker.pywr_model
+                    # draw new tooltip with the live values of the model
+                    worker = self.app.run_widget.worker
+                    model = None if worker is None else worker.pywr_model
+                    if model is None:
+                        # the model is run by another process (pywr-next): its
+                        # values are not available, so the tooltip is not changed
+                        tooltip_text = item.tooltip_text
+                    else:
 
-                    cell_style = "style='padding:2px 6px;"
-                    cell_style += f"border:1px solid {Color('neutral', 400).hex}'"
+                        cell_style = "style='padding:2px 6px;"
+                        cell_style += f"border:1px solid {Color('neutral', 400).hex}'"
 
-                    tooltip_text = "<table>"
-                    tooltip_text += "<tr><td colspan='2'><b style='font-size:12pt'>"
-                    tooltip_text += f"{item.name}</td></tr>"
+                        tooltip_text = "<table>"
+                        tooltip_text += "<tr><td colspan='2'><b style='font-size:12pt'>"
+                        tooltip_text += f"{item.name}</td></tr>"
 
-                    node = model.nodes[item.name]
-                    all_attributes = inspect.getmembers(
-                        node,
-                        lambda a: not inspect.isroutine(a),
-                    )
-                    for (
-                        attr_raw_name,
-                        result_data,
-                    ) in InspectorTree.get_node_value_dict(
-                        model, all_attributes
-                    ).items():
-                        if attr_raw_name == "prev_flow":
-                            continue
-                        attr_name = item.model_node.humanise_attribute_name(
-                            attr_raw_name
+                        node = model.nodes[item.name]
+                        all_attributes = inspect.getmembers(
+                            node,
+                            lambda a: not inspect.isroutine(a),
                         )
-                        tooltip_text += "<tr>"
-                        # data with scenarios
-                        if result_data["has_scenarios"]:
-                            tooltip_text += f"<td colspan='2'>{attr_name} "
-                            tooltip_text += "<table style='margin-left:10px;"
-                            tooltip_text += "border-collapse:collapse'>"
-                            tooltip_text += f"<tr><td {cell_style}><b>Combination</b>"
-                            tooltip_text += (
-                                f"</td><td {cell_style}><b>Value</b></td></tr>"
+                        for (
+                            attr_raw_name,
+                            result_data,
+                        ) in InspectorTree.get_node_value_dict(
+                            model, all_attributes
+                        ).items():
+                            if attr_raw_name == "prev_flow":
+                                continue
+                            attr_name = item.model_node.humanise_attribute_name(
+                                attr_raw_name
                             )
-                            for sc_value in result_data["data"]:
-                                tooltip_text += f"<tr><td {cell_style}>"
-                                tooltip_text += f"{sc_value['name']}</td>"
-                                tooltip_text += f"<td {cell_style}>{sc_value['value']}"
-                                tooltip_text += "</td></tr>"
-                            tooltip_text += "</table></td>"
-                        # single value
-                        else:
-                            tooltip_text += f"<td>{attr_name}:</td>"
-                            tooltip_text += f"<td>{result_data['data']['value']}</td>"
-                        tooltip_text += "</tr>"
-                    tooltip_text += "</table>"
+                            tooltip_text += "<tr>"
+                            # data with scenarios
+                            if result_data["has_scenarios"]:
+                                tooltip_text += f"<td colspan='2'>{attr_name} "
+                                tooltip_text += "<table style='margin-left:10px;"
+                                tooltip_text += "border-collapse:collapse'>"
+                                tooltip_text += (
+                                    f"<tr><td {cell_style}><b>Combination</b>"
+                                )
+                                tooltip_text += (
+                                    f"</td><td {cell_style}><b>Value</b></td></tr>"
+                                )
+                                for sc_value in result_data["data"]:
+                                    tooltip_text += f"<tr><td {cell_style}>"
+                                    tooltip_text += f"{sc_value['name']}</td>"
+                                    tooltip_text += (
+                                        f"<td {cell_style}>{sc_value['value']}"
+                                    )
+                                    tooltip_text += "</td></tr>"
+                                tooltip_text += "</table></td>"
+                            # single value
+                            else:
+                                tooltip_text += f"<td>{attr_name}:</td>"
+                                tooltip_text += (
+                                    f"<td>{result_data['data']['value']}</td>"
+                                )
+                            tooltip_text += "</tr>"
+                        tooltip_text += "</table>"
                 else:
                     # unlock node position and selection
                     item.setFlag(QGraphicsItem.ItemIsMovable, True)
@@ -1842,6 +1868,21 @@ class Schematic(QGraphicsView):
         command = DeleteItemCommand(schematic=self, selected_items=items)
         self.app.undo_stack.push(command)
 
+    def no_connection_message(self, node: "SchematicNode") -> str:
+        """
+        Explains why a node cannot be connected to any other node.
+        :param node: The node.
+        :return: The message.
+        """
+        model = self.model_config
+        for item in self.items():
+            if isinstance(item, SchematicNode) and item != node:
+                issue = model.dialect.check_connection(model, node.name, item.name)
+                # the reasons that depend on the node, not on the other node
+                if issue is not None and issue.kind in ("from_sink", "virtual"):
+                    return issue.message
+        return f'"{node.name}" is already connected to every node it can be connected to'
+
     @Slot(SchematicNode)
     def on_connect_node_start(self, node: "SchematicNode") -> None:
         """
@@ -1849,6 +1890,18 @@ class Schematic(QGraphicsView):
         :param node: The node where the new edge needs to start.
         :return: None
         """
+        # do not start if there is nothing the node can be connected to
+        candidates = [
+            item
+            for item in self.items()
+            if isinstance(item, SchematicNode)
+            and item != node
+            and item.is_connectable(node)
+        ]
+        if not candidates:
+            self.app.statusBar().showMessage(self.no_connection_message(node), 10000)
+            return
+
         self.connecting_node_props.enabled = True
         self.connecting_node_props.source_node = node
         self.viewport().setCursor(Qt.CrossCursor)
@@ -1902,7 +1955,12 @@ class Schematic(QGraphicsView):
 
         # create the new edge if the target mode is available (this may be False or
         # None when the connection is aborted)
-        if target_node:
+        issue = (
+            target_node.connection_issue(source_node) if target_node else None
+        )
+        if issue is not None:
+            self.app.statusBar().showMessage(issue.message, 10000)
+        elif target_node:
             command = ConnectNodeCommand(
                 schematic=self,
                 source_node_name=source_node.name,
@@ -2221,9 +2279,9 @@ class Schematic(QGraphicsView):
                     self.app.undo_stack.push(command)
             else:
                 # add the new node to the model
-                node_props = NodeConfig.create(
+                node_props = self.model_config.dialect.create_node(
                     name=f"Node {QUuid().createUuid().toString()[1:7]}",
-                    node_type=mime_type.lower(),
+                    node_type=mime_type,
                     position=position,
                 )
 

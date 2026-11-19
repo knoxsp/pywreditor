@@ -242,18 +242,233 @@ class TestSave:
         assert sidecar.with_name(sidecar.name + ".bak").read_text() == "{ not json"
         assert read(sidecar)["shapes"][0]["id"] == "s1"
 
-    def test_save_reports_a_sidecar_that_cannot_be_written(
+    def test_model_is_saved_when_the_sidecar_cannot_be_written(self, write_model):
+        """
+        Tests that the editor data does not prevent the model from being saved: it is
+        kept in the model file, as the previous versions of the editor did, so it is
+        not lost, and the problem is reported.
+        """
+        path = write_model(base_model())
+        # a file in place of the folder of the sidecars
+        (Path(path).parent / SIDECAR_FOLDER).write_text("not a folder")
+        config = ModelConfig(path)
+        config.json["metadata"]["title"] = "Changed"
+
+        assert config.save() is True
+        assert config.sidecar_save_error is not None
+        assert str(sidecar_path(path).parent) in config.sidecar_save_error
+        saved = read(path)
+        assert saved["metadata"]["title"] == "Changed"
+        assert saved["pywr_editor"]["shapes"][0]["id"] == "s1"
+        # no half-written file is left
+        assert not list(Path(path).parent.glob("**/*.tmp"))
+
+        # the data is read back from the model file
+        reloaded = ModelConfig(path)
+        assert reloaded.load_error is None
+        assert reloaded.editor_config["shapes"][0]["id"] == "s1"
+        assert reloaded.nodes.node(reloaded.json["nodes"][0]).node_color == "red"
+        assert reloaded.nodes.node(reloaded.json["nodes"][1]).geographic_rings != []
+        assert "nodes" not in reloaded.editor_config
+
+    def test_sidecar_failure_is_cleared_by_the_next_save(self, write_model):
+        path = write_model(base_model())
+        blocker = Path(path).parent / SIDECAR_FOLDER
+        blocker.write_text("not a folder")
+        config = ModelConfig(path)
+        assert config.save() is True
+        assert config.sidecar_save_error is not None
+
+        blocker.unlink()
+        assert config.save() is True
+        assert config.sidecar_save_error is None
+        assert "pywr_editor" not in read(path)
+        assert read(sidecar_path(path))["shapes"][0]["id"] == "s1"
+
+    def test_pywr_next_model_is_saved_when_the_sidecar_cannot_be_written(
+        self, tmp_path
+    ):
+        model = {
+            "metadata": {"name": "next"},
+            "network": {
+                "nodes": [
+                    {
+                        "meta": {
+                            "name": "Area",
+                            "position": {"schematic": [1, 2], "geographic": POLYGON},
+                        },
+                        "type": "Output",
+                    }
+                ],
+                "edges": [],
+            },
+            "pywr_editor": {"shapes": [{"id": "s1"}]},
+        }
+        path = tmp_path / "next.json"
+        path.write_text(json.dumps(model))
+        (tmp_path / SIDECAR_FOLDER).write_text("not a folder")
+        config = ModelConfig(str(path))
+        assert config.load_error is None
+        assert config.save() is True
+        saved = read(path)
+        # pywr-next cannot read a polygon in the position of a node
+        assert isinstance(saved["network"]["nodes"][0]["meta"]["position"]["geographic"], list)
+        reloaded = ModelConfig(str(path))
+        node = reloaded.json["network"]["nodes"][0]
+        assert node["meta"]["position"]["geographic"] == POLYGON
+        assert reloaded.editor_config["shapes"][0]["id"] == "s1"
+
+
+class TestGeometryWithoutCentroid:
+    """A geometry that has no centroid (e.g. an empty polygon) must not be lost."""
+
+    EMPTY = {"type": "Polygon", "coordinates": []}
+
+    def test_v1_geometry_is_kept(self):
+        model = base_model()
+        model["nodes"][1]["position"]["geographic"] = self.EMPTY
+        clean, data = split_model(model)
+        # the model file has no invalid position, and the geometry is not lost
+        assert "geographic" not in clean["nodes"][1]["position"]
+        assert data["nodes"]["Area"]["geographic_geometry"] == self.EMPTY
+
+        merge_editor_data(clean, data)
+        assert clean["nodes"][1]["position"]["geographic"] == self.EMPTY
+
+    def test_next_geometry_is_kept(self):
+        model = {
+            "network": {
+                "nodes": [
+                    {
+                        "meta": {
+                            "name": "Area",
+                            "position": {
+                                "schematic": [1, 2],
+                                "geographic": self.EMPTY,
+                            },
+                        },
+                        "type": "Output",
+                    }
+                ],
+                "edges": [],
+            }
+        }
+        clean, data = split_model(model)
+        assert "geographic" not in clean["network"]["nodes"][0]["meta"]["position"]
+        merge_editor_data(clean, data)
+        position = clean["network"]["nodes"][0]["meta"]["position"]
+        assert position["geographic"] == self.EMPTY
+        assert position["schematic"] == [1, 2]
+
+    def test_a_point_set_outside_of_the_editor_wins(self):
+        model = base_model()
+        model["nodes"][1]["position"]["geographic"] = self.EMPTY
+        clean, data = split_model(model)
+        clean["nodes"][1]["position"]["geographic"] = [5.0, 6.0]
+        merge_editor_data(clean, data)
+        assert clean["nodes"][1]["position"]["geographic"] == [5.0, 6.0]
+
+
+class TestInlineDataNewerThanSidecar:
+    """
+    Tests the data kept in the model file when the sidecar cannot be written, while an
+    older sidecar exists from a previous save.
+    """
+
+    @staticmethod
+    def _save_with_failing_sidecar(config, monkeypatch):
+        def fail(*args, **kwargs):
+            raise PermissionError("read-only")
+
+        with monkeypatch.context() as context:
+            context.setattr("pywr_editor.model.model_config.write_sidecar", fail)
+            assert config.save() is True
+        assert config.sidecar_save_error is not None
+
+    def test_inline_data_wins_over_an_older_sidecar(self, write_model, monkeypatch):
+        path = write_model(base_model())
+        config = ModelConfig(path)
+        assert config.save() is True
+        assert read(sidecar_path(path))["shapes"][0]["id"] == "s1"
+
+        # change the editor data, then fail to write the sidecar
+        config.json["pywr_editor"]["shapes"] = [{"id": "s2"}]
+        config.json["nodes"][0]["position"]["node_color"] = "green"
+        self._save_with_failing_sidecar(config, monkeypatch)
+        # the sidecar still has the old data
+        assert read(sidecar_path(path))["shapes"][0]["id"] == "s1"
+
+        reloaded = ModelConfig(path)
+        assert reloaded.load_error is None
+        assert reloaded.editor_config["shapes"][0]["id"] == "s2"
+        assert reloaded.nodes.node(reloaded.json["nodes"][0]).node_color == "green"
+        # the bookkeeping of the fallback is not part of the editor config
+        assert "nodes" not in reloaded.editor_config
+        assert "saved_inline" not in reloaded.editor_config
+
+    def test_next_save_writes_the_sidecar_and_removes_the_inline_data(
         self, write_model, monkeypatch
     ):
         path = write_model(base_model())
         config = ModelConfig(path)
+        config.save()
+        config.json["pywr_editor"]["shapes"] = [{"id": "s2"}]
+        self._save_with_failing_sidecar(config, monkeypatch)
 
-        def fail(*args, **kwargs):
-            raise PermissionError("read-only folder")
+        reloaded = ModelConfig(path)
+        assert reloaded.save() is True
+        assert reloaded.sidecar_save_error is None
+        assert "pywr_editor" not in read(path)
+        assert read(sidecar_path(path))["shapes"][0]["id"] == "s2"
+        assert ModelConfig(path).editor_config["shapes"][0]["id"] == "s2"
 
-        monkeypatch.setattr("pywr_editor.model.model_config.write_sidecar", fail)
-        message = config.save()
-        assert message is not True
-        assert "read-only folder" in message
-        # the model is not written, so the data is not lost
-        assert "pywr_editor" in read(path)
+    def test_sidecar_still_wins_over_data_of_older_editors(self, write_model):
+        # the data written by older versions of the editor has no marker
+        path = write_model(base_model())
+        ModelConfig(path).save()
+        legacy = base_model()
+        legacy["pywr_editor"]["shapes"] = [{"id": "old"}]
+        Path(path).write_text(json.dumps(legacy))
+        assert ModelConfig(path).editor_config["shapes"][0]["id"] == "s1"
+
+    def test_cleared_data_is_not_brought_back_by_an_older_sidecar(
+        self, write_model, monkeypatch
+    ):
+        path = write_model(base_model())
+        config = ModelConfig(path)
+        assert config.save() is True
+        assert sidecar_path(path).exists()
+
+        # the user removes all the editor data, and the old sidecar cannot be removed
+        config.json["pywr_editor"] = {}
+        for node in config.json["nodes"]:
+            node.get("position", {}).pop("geographic", None)
+            for key in ("node_color", "node_size", "node_style", "edge_color"):
+                node.get("position", {}).pop(key, None)
+        self._save_with_failing_sidecar(config, monkeypatch)
+        assert sidecar_path(path).exists()
+
+        reloaded = ModelConfig(path)
+        assert reloaded.load_error is None
+        assert not reloaded.editor_config.get("shapes")
+        assert not reloaded.editor_config.get("map")
+        assert "saved_inline" not in reloaded.editor_config
+        assert reloaded.nodes.node(reloaded.json["nodes"][0]).node_color is None
+
+        # the next save removes the sidecar
+        assert reloaded.save() is True
+        assert not sidecar_path(path).exists()
+        assert "pywr_editor" not in read(path)
+
+    def test_no_block_is_written_without_data_or_sidecar(
+        self, write_model, monkeypatch
+    ):
+        model = base_model()
+        model["pywr_editor"] = {}
+        for node in model["nodes"]:
+            node.pop("position", None)
+        path = write_model(model)
+        config = ModelConfig(path)
+        assert not sidecar_path(path).exists()
+        self._save_with_failing_sidecar(config, monkeypatch)
+        assert "pywr_editor" not in read(path)

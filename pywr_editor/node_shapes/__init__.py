@@ -43,5 +43,6 @@ from .pywr.river_split_with_gauge import RiverSplitWithGauge
 from .pywr.rolling_virtual_storage import RollingVirtualStorage
 from .pywr.monthly_virtual_storage import MonthlyVirtualStorage
 from .pywr.seasonal_virtual_storage import SeasonalVirtualStorage
+from .pywr.next_nodes import Turbine, Abstraction, PiecewiseStorage
 
 from .utils import *

@@ -35,9 +35,11 @@ class Settings:
     theme_key = "appearance/theme"
     python_paths_key = "python/paths"
     solver_key = "run/solver"
+    next_solver_key = "run/next_solver"
     output_dir_key = "run/output_dir"
     save_results_key = "run/save_results"
     default_solver = "glpk-edge"
+    default_next_solver = "clp"
     default_save_results = True
     python_modules_key = "python/modules"
     console_python_key = "console/python"
@@ -278,6 +280,28 @@ class Settings:
         return str(
             self.instance.value(self.solver_key, defaultValue=self.default_solver)
         )
+
+    @property
+    def next_solver(self) -> str:
+        """
+        The solver used to run pywr-next models.
+        :return: The solver name. Defaults to clp.
+        """
+        return str(
+            self.instance.value(
+                self.next_solver_key, defaultValue=self.default_next_solver
+            )
+        )
+
+    def save_next_solver(self, name: str) -> None:
+        """
+        Saves the solver used to run pywr-next models.
+        :param name: The solver name.
+        :return: None.
+        """
+        if self.app_name is None:
+            return
+        self.instance.setValue(self.next_solver_key, name)
 
     def save_solver(self, name: str) -> None:
         """

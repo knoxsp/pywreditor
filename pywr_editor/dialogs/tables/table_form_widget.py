@@ -156,6 +156,18 @@ class TableFormWidget(Form):
             direction="vertical",
         )
 
+    schema_kind = "table"
+
+    def schema_component(self, form_data: dict) -> tuple[dict | None, dict]:
+        """
+        Returns the table before and after the edit, as it is stored in the model
+        (without the name, which is the key, and the empty values).
+        :param form_data: The form values.
+        :return: The table before the edit and after it.
+        """
+        new = {k: v for k, v in form_data.items() if k != "name" and v}
+        return (dict(self.table_dict) if self.table_dict else None), new
+
     def field_value(self, key: str) -> Any:
         """
         Gets a value from the table configuration.

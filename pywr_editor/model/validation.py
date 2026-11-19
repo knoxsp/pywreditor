@@ -133,9 +133,42 @@ def _leaf_error(error):
     # anyOf/oneOf errors do not say which branch is the closest match. The branches
     # for the wrong node or parameter type fail early (a missing property, for
     # example), while the one for the right type fails deeper in the component.
-    leaves = _leaf_errors(error)
-    deepest = max(len(leaf.absolute_path) for leaf in leaves)
-    return best_match([leaf for leaf in leaves if len(leaf.absolute_path) == deepest])
+    # When the branches fail at the same depth, the branch for the type named by the
+    # value is the closest: the other ones fail on the choice that names their type.
+    if not error.context:
+        return error
+    # the branches for the type of the value (all of them if there is none): look for
+    # the problem in each, and keep the deepest
+    branches = _plausible_branches(error) or _branches(error)
+    found = [_leaf_error(sub) for subs in branches for sub in subs]
+    deepest = max(len(leaf.absolute_path) for leaf in found)
+    return best_match([leaf for leaf in found if len(leaf.absolute_path) == deepest])
+
+
+def _branches(error) -> list[list]:
+    # the errors of each branch of a choice
+    branches: dict = {}
+    for sub in error.context or []:
+        key = sub.schema_path[0] if sub.schema_path else 0
+        branches.setdefault(key, []).append(sub)
+    return list(branches.values())
+
+
+def _plausible_branches(error) -> list[list]:
+    # the errors of each branch of a choice, without the branches that fail on the
+    # property that names their type (the value is another type): the constant or
+    # the list of types it must be, or the types it must not be (a custom type)
+    return [
+        subs
+        for subs in _branches(error)
+        if not any(
+            not sub.context
+            and sub.validator in ("const", "enum", "not")
+            and len(sub.absolute_path) == len(error.absolute_path) + 1
+            and sub.absolute_path[-1] in ("type", "format")
+            for sub in subs
+        )
+    ]
 
 
 def validate_schema(model: dict, strict: bool = True) -> list[Diagnostic]:
@@ -354,6 +387,8 @@ def validate_model(
                     ("edges", i),
                 )
 
+    validate_connections(model_config, add)
+
     # references between components
     core_types = [PywrNodesData(), PywrParametersData(), PywrRecordersData()]
 
@@ -433,6 +468,37 @@ def validate_model(
             )
 
     return diagnostics
+
+
+def validate_connections(model_config: "ModelConfig", add) -> None:
+    """
+    Reports the edges that are not allowed (into an Input, out of an Output, a
+    duplicate...) and the nodes that are on no route from a source to a sink. pywr
+    accepts the edges, which carry no flow, so they are warnings, but the editor does
+    not let the user add them. A model with no route fails when it is run.
+    :param model_config: The model configuration.
+    :param add: The function that adds a diagnostic: severity, message and path.
+    :return: None
+    """
+    from pywr_editor.model.connection_rules import find_edge_issues, find_unrouted
+
+    dialect = model_config.dialect
+    endpoints = dialect.connection_endpoints(model_config)
+    edges = model_config.edges.records()
+    for index, issue in find_edge_issues(endpoints, edges):
+        add(dialect.edge_issue_severity, issue.message, ("edges", index))
+    node_index = {
+        n.get("name"): i
+        for i, n in enumerate(model_config.nodes.get_all())
+        if isinstance(n, dict)
+    }
+    for name in find_unrouted(endpoints, edges):
+        add(
+            "warning",
+            f'The node "{name}" is not on a route from a source (an Input, a '
+            "Catchment or a Storage) to a sink (an Output or a Storage)",
+            ("nodes", node_index.get(name, 0)),
+        )
 
 
 def validate_all(model_config: "ModelConfig") -> list[Diagnostic]:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib
 import site
 import sys
@@ -5,16 +7,17 @@ import traceback
 from enum import Enum
 from io import StringIO
 from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import pandas as pd
-import pywr
 from pandas import Timestamp
 from PySide6.QtCore import QMutex, QObject, QWaitCondition, Signal
-from pywr.model import Model
 
 from pywr_editor.model.results import export_results
-from pywr_editor.utils import Logging
+from pywr_editor.utils import Logging, installed_pywr_version
+
+if TYPE_CHECKING:
+    from pywr.model import Model
 
 
 def add_python_paths(paths: list[str]) -> list[str]:
@@ -65,7 +68,7 @@ def apply_solver(model_dict: dict, solver: str | None) -> dict:
     return model_dict
 
 
-def release_solver(model: Model | None) -> None:
+def release_solver(model: "Model | None") -> None:
     """
     Frees the solver of a model. GLPK keeps its memory allocator per thread, so the
     solver must be freed by the thread that created it. Otherwise the garbage
@@ -91,7 +94,7 @@ def load_pywr_model(
     python_paths: list[str] | None = None,
     python_modules: list[str] | None = None,
     logger=None,
-) -> Model:
+) -> "Model":
     """
     Loads the model with pywr. This is used to run the model and to check that it
     loads before running it.
@@ -114,6 +117,8 @@ def load_pywr_model(
         if logger:
             logger.debug(f"Importing module {module}")
         importlib.import_module(module)
+    from pywr.model import Model
+
     # noinspection PyArgumentList
     return Model.load(data=model_dict, path=model_file)
 
@@ -229,7 +234,7 @@ class PywrWorker(QObject):
         # Load the model first and check if it fails
         # noinspection PyBroadException
         try:
-            self.logger.debug(f"Loading model. Using pywr-{pywr.__version__}")
+            self.logger.debug(f"Loading model. Using pywr-{installed_pywr_version()}")
             self.status_update.emit("Loading model")
             self.pywr_model: Model = load_pywr_model(
                 self.model_config,

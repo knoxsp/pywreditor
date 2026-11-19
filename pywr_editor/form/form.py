@@ -432,15 +432,19 @@ class Form(QScrollArea):
         output = form_field.widget.validate(name, form_label, value)
 
         # widget has not failed validation (otherwise preserve first message)
+        warning = output.warning_message
         if "validate_fun" in field_dict and output.validation is True:
             output = field_dict["validate_fun"](name, form_label, value)
             if not isinstance(output, Validation):
                 raise TypeError(f"Custom validation for {name} must return Validation")
+            warning = warning or output.warning_message
 
         if output.validation is False:
             form_field.set_error(output.error_message)
             return False
 
+        if warning:
+            form_field.set_warning(warning)
         return True
 
     def validate(self) -> bool | dict[str, Any]:
@@ -491,13 +495,14 @@ class Form(QScrollArea):
                 if not self._validate_field(name, value, field):
                     is_valid = False
 
-                # do not export if the value is empty or the default value
+                # do not export if the value is empty or the default value. An
+                # empty list or dictionary is kept when it has a meaning
+                keep_empty = self.field_config[name].get("keep_empty", False)
                 if (
                     value == default_value
                     or value is None
                     or value == ""
-                    or value == []
-                    or value == {}
+                    or (value in ([], {}) and not keep_empty)
                 ):
                     self.logger.debug(f"Ignoring {name} with value '{value}'")
                     continue
@@ -543,11 +548,57 @@ class Form(QScrollArea):
                 )
                 section.filter(form_data)
 
+        # the last check, with the schema of the component
+        if self.schema_kind is not None and not self.check_schema(form_data):
+            return False
+
         # disable save button
         if self.save_button is not None:
             self.save_button.setEnabled(False)
 
         return form_data
+
+    schema_kind: str | None = None
+    """ The kind of component the form edits ("node", "parameter", "table" or
+    "scenario"), to check it against the schema before it is saved. None if the form
+    does not edit a component the schema describes """
+
+    def schema_component(self, form_data: dict) -> tuple[dict | None, dict]:
+        """
+        Returns the component the form edits, before and after the edit, as it is
+        stored in the model. Forms with a schema kind override this.
+        :param form_data: The form values.
+        :return: The component before the edit (None if it is new) and after it.
+        """
+        return None, dict(form_data)
+
+    def check_schema(self, form_data: dict) -> bool:
+        """
+        Checks the component against the schema. A problem that the edit introduced
+        and that the schema certainly rejects stops the form from being saved; one
+        that is only likely is a warning. Both are shown under the field they are
+        about, when there is one.
+        :param form_data: The form values.
+        :return: False if the form must not be saved.
+        """
+        from pywr_editor.dialects.v1.schema_check import check_component
+
+        old, new = self.schema_component(form_data)
+        errors, warnings = check_component(self.schema_kind, old, new)
+        for issues, show in ((warnings, "set_warning"), (errors, "set_error")):
+            for issue in issues:
+                field = self.find_field(str(issue.path[0])) if issue.path else None
+                if field is not None:
+                    getattr(field, show)(issue.message)
+        if errors:
+            QMessageBox().critical(
+                self,
+                "Cannot save the form",
+                "The schema does not accept the values:\n\n"
+                + "\n".join(issue.message for issue in errors[:5]),
+            )
+            return False
+        return True
 
     @Slot(str)
     def on_field_changed(self) -> None:

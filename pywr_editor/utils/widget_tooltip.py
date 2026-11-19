@@ -16,6 +16,11 @@ class ModelComponentTooltip:
         Stores the recorders' keys.
         :return: None
         """
+        self.is_next = self.model_config.dialect.key == "next"
+        if self.is_next:
+            # pywr-next components are not v1 parameters or recorders
+            self.recorder_keys = []
+            return
         self.recorder_keys = self.model_config.pywr_recorder_data.keys + list(
             self.model_config.includes.get_custom_recorders().keys()
         )
@@ -70,6 +75,9 @@ class ModelComponentTooltip:
         :return: The HTML code representing the table row.
         """
         keys_to_skip = ["position", "type", "color"]
+        if self.is_next:
+            # the name and position of a pywr-next component are in its meta
+            keys_to_skip.append("meta")
         if key in keys_to_skip or (isinstance(comp_obj, NodeConfig) and key == "name"):
             return ""
 
@@ -100,7 +108,11 @@ class ModelComponentTooltip:
 
             # show type
             obj = None  # dictionary may not be a model component
-            if "type" in value:
+            if self.is_next:
+                # a pywr-next value, such as a metric: show its type
+                if isinstance(value.get("type"), str):
+                    row += f"<tr><td colspan='2'><b>{value['type']}</b></td></tr>"
+            elif "type" in value:
                 # default to parameter
                 if value["type"] in self.recorder_keys:
                     obj = RecorderConfig(value)

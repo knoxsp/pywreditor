@@ -110,3 +110,49 @@ def do_not_save_run_results(monkeypatch):
     turns the setting on explicitly.
     """
     monkeypatch.setattr(Settings, "default_save_results", False)
+
+
+@pytest.fixture(autouse=True)
+def delete_windows_after_test():
+    """
+    Closes and deletes the windows, dialogs and editor widgets a test creates and
+    leaves behind, as qtbot.addWidget() does. Otherwise they outlive the test, and
+    some crash Qt when the garbage collector destroys them in the middle of a later
+    test (a layout is deleted twice, see issue #43). The widgets created by fixtures
+    shared by several tests already exist when the test starts and are kept. Tests
+    that create other top-level widgets should register them with qtbot.addWidget().
+    """
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication, QDialog, QMainWindow
+
+    app = QApplication.instance()
+    existing = {id(w) for w in app.topLevelWidgets()} if app else set()
+    yield
+    app = QApplication.instance()
+    if app is None:
+        return
+
+    def is_left_behind(widget) -> bool:
+        # the dialogs, the main windows and the editor's own widgets (such as a
+        # form a test created alone). The console is left alone: deleting it while
+        # its kernel is running crashes
+        if id(widget) in existing:
+            return False
+        module = type(widget).__module__
+        return isinstance(widget, (QDialog, QMainWindow)) or (
+            module.startswith("pywr_editor")
+            and not module.startswith("pywr_editor.console")
+        )
+
+    windows = [w for w in app.topLevelWidgets() if is_left_behind(w)]
+    for window in windows:
+        # do not ask to save the changes of a main window
+        if hasattr(window, "prompt_unsaved_changes"):
+            window.prompt_unsaved_changes = False
+        # a hidden window is only deleted: its close event may expect a window that
+        # was fully set up (a test may stop the window while it is created)
+        if window.isVisible():
+            window.close()
+        window.deleteLater()
+    if windows:
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

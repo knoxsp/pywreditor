@@ -1,0 +1,168 @@
+{
+  "metadata": {
+    "title": "Mutual exclusivity test 3",
+    "description": "Test mutual exclusivities work with piecewise link node types",
+    "minimum_version": "0.1"
+  },
+  "time": {
+    "start": "2015-01-01",
+    "end": "2015-01-03",
+    "timestep": {
+      "type": "Days",
+      "days": 1
+    }
+  },
+  "network": {
+    "nodes": [
+      {
+        "meta": {
+          "name": "input1"
+        },
+        "type": "Input"
+      },
+      {
+        "meta": {
+          "name": "link1"
+        },
+        "type": "PiecewiseLink",
+        "steps": [
+          {
+            "max_flow": {
+              "type": "Literal",
+              "value": 5.0
+            }
+          },
+          {
+            "max_flow": {
+              "type": "Literal",
+              "value": 5.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "name": "demand1"
+        },
+        "type": "Output",
+        "max_flow": {
+          "type": "Literal",
+          "value": 15.0
+        },
+        "cost": {
+          "type": "Literal",
+          "value": -15
+        }
+      },
+      {
+        "meta": {
+          "name": "link2"
+        },
+        "type": "PiecewiseLink",
+        "steps": [
+          {
+            "max_flow": {
+              "type": "Literal",
+              "value": 5.0
+            }
+          },
+          {
+            "max_flow": {
+              "type": "Literal",
+              "value": 5.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "name": "demand2"
+        },
+        "type": "Output",
+        "max_flow": {
+          "type": "Literal",
+          "value": 15.0
+        },
+        "cost": {
+          "type": "Literal",
+          "value": -10
+        }
+      }
+    ],
+    "virtual_nodes": [
+      {
+        "meta": {
+          "name": "me"
+        },
+        "type": "Aggregated",
+        "nodes": [
+          {
+            "name": "link1"
+          },
+          {
+            "name": "link2"
+          }
+        ],
+        "relationship": {
+          "type": "Exclusive"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from_node": "input1",
+        "to_node": "link1"
+      },
+      {
+        "from_node": "link1",
+        "to_node": "demand1"
+      },
+      {
+        "from_node": "input1",
+        "to_node": "link2"
+      },
+      {
+        "from_node": "link2",
+        "to_node": "demand2"
+      }
+    ],
+    "metric_sets": [
+      {
+        "meta": {"name": "nodes"},
+        "metrics": [
+          {
+            "type": "Node",
+            "name": "link1",
+            "attribute": "Inflow"
+          },
+          {
+            "type": "Node",
+            "name": "link1",
+            "attribute": "Outflow"
+          },
+          {
+            "type": "Node",
+            "name": "link2",
+            "attribute": "Inflow"
+          },
+          {
+            "type": "Node",
+            "name": "link2",
+            "attribute": "Outflow"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "meta": {"name": "node-outputs"},
+        "type": "CSV",
+        "format": "Long",
+        "filename": "mutual-exclusivity3.csv",
+        "metric_set": [
+          "nodes"
+        ]
+      }
+    ]
+  }
+}

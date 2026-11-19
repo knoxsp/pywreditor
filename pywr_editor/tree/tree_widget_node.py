@@ -7,6 +7,7 @@ from pywr_editor.widgets import ParameterIcon
 
 from .abstract_tree_widget_component import AbstractTreeWidgetComponent
 from .tree_widget_parameter import TreeWidgetParameter
+from .tree_widget_value import value_items
 
 
 class TreeWidgetNodeAttribute(QTreeWidgetItem):
@@ -37,6 +38,16 @@ class TreeWidgetNode(QTreeWidgetItem):
         self.setText(0, self.name)
         self.setToolTip(0, node_tooltip)
         self.sortChildren(0, Qt.SortOrder.AscendingOrder)
+
+        if self.model_config.dialect.key == "next":
+            # the name, comment and position are in "meta"
+            attributes = {
+                key: value
+                for key, value in self.node_dict.items()
+                if key not in ("meta", "type")
+            }
+            self.addChildren(value_items(attributes))
+            return
 
         # remove unused keys
         self.node_obj.delete_attribute(

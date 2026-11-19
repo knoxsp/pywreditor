@@ -73,6 +73,8 @@ class TestScenariosDialog:
         Tests that the values are loaded correctly.
         """
         dialog = ScenariosDialog(model_config, scenario_name)
+        # close and delete the dialog after the test (see issue #43)
+        qtbot.addWidget(dialog)
         dialog.show()
 
         selected_page = dialog.pages.currentWidget()
@@ -187,6 +189,8 @@ class TestScenariosDialog:
         Tests the widget when an invalid configuration is used.
         """
         dialog = ScenariosDialog(model_config, scenario_name)
+        # close and delete the dialog after the test (see issue #43)
+        qtbot.addWidget(dialog)
         dialog.show()
 
         selected_page = dialog.pages.currentWidget()
@@ -226,6 +230,8 @@ class TestScenariosDialog:
         """
         scenario_name = "valid_complete"
         dialog = ScenariosDialog(model_config, scenario_name)
+        # close and delete the dialog after the test (see issue #43)
+        qtbot.addWidget(dialog)
         dialog.hide()
 
         selected_page = dialog.pages.currentWidget()
@@ -264,6 +270,8 @@ class TestScenariosDialog:
         Checks that the slice list in the model is correctly updated.
         """
         dialog = ScenariosDialog(model_config, "valid_w_slice")
+        # close and delete the dialog after the test (see issue #43)
+        qtbot.addWidget(dialog)
         dialog.hide()
 
         selected_page = dialog.pages.currentWidget()
@@ -315,6 +323,8 @@ class TestScenariosDialog:
         Checks that the names list in the model is correctly updated.
         """
         dialog = ScenariosDialog(model_config, scenario_name)
+        # close and delete the dialog after the test (see issue #43)
+        qtbot.addWidget(dialog)
         dialog.hide()
 
         selected_page = dialog.pages.currentWidget()
@@ -377,6 +387,8 @@ class TestScenariosDialog:
         """
         scenario_name = "valid_complete"
         dialog = ScenariosDialog(model_config, scenario_name)
+        # close and delete the dialog after the test (see issue #43)
+        qtbot.addWidget(dialog)
         dialog.hide()
 
         selected_page = dialog.pages.currentWidget()

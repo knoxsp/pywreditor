@@ -98,9 +98,12 @@ class StartScreenRightWidget(QFrame):
         Opens the editor to start a new empty model.
         :return: None
         """
-        from pywr_editor.main_window import MainWindow
+        from pywr_editor.main_window import MainWindow, ask_new_model_dialect
 
-        MainWindow()
+        dialect = ask_new_model_dialect(self)
+        if dialect is None:
+            return
+        MainWindow(new_dialect=dialect)
         self.parent().close()
 
 

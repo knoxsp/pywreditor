@@ -18,8 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from pywr_editor.dialogs import InspectorDialog
-from pywr_editor.model import PywrProgress, PywrWorker, validate_model
-from pywr_editor.model.results import resolve_output_dir
+from pywr_editor.model import PywrProgress, PywrWorker
 from pywr_editor.style import Color, Theme, stylesheet_dict_to_str
 from pywr_editor.toolbar.small_button import ToolbarSmallButton
 from pywr_editor.utils import Logging
@@ -162,26 +161,17 @@ class RunWidget(QWidget):
         run_to_date: datetime = (
             self.app.findChild(DateEdit, "run_to_date").date().toPython()
         )
-        self.worker = PywrWorker(
-            model_dict=self.model_config.clean_json,
-            model_file=self.model_config.json_file,
-            end_date=pd.Timestamp(end_date),
-            run_to_date=pd.Timestamp(run_to_date),
-            python_paths=self.app.editor_settings.python_paths,
-            python_modules=self.app.editor_settings.python_modules,
-            solver=self.app.editor_settings.solver,
-            results_dir=(
-                str(
-                    resolve_output_dir(
-                        self.app.editor_settings.output_dir,
-                        self.model_config.json_file,
-                    )
-                )
-                if self.app.editor_settings.are_results_saved
-                else None
-            ),
+        worker = self.model_config.dialect.create_run_worker(
+            self, pd.Timestamp(end_date), pd.Timestamp(run_to_date)
         )
+        if worker is None:
+            return False
+        self.worker = worker
         self.thread = QThread(self)
+        # the thread is deleted when it has really ended, not when the worker reports
+        # it finished: the worker can still be in the thread, and Qt aborts the
+        # application if a running thread is deleted
+        self.thread.finished.connect(self.thread.deleteLater)
         self.worker.moveToThread(self.thread)
 
         # noinspection PyUnresolvedReferences
@@ -212,6 +202,24 @@ class RunWidget(QWidget):
 
         return True
 
+    def wait_for_thread(self, timeout_ms: int = 10000) -> bool:
+        """
+        Waits until the worker thread has ended. The window must not be destroyed
+        before: Qt aborts the application if a running thread is deleted. The worker
+        has to be told to stop first (kill() or shutdown()).
+        :param timeout_ms: The longest time to wait, in milliseconds.
+        :return: True if there is no running thread any more, False if the thread did
+        not end in time.
+        """
+        try:
+            if self.thread is None or not self.thread.isRunning():
+                return True
+            self.thread.quit()
+            return self.thread.wait(timeout_ms)
+        except RuntimeError:
+            # the thread has ended and Qt has deleted it
+            return True
+
     @Slot()
     def worker_has_finished(self) -> None:
         """
@@ -223,8 +231,7 @@ class RunWidget(QWidget):
         self.is_running = False
         self.run_status_changed.emit(False)
 
-        self.thread.exit()
-        self.thread.deleteLater()
+        self.thread.quit()
 
         self.run_button.setEnabled(True)
         self.run_to_button.setEnabled(True)
@@ -507,7 +514,9 @@ class RunWidget(QWidget):
         """
         errors = [
             d
-            for d in validate_model(self.model_config, include_orphans=False)
+            for d in self.model_config.dialect.validate_model(
+                self.model_config, include_orphans=False
+            )
             if d.severity == "error"
         ]
         if not errors:
@@ -550,6 +559,37 @@ class RunWidget(QWidget):
         title = "Cannot run the model"
         suffix_msg = "Please make sure that the date fields are properly configured"
         date_fmt = "%d/%m/%Y"
+
+        # the toolbar only shows the dates of a model that has a time of day: check
+        # the start and the end of the model, not the dates, which can be the same
+        # (a model of hours in one day). Run-to is a date, which can be any day of
+        # the run, including the first and the last
+        time = self.model_config.timestepper
+        dialect = self.model_config.dialect
+        bounds = None if dialect.simple_time(time) else dialect.time_bounds(time)
+        if bounds is not None:
+            start, end = bounds
+            time_fmt = "%d/%m/%Y %H:%M"
+            if start >= end:
+                self.app.on_error_message(
+                    f"The start ({start.strftime(time_fmt)}) must be earlier than the "
+                    + f"end ({end.strftime(time_fmt)}) of the model. "
+                    + "Change them with the Time button of the Model tab.",
+                    False,
+                    title,
+                )
+                return False
+            if not start.date() <= run_to_date <= end.date():
+                self.app.on_error_message(
+                    f"The run-to date ({run_to_date.strftime(date_fmt)}) must be "
+                    + f"between the start ({start.strftime(date_fmt)}) and the end "
+                    + f"({end.strftime(date_fmt)}) of the model. "
+                    + suffix_msg,
+                    False,
+                    title,
+                )
+                return False
+            return True
 
         if start_date >= end_date:
             self.app.on_error_message(

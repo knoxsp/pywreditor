@@ -1,10 +1,54 @@
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-from pywr_editor.model import NodeConfig
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from pywr_editor.model import ModelConfig
+
+
+@dataclass(frozen=True)
+class EdgeRecord:
+    """
+    An edge between two nodes, independent of how the model file stores it. Code
+    outside the model layer reads edges as records so that it does not depend on the
+    format of the model file.
+    """
+
+    source: str
+    """ The name of the source node """
+    target: str
+    """ The name of the target node """
+    source_slot: str | int | dict | None = None
+    """ The slot of the source node, if any. pywr-next slots are dictionaries """
+    target_slot: str | int | dict | None = None
+    """ The slot of the target node, if any """
+    extra: dict | None = field(default=None, compare=False, hash=False, repr=False)
+    """ What else the edge has in the model file, such as the comment, tags and
+    provenance in the "meta" of a pywr-next edge. It is kept when the edge is deleted
+    and restored by an undo. It is not part of what identifies the edge, so it is
+    ignored when records are compared """
+
+    @classmethod
+    def from_v1(cls, edge: Sequence) -> "EdgeRecord":
+        """
+        Creates the record from a pywr v1 edge, a list with the source and target
+        node names, optionally followed by the source and target slots.
+        :param edge: The v1 edge.
+        :return: The edge record.
+        """
+        slots = list(edge[2:4]) + [None] * (4 - max(len(edge), 2))
+        return cls(edge[0], edge[1], slots[0], slots[1])
+
+    def to_v1(self) -> list:
+        """
+        Converts the record to a pywr v1 edge. Slots are only included when set.
+        :return: The v1 edge.
+        """
+        edge = [self.source, self.target]
+        if self.target_slot is not None:
+            edge += [self.source_slot, self.target_slot]
+        elif self.source_slot is not None:
+            edge.append(self.source_slot)
+        return edge
 
 
 @dataclass
@@ -14,10 +58,54 @@ class Edges:
 
     def get_all(self) -> list[list[str]]:
         """
-        Returns the list of edges.
+        Returns the list of edges as stored in the model file. Code outside the model
+        layer should use records() instead.
         :return: The edge list. Each list item contains the edges as list.
         """
         return self.model.json["edges"]
+
+    def records(self) -> list[EdgeRecord]:
+        """
+        Returns the edges as records.
+        :return: The list of edge records.
+        """
+        return [EdgeRecord.from_v1(edge) for edge in self.get_all()]
+
+    def find_record(
+        self, source_node_name: str, target_node_name: str
+    ) -> EdgeRecord | None:
+        """
+        Finds the edge between two nodes.
+        :param source_node_name: The name of the source node.
+        :param target_node_name: The name of the target node.
+        :return: The edge record or None if the nodes are not connected.
+        """
+        edge, _ = self.find(source_node_name, target_node_name)
+        return None if edge is None else EdgeRecord.from_v1(edge)
+
+    def find_records(
+        self, source_node_name: str, target_node_name: str
+    ) -> list[EdgeRecord]:
+        """
+        Finds all the edges between two nodes. There can be more than one when the
+        edges use different slots. The schematic draws one edge for them.
+        :param source_node_name: The name of the source node.
+        :param target_node_name: The name of the target node.
+        :return: The edge records, an empty list if the nodes are not connected.
+        """
+        return [
+            edge
+            for edge in self.records()
+            if edge.source == source_node_name and edge.target == target_node_name
+        ]
+
+    def add_record(self, edge: EdgeRecord) -> bool:
+        """
+        Adds an edge from a record.
+        :param edge: The edge record.
+        :return: True if the edge is added, False otherwise.
+        """
+        return self.add(edge.source, edge.target, edge.source_slot, edge.target_slot)
 
     @property
     def count(self) -> int:
@@ -35,11 +123,9 @@ class Edges:
         """
         edges = []
         node_names = self.model.nodes.names
-        for edge in self.get_all():
-            node_source = edge[0]
-            target_node = edge[1]
-            if target_node == node_name and node_source in node_names:
-                edges.append(edge[0])
+        for edge in self.records():
+            if edge.target == node_name and edge.source in node_names:
+                edges.append(edge.source)
 
         if len(edges) == 0:
             return None
@@ -54,11 +140,9 @@ class Edges:
         """
         edges = []
         node_names = self.model.nodes.names
-        for edge in self.get_all():
-            node_source = edge[0]
-            target_node = edge[1]
-            if node_source == node_name and target_node in node_names:
-                edges.append(edge[1])
+        for edge in self.records():
+            if edge.source == node_name and edge.target in node_names:
+                edges.append(edge.target)
 
         if len(edges) == 0:
             return None
@@ -136,6 +220,21 @@ class Edges:
         self.model.has_changed()
         self.model.json["edges"] = edges_to_keep
 
+    def rename_node(self, node_name: str, new_name: str) -> None:
+        """
+        Renames a node in the edges.
+        :param node_name: The node name to change.
+        :param new_name: The new node name.
+        :return: None
+        """
+        self.model.json["edges"] = [
+            [
+                new_name if i < 2 and item == node_name else item
+                for i, item in enumerate(e)
+            ]
+            for e in self.get_all()
+        ]
+
     def color(self, source_node_name: str) -> str | None:
         """
         Returns the color to use for the edge, if this is set in the edge_color
@@ -143,9 +242,9 @@ class Edges:
         :param source_node_name: The node name.
         :return: The color name to use if available, None otherwise.
         """
-        node_config = self.model.nodes.config(source_node_name)
+        node_config = self.model.nodes.config(source_node_name, as_dict=False)
         if node_config is not None:
-            return NodeConfig(node_config).edge_color
+            return node_config.edge_color
         return None
 
     def find(
