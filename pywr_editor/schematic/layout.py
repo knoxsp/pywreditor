@@ -70,6 +70,10 @@ def force_directed_layout(
             force = d * (length / k)[:, None]
             np.add.at(disp, pairs[:, 0], -force)
             np.add.at(disp, pairs[:, 1], force)
+        # gravity towards the centre: without it, nodes that are not connected (or
+        # groups that are disconnected from the rest) are only repelled and drift
+        # arbitrarily far away from the main cluster
+        disp -= pos - pos.mean(axis=0)
         norm = np.maximum(np.linalg.norm(disp, axis=1), 0.01)
         pos += disp / norm[:, None] * np.minimum(norm, temperature)[:, None]
         temperature -= cooling

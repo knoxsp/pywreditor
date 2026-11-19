@@ -25,6 +25,18 @@ def test_layout_pushes_stacked_nodes_apart():
     assert sum(p[0] for p in result.values()) / 4 == pytest.approx(400, abs=0.1)
 
 
+def test_layout_keeps_unconnected_nodes_near_the_cluster():
+    # many nodes without edges (e.g. inputs) must not drift away from the rest
+    names = [f"n{i}" for i in range(64)]
+    edges = [(f"n{i}", f"n{i + 1}") for i in range(10)]
+    result = force_directed_layout(names, edges, {}, spacing=90.0)
+
+    xs = [p[0] for p in result.values()]
+    ys = [p[1] for p in result.values()]
+    assert max(xs) - min(xs) < 90 * 64**0.5 * 4
+    assert max(ys) - min(ys) < 90 * 64**0.5 * 4
+
+
 def test_snap_to_grid_is_on_grid_and_unique():
     # all the nodes round to the same point: they must still get distinct points
     positions = {f"n{i}": [101.0 + i, 99.0 - i] for i in range(10)}
